@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceType {
+  empresa
+  pessoal
+  geral
+}
+
+enum ProjectStatus {
+  ativo
+  pausado
+  concluido
+  arquivado
+}
+
+enum TaskStatus {
+  backlog
+  hoje
+  andamento
+  feito
+  arquivado
+}
+
+enum TaskHorizon {
+  active
+  future
+}
+
+enum WaitingPriority {
+  alta
+  media
+  baixa
+}
+
+enum BlockType {
+  task
+  fixed
+}
+
+enum ConfirmationState {
+  pending
+  confirmed_done
+  confirmed_not_done
+}
+
+enum InboxSource {
+  whatsapp
+  app
+}
+
+enum WhatsappDirection {
+  in
+  out
+}
+
+enum ExecutionEventType {
+  completed
+  delayed
+  failed
+  confirmed
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+model Workspace {
+  id        String        @id @default(uuid())
+  name      String
+  type      WorkspaceType
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  projects Project[]
+  tasks    Task[]
+
+  @@map("workspaces")
+}
+
+model Project {
+  id          String       @id @default(uuid())
+  workspaceId String       @map("workspace_id")
+  title       String
+  description String?
+  status      ProjectStatus @default(ativo)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  archivedAt  DateTime?    @map("archived_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@index([workspaceId])
+  @@map("projects")
+}
+
+model Task {
+  id               String          @id @default(uuid())
+  workspaceId      String          @map("workspace_id")
+  projectId        String?         @map("project_id")
+  title            String
+  description      String?
+  status           TaskStatus      @default(backlog)
+  horizon          TaskHorizon     @default(active)
+  priority         Int             @default(3)
+  dueDate          DateTime?       @map("due_date")
+  estimatedMinutes Int?            @map("estimated_minutes")
+  fixedTimeStart   DateTime?       @map("fixed_time_start")
+  fixedTimeEnd     DateTime?       @map("fixed_time_end")
+  windowStart      DateTime?       @map("window_start")
+  windowEnd        DateTime?       @map("window_end")
+  waitingOnPerson  String?         @map("waiting_on_person")
+  waitingPriority  WaitingPriority? @map("waiting_priority")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  completedAt      DateTime?       @map("completed_at")
+  archivedAt       DateTime?       @map("archived_at")
+
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project       Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  subtasks      Subtask[]
+  dayPlanItems  DayPlanItem[]
+  executionEvents ExecutionEvent[]
+  whatsappEvents WhatsappEvent[]
+
+  dependencies     TaskDependency[] @relation("TaskDependsOn")
+  dependedBy       TaskDependency[] @relation("TaskDependedBy")
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([status])
+  @@index([horizon])
+  @@index([completedAt])
+  @@map("tasks")
+}
+
+model Subtask {
+  id     String @id @default(uuid())
+  taskId String @map("task_id")
+  title  String
+  status TaskStatus @default(backlog)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("subtasks")
+}
+
+model TaskDependency {
+  id              String @id @default(uuid())
+  taskId          String @map("task_id")
+  dependsOnTaskId String @map("depends_on_task_id")
+
+  task          Task @relation("TaskDependsOn", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTask Task @relation("TaskDependedBy", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+model RecurringBlock {
+  id        String  @id @default(uuid())
+  title     String
+  weekday   Int
+  startTime String  @map("start_time")
+  endTime   String  @map("end_time")
+  active    Boolean @default(true)
+
+  @@map("recurring_blocks")
+}
+
+model DayPlan {
+  id        String    @id @default(uuid())
+  date      DateTime  @db.Date
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  items DayPlanItem[]
+
+  @@unique([date])
+  @@map("day_plans")
+}
+
+model DayPlanItem {
+  id                String            @id @default(uuid())
+  dayPlanId         String            @map("day_plan_id")
+  taskId            String?
+  startTime         DateTime          @map("start_time")
+  endTime           DateTime          @map("end_time")
+  orderIndex        Int               @default(0) @map("order_index")
+  blockType         BlockType         @map("block_type")
+  confirmationState ConfirmationState @default(pending) @map("confirmation_state")
+
+  dayPlan DayPlan @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([dayPlanId])
+  @@index([taskId])
+  @@map("day_plan_items")
+}
+
+model InboxItem {
+  id        String      @id @default(uuid())
+  content   String
+  source    InboxSource
+  processed Boolean     @default(false)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@index([processed])
+  @@map("inbox_items")
+}
+
+model WhatsappEvent {
+  id             String            @id @default(uuid())
+  direction      WhatsappDirection
+  messageContent String            @map("message_content")
+  relatedTaskId  String?           @map("related_task_id")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  task Task? @relation(fields: [relatedTaskId], references: [id], onDelete: SetNull)
+
+  @@index([relatedTaskId])
+  @@map("whatsapp_events")
+}
+
+model ExecutionEvent {
+  id        String             @id @default(uuid())
+  taskId    String             @map("task_id")
+  eventType ExecutionEventType @map("event_type")
+  timestamp DateTime           @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("execution_events")
+}
+
+model GamificationState {
+  id            String   @id @default(uuid())
+  currentScore  Int      @default(0) @map("current_score")
+  streakDays    Int      @default(0) @map("streak_days")
+  weeklyScore   Int      @default(0) @map("weekly_score")
+  executionDebt Int      @default(0) @map("execution_debt")
+  lastUpdate    DateTime @default(now()) @map("last_update")
+
+  @@map("gamification_state")
+}

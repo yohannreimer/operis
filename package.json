@@ -1,0 +1,21 @@
+{
+  "name": "execution-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Execution OS - Sistema operacional pessoal de execução estratégica",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @execution-os/api",
+    "dev:api": "npm run dev --workspace @execution-os/api",
+    "dev:web": "npm run dev --workspace @execution-os/web",
+    "dev:worker": "npm run dev --workspace @execution-os/worker",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
