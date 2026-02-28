@@ -11,9 +11,9 @@ RUN npm ci
 
 COPY . .
 
-RUN npm run build --workspace @execution-os/shared \
-  && npm run build --workspace @execution-os/api \
-  && npx prisma generate --schema apps/api/prisma/schema.prisma
+RUN npx prisma generate --schema apps/api/prisma/schema.prisma \
+  && npm run build --workspace @execution-os/shared \
+  && npm run build --workspace @execution-os/api
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
