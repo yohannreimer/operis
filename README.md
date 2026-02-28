@@ -61,6 +61,14 @@ Passos:
    - API: `GET /health` na porta `3000`
    - Web: `GET /health` na porta `8080`
 
+## Deploy em Swarm + Traefik
+
+Para stack no Portainer com domínio único (`/` + `/api`), use:
+
+- `docker-compose.swarm.yml`
+- `.env.swarm.example`
+- Guia completo: `docs/deploy-swarm-portainer.md`
+
 ## Integração WhatsApp (n8n como gateway)
 
 Recomendado para produção:

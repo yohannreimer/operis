@@ -1,0 +1,116 @@
+version: "3.7"
+
+services:
+  pluris_postgres:
+    image: postgres:16-alpine
+    networks:
+      - pluris_internal
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-execution}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-execution}
+      POSTGRES_DB: ${POSTGRES_DB:-execution_os}
+    volumes:
+      - pluris_postgres_data:/var/lib/postgresql/data
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  pluris_rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    networks:
+      - pluris_internal
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  pluris_api:
+    image: ghcr.io/yohannreimer/pluris-api:latest
+    networks:
+      - network_swarm_public
+      - pluris_internal
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-execution}:${POSTGRES_PASSWORD:-execution}@pluris_postgres:5432/${POSTGRES_DB:-execution_os}?schema=public
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@pluris_rabbitmq:5672
+      DEFAULT_PHONE_NUMBER: ${DEFAULT_PHONE_NUMBER}
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
+      WHATSAPP_TRANSPORT: ${WHATSAPP_TRANSPORT:-n8n}
+      WHATSAPP_OUTBOUND_WEBHOOK_URL: ${WHATSAPP_OUTBOUND_WEBHOOK_URL}
+      WHATSAPP_OUTBOUND_WEBHOOK_SECRET: ${WHATSAPP_OUTBOUND_WEBHOOK_SECRET}
+      FOLLOWUP_REMINDER_DELAY_MINUTES: ${FOLLOWUP_REMINDER_DELAY_MINUTES:-15}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_swarm_public
+        - traefik.http.routers.pluris-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+        - traefik.http.routers.pluris-api.entrypoints=websecure
+        - traefik.http.routers.pluris-api.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.pluris-api.priority=100
+        - traefik.http.routers.pluris-api.middlewares=pluris-api-strip
+        - traefik.http.middlewares.pluris-api-strip.stripprefix.prefixes=/api
+        - traefik.http.routers.pluris-api.service=pluris-api
+        - traefik.http.services.pluris-api.loadbalancer.server.port=3000
+
+  pluris_worker:
+    image: ghcr.io/yohannreimer/pluris-worker:latest
+    networks:
+      - pluris_internal
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-execution}:${POSTGRES_PASSWORD:-execution}@pluris_postgres:5432/${POSTGRES_DB:-execution_os}?schema=public
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@pluris_rabbitmq:5672
+      DEFAULT_PHONE_NUMBER: ${DEFAULT_PHONE_NUMBER}
+      WHATSAPP_TRANSPORT: ${WHATSAPP_TRANSPORT:-n8n}
+      WHATSAPP_OUTBOUND_WEBHOOK_URL: ${WHATSAPP_OUTBOUND_WEBHOOK_URL}
+      WHATSAPP_OUTBOUND_WEBHOOK_SECRET: ${WHATSAPP_OUTBOUND_WEBHOOK_SECRET}
+      FOLLOWUP_REMINDER_DELAY_MINUTES: ${FOLLOWUP_REMINDER_DELAY_MINUTES:-15}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  pluris_frontend:
+    image: ghcr.io/yohannreimer/pluris-frontend:latest
+    networks:
+      - network_swarm_public
+      - pluris_internal
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_swarm_public
+        - traefik.http.routers.pluris-web.rule=Host(`${DOMAIN}`)
+        - traefik.http.routers.pluris-web.entrypoints=websecure
+        - traefik.http.routers.pluris-web.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.pluris-web.priority=10
+        - traefik.http.routers.pluris-web.service=pluris-web
+        - traefik.http.services.pluris-web.loadbalancer.server.port=80
+
+volumes:
+  pluris_postgres_data:
+
+networks:
+  network_swarm_public:
+    external: true
+  pluris_internal:
+    driver: overlay
