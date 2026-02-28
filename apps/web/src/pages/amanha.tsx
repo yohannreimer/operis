@@ -1,7 +1,8 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 
-import { api, DayPlan, DayPlanItem, Task, TaskHorizon } from '../api';
+import { api, DayPlan, DayPlanItem, ExecutionBriefing, Task, TaskHorizon } from '../api';
 import { Modal } from '../components/modal';
+import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock } from '../components/premium-ui';
 import { DragPayload, SchedulerGrid } from '../components/scheduler-grid';
 import { useShellContext } from '../components/shell-context';
 import { tomorrowIsoDate } from '../utils/date';
@@ -45,6 +46,7 @@ export function AmanhaPage() {
 
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [briefing, setBriefing] = useState<ExecutionBriefing | null>(null);
   const [weekSummary, setWeekSummary] = useState<Array<{ date: string; count: number }>>([]);
 
   const [search, setSearch] = useState('');
@@ -52,6 +54,7 @@ export function AmanhaPage() {
 
   const [selectedItemId, setSelectedItemId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [recurringOpen, setRecurringOpen] = useState(false);
@@ -62,16 +65,20 @@ export function AmanhaPage() {
   const workspaceName =
     activeWorkspaceId === 'all'
       ? 'Geral'
-      : workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ?? 'Workspace';
+      : workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ?? 'Frente';
 
   async function loadDate(date: string) {
-    const [planData, taskData] = await Promise.all([
+    const [planData, taskData, nextBriefing] = await Promise.all([
       api.getDayPlan(date),
-      api.getTasks(workspaceId ? { workspaceId } : undefined)
+      api.getTasks(workspaceId ? { workspaceId } : undefined),
+      api.getExecutionBriefing(date, {
+        workspaceId
+      })
     ]);
 
     setDayPlan(planData);
     setTasks(taskData.filter((task) => task.status !== 'feito' && task.status !== 'arquivado'));
+    setBriefing(nextBriefing);
   }
 
   async function loadWeek() {
@@ -88,9 +95,12 @@ export function AmanhaPage() {
 
   async function load() {
     try {
+      setError(null);
       await Promise.all([loadDate(selectedDate), loadWeek()]);
     } catch (requestError) {
       setError((requestError as Error).message);
+    } finally {
+      setReady(true);
     }
   }
 
@@ -218,26 +228,46 @@ export function AmanhaPage() {
     }
   }
 
-  return (
-    <section className="page-stack">
-      <header className="page-header-premium">
-        <div>
-          <p className="eyebrow">Amanhã</p>
-          <h3>Planejamento visual semanal</h3>
-          <p>Contexto: {workspaceName} • selecione um dia e arraste as tarefas para a agenda.</p>
-        </div>
+  if (!ready) {
+    return (
+      <PremiumPage>
+        <PremiumHeader
+          eyebrow="Planejamento futuro"
+          title="Amanhã"
+          subtitle={`Contexto: ${workspaceName}`}
+        />
+        <PremiumCard title="Semana planejada">
+          <SkeletonBlock lines={2} />
+        </PremiumCard>
+        <section className="premium-grid two-wide">
+          <PremiumCard title={`Agenda ${selectedDate}`}>
+            <SkeletonBlock lines={10} />
+          </PremiumCard>
+          <PremiumCard title="Pool de tarefas">
+            <SkeletonBlock lines={10} />
+          </PremiumCard>
+        </section>
+      </PremiumPage>
+    );
+  }
 
-        <div className="header-actions">
+  return (
+    <PremiumPage>
+      <PremiumHeader
+        eyebrow="Planejamento futuro"
+        title="Amanhã"
+        subtitle={`Contexto: ${workspaceName}`}
+        actions={
           <button type="button" className="ghost-button" onClick={() => setRecurringOpen(true)}>
-            + Novo recorrente
+            Novo recorrente
           </button>
-        </div>
-      </header>
+        }
+      />
 
       {error && <p className="surface-error">{error}</p>}
 
-      <section className="surface-card week-strip-card">
-        <div className="week-strip">
+      <PremiumCard title="Semana planejada" subtitle="selecione o dia para detalhar">
+        <div className="week-strip premium-week-strip">
           {weekSummary.map((entry) => (
             <button
               type="button"
@@ -251,15 +281,10 @@ export function AmanhaPage() {
             </button>
           ))}
         </div>
-      </section>
+      </PremiumCard>
 
-      <section className="today-layout">
-        <article className="surface-card">
-          <div className="section-title">
-            <h4>Agenda de {selectedDate}</h4>
-            <small>alocação em blocos de 30 min</small>
-          </div>
-
+      <section className="premium-grid two-wide">
+        <PremiumCard title={`Agenda ${selectedDate}`} subtitle="drag-and-drop em blocos de 30 min" className="scheduler-card">
           <SchedulerGrid
             date={selectedDate}
             items={items}
@@ -268,64 +293,72 @@ export function AmanhaPage() {
             onDropPayload={onDropPayload}
             onItemDragStart={handleItemDragStart}
           />
-        </article>
+        </PremiumCard>
 
-        <article className="surface-card">
-          <div className="section-title">
-            <h4>Pool de tarefas</h4>
-            <small>{taskPool.length} disponíveis</small>
-          </div>
+        <PremiumCard title="Pool de tarefas" subtitle={`${taskPool.length} disponíveis`}>
+          {briefing?.capacity.isUnrealistic && (
+            <p className="surface-error">
+              Planejamento irreal: capacidade excedida em {briefing.capacity.overloadMinutes} min.
+            </p>
+          )}
 
-          <div className="filters-row">
+          <div className="task-list-filters pool-filter-row pool-filter-row-two">
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar tarefa" />
             <select
               value={horizonFilter}
               onChange={(event) => setHorizonFilter(event.target.value as 'all' | TaskHorizon)}
             >
-              <option value="all">Horizonte: todos</option>
-              <option value="active">Horizonte: ativo</option>
-              <option value="future">Horizonte: futuro</option>
+              <option value="all">Todos horizontes</option>
+              <option value="active">Ativo</option>
+              <option value="future">Futuro</option>
             </select>
           </div>
 
-          <ul className="pool-list">
-            {taskPool.map((task) => (
-              <li key={task.id} draggable onDragStart={(event) => handleTaskDragStart(event, task.id)}>
-                <div>
-                  <strong>{task.title}</strong>
-                  <small>
-                    prioridade {task.priority} • {horizonLabel(task.horizon)}
-                  </small>
-                </div>
-              </li>
-            ))}
-            {taskPool.length === 0 && <li className="empty-list">Sem tarefas para os filtros atuais.</li>}
-          </ul>
+          {taskPool.length === 0 ? (
+            <EmptyState
+              title="Nada no pool para esse filtro"
+              description="Limpe os filtros ou mova tarefas para manter uma semana planejável."
+              actionLabel="Limpar filtros"
+              onAction={() => {
+                setSearch('');
+                setHorizonFilter('all');
+              }}
+            />
+          ) : (
+            <ul className="premium-list dense draggable-list">
+              {taskPool.map((task) => (
+                <li key={task.id} draggable onDragStart={(event) => handleTaskDragStart(event, task.id)}>
+                  <div>
+                    <strong>{task.title}</strong>
+                    <small>
+                      prioridade {task.priority} • {horizonLabel(task.horizon)}
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
 
           <hr className="surface-divider" />
 
           <div className="inline-actions">
             <button type="button" onClick={applyRecurring} disabled={busy}>
-              Aplicar recorrentes do dia
+              Aplicar recorrentes
             </button>
           </div>
-        </article>
+        </PremiumCard>
       </section>
 
       <Modal
         open={recurringOpen}
         onClose={() => setRecurringOpen(false)}
         title="Novo bloco recorrente"
-        subtitle="Cria recorrência para o dia da semana selecionado"
+        subtitle="cria recorrência para o dia selecionado"
       >
         <form onSubmit={saveRecurring} className="modal-form">
           <label>
             Título
-            <input
-              value={recurringTitle}
-              onChange={(event) => setRecurringTitle(event.target.value)}
-              required
-            />
+            <input value={recurringTitle} onChange={(event) => setRecurringTitle(event.target.value)} required />
           </label>
 
           <div className="row-2">
@@ -355,11 +388,11 @@ export function AmanhaPage() {
               Cancelar
             </button>
             <button type="submit" disabled={busy}>
-              Salvar recorrência
+              Salvar
             </button>
           </div>
         </form>
       </Modal>
-    </section>
+    </PremiumPage>
   );
 }

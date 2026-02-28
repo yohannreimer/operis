@@ -1,9 +1,10 @@
-import { BlockType, PrismaClient } from '@prisma/client';
+import { BlockType, FailureReason, PrismaClient } from '@prisma/client';
 
 import { publishEvent } from '../infra/rabbit.js';
 import { queueNames } from '@execution-os/shared';
 import { overlap, startOfDay } from '../utils/time.js';
 import { TaskService } from './task-service.js';
+import { safeRecordStrategicDecisionEvent } from './strategic-decision-service.js';
 
 type AddDayPlanItemInput = {
   date: string;
@@ -128,6 +129,41 @@ export class DayPlanService {
     const plan = await this.getOrCreatePlan(input.date);
 
     if (input.taskId) {
+      const task = await this.prisma.task.findUnique({
+        where: { id: input.taskId },
+        select: {
+          estimatedMinutes: true,
+          title: true,
+          executionKind: true,
+          workspace: {
+            select: {
+              name: true,
+              mode: true
+            }
+          }
+        }
+      });
+
+      if (!task) {
+        throw new Error('Tarefa não encontrada para agendamento.');
+      }
+
+      if (!task.estimatedMinutes) {
+        throw new Error(`Defina tempo estimado para agendar: ${task.title}`);
+      }
+
+      if (task.workspace.mode === 'standby') {
+        throw new Error(
+          `Frente ${task.workspace.name} está em standby. Mude o modo antes de agendar esta tarefa.`
+        );
+      }
+
+      if (task.workspace.mode === 'manutencao' && task.executionKind === 'construcao') {
+        throw new Error(
+          `Frente ${task.workspace.name} está em manutenção. Tarefa de construção não pode entrar na agenda.`
+        );
+      }
+
       await this.prisma.dayPlanItem.deleteMany({
         where: {
           taskId: input.taskId,
@@ -192,6 +228,27 @@ export class DayPlanService {
       taskId: created.taskId
     });
 
+    if (created.task) {
+      const isStrategic = created.task.taskType === 'a' && created.task.executionKind === 'construcao';
+      await safeRecordStrategicDecisionEvent(this.prisma, {
+        workspaceId: created.task.workspaceId,
+        projectId: created.task.projectId,
+        taskId: created.task.id,
+        source: 'day_plan_service',
+        eventCode: 'schedule_block_added',
+        signal: isStrategic ? 'executiva' : 'neutra',
+        impactScore: isStrategic ? 3 : 1,
+        title: `Bloco agendado: ${created.task.title}`,
+        rationale: 'Compromisso explícito no calendário diário.',
+        payload: {
+          date: input.date,
+          blockType: created.blockType,
+          startTime: created.startTime.toISOString(),
+          endTime: created.endTime.toISOString()
+        }
+      });
+    }
+
     return created;
   }
 
@@ -243,6 +300,43 @@ export class DayPlanService {
 
     if (nextStart >= nextEnd) {
       throw new Error('start_time precisa ser menor que end_time.');
+    }
+
+    if (nextTaskId) {
+      const task = await this.prisma.task.findUnique({
+        where: { id: nextTaskId },
+        select: {
+          estimatedMinutes: true,
+          title: true,
+          executionKind: true,
+          workspace: {
+            select: {
+              name: true,
+              mode: true
+            }
+          }
+        }
+      });
+
+      if (!task) {
+        throw new Error('Tarefa não encontrada para agendamento.');
+      }
+
+      if (!task.estimatedMinutes) {
+        throw new Error(`Defina tempo estimado para agendar: ${task.title}`);
+      }
+
+      if (task.workspace.mode === 'standby') {
+        throw new Error(
+          `Frente ${task.workspace.name} está em standby. Mude o modo antes de agendar esta tarefa.`
+        );
+      }
+
+      if (task.workspace.mode === 'manutencao' && task.executionKind === 'construcao') {
+        throw new Error(
+          `Frente ${task.workspace.name} está em manutenção. Tarefa de construção não pode entrar na agenda.`
+        );
+      }
     }
 
     await this.assertNoForbiddenOverlap({
@@ -316,6 +410,40 @@ export class DayPlanService {
     });
 
     if (existingItem.taskId) {
+      const task = await this.prisma.task.findUnique({
+        where: {
+          id: existingItem.taskId
+        },
+        select: {
+          id: true,
+          title: true,
+          workspaceId: true,
+          projectId: true,
+          taskType: true
+        }
+      });
+
+      if (task) {
+        await safeRecordStrategicDecisionEvent(this.prisma, {
+          workspaceId: task.workspaceId,
+          projectId: task.projectId,
+          taskId: task.id,
+          source: 'day_plan_service',
+          eventCode: 'schedule_block_removed',
+          signal: task.taskType === 'a' ? 'risco' : 'neutra',
+          impactScore: task.taskType === 'a' ? -3 : -1,
+          title: `Bloco removido: ${task.title}`,
+          rationale: 'Retirada de bloco da agenda do dia.',
+          payload: {
+            blockType: existingItem.blockType,
+            startTime: existingItem.startTime.toISOString(),
+            endTime: existingItem.endTime.toISOString()
+          }
+        });
+      }
+    }
+
+    if (existingItem.taskId) {
       const remainingPendingForTask = await this.prisma.dayPlanItem.count({
         where: {
           taskId: existingItem.taskId,
@@ -351,7 +479,7 @@ export class DayPlanService {
     return item;
   }
 
-  async confirmNotDone(dayPlanItemId: string) {
+  async confirmNotDone(dayPlanItemId: string, reason?: FailureReason) {
     const item = await this.prisma.dayPlanItem.update({
       where: { id: dayPlanItemId },
       data: {
@@ -360,13 +488,13 @@ export class DayPlanService {
     });
 
     if (item.taskId) {
-      await this.taskService.notConfirmed(item.taskId);
+      await this.taskService.notConfirmed(item.taskId, reason);
     }
 
     return item;
   }
 
-  async postpone(dayPlanItemId: string) {
+  async postpone(dayPlanItemId: string, reason?: FailureReason) {
     const item = await this.prisma.dayPlanItem.findUnique({
       where: { id: dayPlanItemId }
     });
@@ -376,7 +504,7 @@ export class DayPlanService {
     }
 
     if (item.taskId) {
-      await this.taskService.postpone(item.taskId);
+      await this.taskService.postpone(item.taskId, reason);
     }
 
     return this.prisma.dayPlanItem.update({

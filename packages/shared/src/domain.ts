@@ -1,5 +1,5 @@
 export type TaskStatus = 'backlog' | 'hoje' | 'andamento' | 'feito' | 'arquivado';
-export type WorkspaceType = 'empresa' | 'pessoal' | 'geral';
+export type WorkspaceType = 'empresa' | 'pessoal' | 'vida' | 'autoridade' | 'geral' | 'outro';
 export type WaitingPriority = 'alta' | 'media' | 'baixa';
 
 export const gamificationDelta = {

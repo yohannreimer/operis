@@ -164,13 +164,6 @@ async function applyNotDoneFromReply(dayPlanItemId: string, postponed: boolean) 
 }
 
 async function handleProcessWhatsappReply(payload: EventPayloadByQueue[typeof queueNames.processWhatsappReply]) {
-  await prisma.whatsappEvent.create({
-    data: {
-      direction: 'in',
-      messageContent: payload.message
-    }
-  });
-
   const match = payload.message.trim().match(/^(1|2|3|4)\s+([\w-]+)$/);
 
   if (!match) {

@@ -3,6 +3,20 @@ import { PrismaClient, TaskHorizon } from '@prisma/client';
 import { z } from 'zod';
 
 export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient) {
+  function ensureExecutableTitle(raw: string) {
+    const normalized = raw.trim();
+    if (!normalized) {
+      return 'Executar item da inbox';
+    }
+
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) {
+      return normalized;
+    }
+
+    return `Executar ${normalized}`;
+  }
+
   app.get('/inbox', async () => {
     return prisma.inboxItem.findMany({
       orderBy: {
@@ -52,25 +66,32 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient) 
 
     if (payload.action === 'task') {
       if (!payload.workspaceId) {
-        throw new Error('workspaceId é obrigatório para criar tarefa.');
+        throw new Error('workspaceId (frente) é obrigatório para criar tarefa.');
       }
+
+      const title = ensureExecutableTitle(payload.title ?? inboxItem.content);
 
       await prisma.task.create({
         data: {
           workspaceId: payload.workspaceId,
           projectId: payload.projectId,
-          title: payload.title ?? inboxItem.content,
+          title,
           description: inboxItem.content,
+          definitionOfDone: `Finalizar: ${title}`,
+          taskType: 'b',
+          energyLevel: 'media',
+          executionKind: 'operacao',
           status: 'backlog',
           horizon: payload.horizon ?? 'active',
-          priority: 3
+          priority: 3,
+          estimatedMinutes: 30
         }
       });
     }
 
     if (payload.action === 'project') {
       if (!payload.workspaceId) {
-        throw new Error('workspaceId é obrigatório para criar projeto.');
+        throw new Error('workspaceId (frente) é obrigatório para criar projeto.');
       }
 
       await prisma.project.create({

@@ -44,7 +44,10 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const payload = z
       .object({
-        action: z.enum(['done', 'not_done', 'postpone'])
+        action: z.enum(['done', 'not_done', 'postpone']),
+        reason: z
+          .enum(['energia', 'medo', 'distracao', 'dependencia', 'falta_clareza', 'falta_habilidade'])
+          .optional()
       })
       .parse(request.body);
 
@@ -53,10 +56,10 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
     }
 
     if (payload.action === 'postpone') {
-      return dayPlanService.postpone(params.id);
+      return dayPlanService.postpone(params.id, payload.reason);
     }
 
-    return dayPlanService.confirmNotDone(params.id);
+    return dayPlanService.confirmNotDone(params.id, payload.reason);
   });
 
   app.patch('/day-plan-items/:id', async (request) => {

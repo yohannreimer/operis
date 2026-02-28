@@ -44,4 +44,9 @@
 
 ## Webhook WhatsApp
 - `POST /webhooks/whatsapp`
-- Header obrigatório: `x-webhook-secret`
+- Header opcional: `x-webhook-secret` (validado apenas se `WHATSAPP_WEBHOOK_SECRET` estiver configurado)
+- Payload recomendado:
+  - `{ "from": "5511999999999", "message": "texto", "externalMessageId": "wamid..." }`
+- Variações aceitas:
+  - `phone/text`
+  - payload aninhado (normalizado pelo backend)

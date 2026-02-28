@@ -1,0 +1,220 @@
+{
+  "name": "Execution OS - WhatsApp Inbound Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "execution-os-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1d75c606-7cdf-4f5c-8d0e-28cb71b734e4",
+      "name": "Webhook Inbound",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers ?? {};\nconst body = $json.body ?? $json;\n\nconst expectedInboundSecret = String($env.N8N_INBOUND_SECRET ?? '').trim();\nconst providedInboundSecret = headers['x-webhook-secret'] ?? headers['X-Webhook-Secret'] ?? null;\n\nif (expectedInboundSecret && providedInboundSecret !== expectedInboundSecret) {\n  return [{\n    json: {\n      deliver: false,\n      statusCode: 401,\n      body: {\n        ok: false,\n        ignored: true,\n        reason: 'Unauthorized inbound webhook secret.'\n      }\n    }\n  }];\n}\n\nconst event = String(body.event ?? body.type ?? '').toLowerCase();\nconst data = body.data && typeof body.data === 'object' ? body.data : {};\nconst key = data.key && typeof data.key === 'object' ? data.key : {};\nconst messageObj = data.message && typeof data.message === 'object' ? data.message : {};\nconst extendedText = messageObj.extendedTextMessage && typeof messageObj.extendedTextMessage === 'object'\n  ? messageObj.extendedTextMessage\n  : {};\n\nconst fromRaw =\n  key.remoteJid ??\n  key.participant ??\n  data.sender ??\n  body.from ??\n  body.phone ??\n  body.number ??\n  null;\n\nconst fromMe = Boolean(key.fromMe ?? data.fromMe ?? body.fromMe ?? false);\nconst isGroup = typeof fromRaw === 'string' && fromRaw.includes('@g.us');\nconst messageRaw =\n  body.message ??\n  body.text ??\n  body.body ??\n  data.body ??\n  data.text ??\n  messageObj.conversation ??\n  extendedText.text ??\n  null;\n\nconst externalMessageId =\n  body.externalMessageId ??\n  body.messageId ??\n  body.id ??\n  key.id ??\n  data.id ??\n  null;\n\nconst looksLikeMessageEvent = event ? /(message|messages|upsert|incoming|receive)/.test(event) : true;\n\nif (!looksLikeMessageEvent) {\n  return [{\n    json: {\n      deliver: false,\n      statusCode: 200,\n      body: {\n        ok: true,\n        ignored: true,\n        reason: `Evento ignorado: ${event}`\n      }\n    }\n  }];\n}\n\nif (fromMe) {\n  return [{\n    json: {\n      deliver: false,\n      statusCode: 200,\n      body: {\n        ok: true,\n        ignored: true,\n        reason: 'Mensagem enviada pelo próprio bot (fromMe=true).'\n      }\n    }\n  }];\n}\n\nif (isGroup) {\n  return [{\n    json: {\n      deliver: false,\n      statusCode: 200,\n      body: {\n        ok: true,\n        ignored: true,\n        reason: 'Mensagem de grupo ignorada.'\n      }\n    }\n  }];\n}\n\nconst fromStr = typeof fromRaw === 'string' ? fromRaw : '';\nconst phoneBase = fromStr.includes('@') ? fromStr.split('@')[0] : fromStr;\nconst from = phoneBase.replace(/\\D/g, '');\nconst message = typeof messageRaw === 'string' ? messageRaw.trim() : '';\n\nif (!from || from.length < 8 || !message) {\n  return [{\n    json: {\n      deliver: false,\n      statusCode: 200,\n      body: {\n        ok: true,\n        ignored: true,\n        reason: 'Sem from/message válido para encaminhar ao Execution OS.'\n      }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    deliver: true,\n    from,\n    message,\n    externalMessageId: externalMessageId ? String(externalMessageId) : null\n  }\n}];"
+      },
+      "id": "716802f2-c13d-40fd-8ef4-2ad39d729f6d",
+      "name": "Normalize Inbound",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -670,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6af790f7-f4ef-4ecf-873a-c6e405a112f7",
+              "leftValue": "={{$json.deliver}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cae136c2-7097-44d4-801e-397c8096af92",
+      "name": "IF Deliver",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -430,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EXECUTION_OS_API_URL}}/webhooks/whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{$env.EXECUTION_OS_WEBHOOK_SECRET}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { from: $json.from, message: $json.message, externalMessageId: $json.externalMessageId } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "54564f5f-c284-43df-b3c3-d8dd26a8bb7b",
+      "name": "Forward to Execution OS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -190,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    statusCode: 202,\n    body: {\n      ok: true,\n      delivered: true,\n      executionOsResponse: $json\n    }\n  }\n}];"
+      },
+      "id": "f95eb1ce-97ba-45ac-974f-1cf775fcb20b",
+      "name": "Build Delivery Ack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json.body}}",
+        "options": {
+          "responseCode": "={{$json.statusCode || 202}}"
+        }
+      },
+      "id": "18c59715-f2fa-45eb-9540-56028f656676",
+      "name": "Respond Delivered",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        250,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json.body || { ok: true, ignored: true }}}",
+        "options": {
+          "responseCode": "={{$json.statusCode || 200}}"
+        }
+      },
+      "id": "117588ab-1430-4718-93a7-8e67f4de8e2c",
+      "name": "Respond Ignored",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        -170,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Inbound": {
+      "main": [
+        [
+          {
+            "node": "Normalize Inbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Inbound": {
+      "main": [
+        [
+          {
+            "node": "IF Deliver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Deliver": {
+      "main": [
+        [
+          {
+            "node": "Forward to Execution OS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Ignored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward to Execution OS": {
+      "main": [
+        [
+          {
+            "node": "Build Delivery Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Delivery Ack": {
+      "main": [
+        [
+          {
+            "node": "Respond Delivered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6f42ec87-82b1-4ba5-89ec-57b20e2adf77",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}

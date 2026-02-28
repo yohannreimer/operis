@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "npm run dev --workspace @execution-os/api",
     "dev:api": "npm run dev --workspace @execution-os/api",
+    "dev:backend": "npm run dev:api",
     "dev:web": "npm run dev --workspace @execution-os/web",
+    "dev:frontend": "npm run dev:web",
     "dev:worker": "npm run dev --workspace @execution-os/worker",
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces"

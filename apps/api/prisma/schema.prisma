@@ -10,14 +10,37 @@ datasource db {
 enum WorkspaceType {
   empresa
   pessoal
+  vida
+  autoridade
   geral
+  outro
+}
+
+enum WorkspaceMode {
+  expansao
+  manutencao
+  standby
 }
 
 enum ProjectStatus {
   ativo
+  latente
+  encerrado
+  fantasma
   pausado
   concluido
   arquivado
+}
+
+enum ProjectType {
+  construcao
+  operacao
+  crescimento
+}
+
+enum ProjectMetricKind {
+  lead
+  lag
 }
 
 enum TaskStatus {
@@ -26,6 +49,23 @@ enum TaskStatus {
   andamento
   feito
   arquivado
+}
+
+enum TaskType {
+  a
+  b
+  c
+}
+
+enum TaskEnergy {
+  alta
+  media
+  baixa
+}
+
+enum TaskExecutionKind {
+  construcao
+  operacao
 }
 
 enum TaskHorizon {
@@ -37,6 +77,16 @@ enum WaitingPriority {
   alta
   media
   baixa
+}
+
+enum WaitingType {
+  resposta
+  entrega
+}
+
+enum TaskRestrictionStatus {
+  aberta
+  resolvida
 }
 
 enum BlockType {
@@ -67,6 +117,32 @@ enum ExecutionEventType {
   confirmed
 }
 
+enum FailureReason {
+  energia
+  medo
+  distracao
+  dependencia
+  falta_clareza
+  falta_habilidade
+}
+
+enum DeepWorkState {
+  active
+  completed
+  broken
+}
+
+enum ReviewPeriodType {
+  weekly
+  monthly
+}
+
+enum CommitmentLevel {
+  baixo
+  medio
+  alto
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -80,57 +156,93 @@ model Workspace {
   id        String        @id @default(uuid())
   name      String
   type      WorkspaceType
+  category  String        @default("Empresa")
+  mode      WorkspaceMode @default(manutencao)
+  color     String        @default("#2563EB")
   createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
 
   projects Project[]
   tasks    Task[]
+  deepWorkSessions DeepWorkSession[]
+  weeklyEnergyPlans WeeklyEnergyPlan[]
+  strategicReviews StrategicReview[]
+  strategicDecisionEvents StrategicDecisionEvent[]
 
   @@map("workspaces")
 }
 
 model Project {
-  id          String       @id @default(uuid())
-  workspaceId String       @map("workspace_id")
-  title       String
-  description String?
-  status      ProjectStatus @default(ativo)
-  createdAt   DateTime     @default(now()) @map("created_at")
-  archivedAt  DateTime?    @map("archived_at")
+  id                String        @id @default(uuid())
+  workspaceId       String        @map("workspace_id")
+  title             String
+  description       String?
+  status            ProjectStatus @default(ativo)
+  type              ProjectType   @default(operacao)
+  objective         String?
+  primaryMetric     String?       @map("primary_metric")
+  actionStatement   String?       @map("action_statement")
+  timeHorizonEnd    DateTime?     @map("time_horizon_end")
+  resultStartValue  Float?        @map("result_start_value")
+  resultCurrentValue Float?       @map("result_current_value")
+  resultTargetValue Float?        @map("result_target_value")
+  scorecardCadenceDays Int        @default(7) @map("scorecard_cadence_days")
+  lastScorecardCheckinAt DateTime? @map("last_scorecard_checkin_at")
+  lastStrategicAt   DateTime      @default(now()) @map("last_strategic_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  archivedAt        DateTime?     @map("archived_at")
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks     Task[]
+  deepWorkSessions DeepWorkSession[]
+  strategicDecisionEvents StrategicDecisionEvent[]
+  metrics ProjectMetric[]
+  metricCheckins ProjectMetricCheckin[]
 
   @@index([workspaceId])
   @@map("projects")
 }
 
 model Task {
-  id               String          @id @default(uuid())
-  workspaceId      String          @map("workspace_id")
-  projectId        String?         @map("project_id")
+  id               String            @id @default(uuid())
+  workspaceId      String            @map("workspace_id")
+  projectId        String?           @map("project_id")
   title            String
   description      String?
-  status           TaskStatus      @default(backlog)
-  horizon          TaskHorizon     @default(active)
-  priority         Int             @default(3)
-  dueDate          DateTime?       @map("due_date")
-  estimatedMinutes Int?            @map("estimated_minutes")
-  fixedTimeStart   DateTime?       @map("fixed_time_start")
-  fixedTimeEnd     DateTime?       @map("fixed_time_end")
-  windowStart      DateTime?       @map("window_start")
-  windowEnd        DateTime?       @map("window_end")
-  waitingOnPerson  String?         @map("waiting_on_person")
-  waitingPriority  WaitingPriority? @map("waiting_priority")
-  createdAt        DateTime        @default(now()) @map("created_at")
-  completedAt      DateTime?       @map("completed_at")
-  archivedAt       DateTime?       @map("archived_at")
+  definitionOfDone String?           @map("definition_of_done")
+  status           TaskStatus        @default(backlog)
+  taskType         TaskType          @default(b) @map("task_type")
+  energyLevel      TaskEnergy        @default(media) @map("energy_level")
+  executionKind    TaskExecutionKind @default(operacao) @map("execution_kind")
+  horizon          TaskHorizon       @default(active)
+  priority         Int               @default(3)
+  dueDate          DateTime?         @map("due_date")
+  estimatedMinutes Int?              @map("estimated_minutes")
+  fixedTimeStart   DateTime?         @map("fixed_time_start")
+  fixedTimeEnd     DateTime?         @map("fixed_time_end")
+  windowStart      DateTime?         @map("window_start")
+  windowEnd        DateTime?         @map("window_end")
+  isMultiBlock     Boolean           @default(false) @map("is_multi_block")
+  multiBlockGoalMinutes Int?         @map("multi_block_goal_minutes")
+  waitingOnPerson  String?           @map("waiting_on_person")
+  waitingType      WaitingType?      @map("waiting_type")
+  waitingPriority  WaitingPriority?  @map("waiting_priority")
+  waitingDueDate   DateTime?         @map("waiting_due_date")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  completedAt      DateTime?         @map("completed_at")
+  archivedAt       DateTime?         @map("archived_at")
 
   workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project       Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
   subtasks      Subtask[]
+  restrictions  TaskRestriction[]
   dayPlanItems  DayPlanItem[]
   executionEvents ExecutionEvent[]
   whatsappEvents WhatsappEvent[]
+  deepWorkSessions DeepWorkSession[]
+  strategicDecisionEvents StrategicDecisionEvent[]
 
   dependencies     TaskDependency[] @relation("TaskDependsOn")
   dependedBy       TaskDependency[] @relation("TaskDependedBy")
@@ -138,9 +250,53 @@ model Task {
   @@index([workspaceId])
   @@index([projectId])
   @@index([status])
+  @@index([taskType])
+  @@index([executionKind])
   @@index([horizon])
   @@index([completedAt])
+  @@index([waitingDueDate])
+  @@index([isMultiBlock])
   @@map("tasks")
+}
+
+model ProjectMetric {
+  id            String            @id @default(uuid())
+  projectId     String            @map("project_id")
+  kind          ProjectMetricKind
+  name          String
+  description   String?
+  targetValue   Float?            @map("target_value")
+  baselineValue Float?            @map("baseline_value")
+  currentValue  Float?            @map("current_value")
+  unit          String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  archivedAt    DateTime?         @map("archived_at")
+
+  project  Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  checkins ProjectMetricCheckin[]
+
+  @@index([projectId, kind])
+  @@index([projectId, archivedAt])
+  @@map("project_metrics")
+}
+
+model ProjectMetricCheckin {
+  id              String   @id @default(uuid())
+  projectMetricId String   @map("project_metric_id")
+  projectId       String   @map("project_id")
+  weekStart       DateTime @db.Date @map("week_start")
+  value           Float
+  note            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  metric  ProjectMetric @relation(fields: [projectMetricId], references: [id], onDelete: Cascade)
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectMetricId, weekStart])
+  @@index([projectId, weekStart])
+  @@map("project_metric_checkins")
 }
 
 model Subtask {
@@ -153,6 +309,24 @@ model Subtask {
 
   @@index([taskId])
   @@map("subtasks")
+}
+
+model TaskRestriction {
+  id         String               @id @default(uuid())
+  taskId     String               @map("task_id")
+  title      String
+  detail     String?
+  status     TaskRestrictionStatus @default(aberta)
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+  resolvedAt DateTime?            @map("resolved_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([taskId, status])
+  @@index([status])
+  @@map("task_restrictions")
 }
 
 model TaskDependency {
@@ -237,12 +411,103 @@ model ExecutionEvent {
   id        String             @id @default(uuid())
   taskId    String             @map("task_id")
   eventType ExecutionEventType @map("event_type")
+  failureReason FailureReason? @map("failure_reason")
   timestamp DateTime           @default(now())
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
   @@map("execution_events")
+}
+
+model DeepWorkSession {
+  id                String        @id @default(uuid())
+  taskId            String        @map("task_id")
+  workspaceId       String        @map("workspace_id")
+  projectId         String?       @map("project_id")
+  startedAt         DateTime      @default(now()) @map("started_at")
+  endedAt           DateTime?     @map("ended_at")
+  targetMinutes     Int           @default(45) @map("target_minutes")
+  actualMinutes     Int           @default(0) @map("actual_minutes")
+  interruptionCount Int           @default(0) @map("interruption_count")
+  breakCount        Int           @default(0) @map("break_count")
+  state             DeepWorkState @default(active)
+  notes             String?
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([workspaceId, startedAt])
+  @@index([state])
+  @@map("deep_work_sessions")
+}
+
+model WeeklyEnergyPlan {
+  id            String   @id @default(uuid())
+  weekStart     DateTime @db.Date @map("week_start")
+  workspaceId   String   @map("workspace_id")
+  plannedPercent Int     @map("planned_percent")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([weekStart, workspaceId])
+  @@index([workspaceId])
+  @@map("weekly_energy_plans")
+}
+
+model StrategicReview {
+  id                String           @id @default(uuid())
+  periodType        ReviewPeriodType @map("period_type")
+  periodStart       DateTime         @db.Date @map("period_start")
+  workspaceScope    String           @default("__all__") @map("workspace_scope")
+  workspaceId       String?          @map("workspace_id")
+  nextPriority      String?          @map("next_priority")
+  strategicDecision String?          @map("strategic_decision")
+  commitmentLevel   CommitmentLevel? @map("commitment_level")
+  actionItems       Json?
+  reflection        String?
+  reviewSnapshot    Json?            @map("review_snapshot")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@unique([periodType, periodStart, workspaceScope])
+  @@index([workspaceId])
+  @@index([periodType, periodStart])
+  @@map("strategic_reviews")
+}
+
+model StrategicDecisionEvent {
+  id          String   @id @default(uuid())
+  workspaceId String?  @map("workspace_id")
+  projectId   String?  @map("project_id")
+  taskId      String?  @map("task_id")
+  source      String   @default("system")
+  eventCode   String   @map("event_code")
+  signal      String
+  title       String
+  rationale   String?
+  impactScore Int      @default(0) @map("impact_score")
+  payload     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([signal, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([taskId, createdAt])
+  @@map("strategic_decision_events")
 }
 
 model GamificationState {
