@@ -123,6 +123,23 @@ function safeParse(value: string | null): unknown {
   }
 }
 
+function isKnownExecutionKind(value: unknown): value is TaskExecutionKind {
+  return value === 'construcao' || value === 'otimizacao' || value === 'operacao' || value === 'suporte';
+}
+
+function executionKindLabel(value: TaskExecutionKind) {
+  if (value === 'construcao') {
+    return 'Construção';
+  }
+  if (value === 'otimizacao') {
+    return 'Otimização';
+  }
+  if (value === 'suporte') {
+    return 'Suporte';
+  }
+  return 'Operação';
+}
+
 function readStoredColumns(): VisibilityState {
   const parsed = safeParse(window.localStorage.getItem(TASK_TABLE_COLUMNS_KEY));
   if (!parsed || typeof parsed !== 'object') {
@@ -176,10 +193,7 @@ function sanitizeFilters(value: unknown): AdvancedFilters {
       candidate.energyLevel === 'alta' || candidate.energyLevel === 'media' || candidate.energyLevel === 'baixa'
         ? candidate.energyLevel
         : 'all',
-    executionKind:
-      candidate.executionKind === 'construcao' || candidate.executionKind === 'operacao'
-        ? candidate.executionKind
-        : 'all',
+    executionKind: isKnownExecutionKind(candidate.executionKind) ? candidate.executionKind : 'all',
     status:
       candidate.status === 'backlog' ||
       candidate.status === 'hoje' ||
@@ -451,7 +465,7 @@ export function TaskIntelligenceTable({
       columnHelper.accessor((task) => task.executionKind ?? 'operacao', {
         id: 'executionKind',
         header: 'Natureza',
-        cell: (info) => (info.getValue() === 'construcao' ? 'Construção' : 'Operação')
+        cell: (info) => executionKindLabel(info.getValue())
       }),
       columnHelper.accessor((task) => task.estimatedMinutes ?? null, {
         id: 'estimatedMinutes',
@@ -991,7 +1005,9 @@ export function TaskIntelligenceTable({
         >
           <option value="all">Toda natureza</option>
           <option value="construcao">Construção</option>
+          <option value="otimizacao">Otimização</option>
           <option value="operacao">Operação</option>
+          <option value="suporte">Suporte</option>
         </select>
 
         <select

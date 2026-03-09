@@ -27,3 +27,50 @@ export function formatDateTime(value: string) {
     minute: '2-digit'
   });
 }
+
+function parseIsoDateOnly(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+export function formatIsoDate(value: string) {
+  const date = parseIsoDateOnly(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString('pt-BR');
+}
+
+export function formatIsoDateLong(value: string) {
+  const date = parseIsoDateOnly(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+export function formatIsoDateMonth(value: string) {
+  const date = parseIsoDateOnly(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
+export function formatIsoDateDayMonth(value: string) {
+  const date = parseIsoDateOnly(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit'
+  });
+}

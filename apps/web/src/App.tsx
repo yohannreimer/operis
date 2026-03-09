@@ -9,6 +9,7 @@ const RitualPage = lazy(() => import('./pages/ritual').then((module) => ({ defau
 const WorkspacesPage = lazy(() => import('./pages/workspaces').then((module) => ({ default: module.WorkspacesPage })));
 const ProjetosPage = lazy(() => import('./pages/projetos').then((module) => ({ default: module.ProjetosPage })));
 const TarefasPage = lazy(() => import('./pages/tarefas').then((module) => ({ default: module.TarefasPage })));
+const NotasPage = lazy(() => import('./pages/notas').then((module) => ({ default: module.NotasPage })));
 const GamificacaoPage = lazy(() => import('./pages/gamificacao').then((module) => ({ default: module.GamificacaoPage })));
 
 function RouteFallback() {
@@ -26,6 +27,7 @@ export function App() {
     <BrowserRouter>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
+          <Route path="/notas/*" element={<NotasPage />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<DashboardPage />} />
             <Route path="hoje" element={<HojePage />} />

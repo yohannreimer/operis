@@ -6,6 +6,10 @@ import { overlap, startOfDay } from '../utils/time.js';
 import { TaskService } from './task-service.js';
 import { safeRecordStrategicDecisionEvent } from './strategic-decision-service.js';
 
+function isStrategicExecutionKind(kind?: string | null) {
+  return kind === 'construcao' || kind === 'otimizacao';
+}
+
 type AddDayPlanItemInput = {
   date: string;
   taskId?: string | null;
@@ -158,9 +162,9 @@ export class DayPlanService {
         );
       }
 
-      if (task.workspace.mode === 'manutencao' && task.executionKind === 'construcao') {
+      if (task.workspace.mode === 'manutencao' && isStrategicExecutionKind(task.executionKind)) {
         throw new Error(
-          `Frente ${task.workspace.name} está em manutenção. Tarefa de construção não pode entrar na agenda.`
+          `Frente ${task.workspace.name} está em manutenção. Tarefa de construção/otimização não pode entrar na agenda.`
         );
       }
 
@@ -229,7 +233,7 @@ export class DayPlanService {
     });
 
     if (created.task) {
-      const isStrategic = created.task.taskType === 'a' && created.task.executionKind === 'construcao';
+      const isStrategic = created.task.taskType === 'a' && isStrategicExecutionKind(created.task.executionKind);
       await safeRecordStrategicDecisionEvent(this.prisma, {
         workspaceId: created.task.workspaceId,
         projectId: created.task.projectId,
@@ -332,9 +336,9 @@ export class DayPlanService {
         );
       }
 
-      if (task.workspace.mode === 'manutencao' && task.executionKind === 'construcao') {
+      if (task.workspace.mode === 'manutencao' && isStrategicExecutionKind(task.executionKind)) {
         throw new Error(
-          `Frente ${task.workspace.name} está em manutenção. Tarefa de construção não pode entrar na agenda.`
+          `Frente ${task.workspace.name} está em manutenção. Tarefa de construção/otimização não pode entrar na agenda.`
         );
       }
     }

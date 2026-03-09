@@ -1,0 +1,176 @@
+{
+  "name": "Execution OS - Notes Transcription Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "execution-os-notes-transcribe",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f4ed0df7-8b85-4a22-8ed6-06f6d1fd1482",
+      "name": "Webhook Notes Transcribe",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -940,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers ?? {};\nconst body = $json.body ?? $json;\n\n// Configure aqui antes de ativar o workflow\nconst CONFIG = {\n  webhookSecret: '', // opcional\n  openaiApiKey: 'CHANGE_ME_OPENAI_API_KEY',\n  openaiBaseUrl: 'https://api.openai.com/v1',\n  transcriptionModel: 'gpt-4o-mini-transcribe',\n  structuringModel: 'gpt-4o-mini',\n  timeoutMs: 45000,\n  maxAudioBytes: 10 * 1024 * 1024\n};\n\nconst incomingSecret = headers['x-webhook-secret'] ?? headers['X-Webhook-Secret'] ?? null;\nif (CONFIG.webhookSecret && incomingSecret !== CONFIG.webhookSecret) {\n  return [{\n    json: {\n      process: false,\n      statusCode: 401,\n      body: { ok: false, error: 'Unauthorized notes transcription webhook secret.' }\n    }\n  }];\n}\n\nconst audio = body.audio && typeof body.audio === 'object' ? body.audio : {};\nconst audioBase64 = String(audio.base64 ?? body.audioBase64 ?? '').trim();\nconst mimeType = String(audio.mimeType ?? body.mimeType ?? 'audio/webm').trim();\nconst language = String(audio.language ?? body.language ?? 'pt-BR').trim();\nconst modeRaw = String(body.mode ?? 'note').trim().toLowerCase();\nconst mode = modeRaw === 'transcript' ? 'transcript' : 'note';\nconst context = typeof body.context === 'string' ? body.context.trim() : '';\n\nif (!audioBase64 || audioBase64.length < 32) {\n  return [{\n    json: {\n      process: false,\n      statusCode: 422,\n      body: { ok: false, error: 'Payload inválido: audio.base64 obrigatório.' }\n    }\n  }];\n}\n\nif (!CONFIG.openaiApiKey || CONFIG.openaiApiKey.startsWith('CHANGE_ME_')) {\n  return [{\n    json: {\n      process: false,\n      statusCode: 500,\n      body: { ok: false, error: 'Configure CONFIG.openaiApiKey no node Normalize Notes Payload.' }\n    }\n  }];\n}\n\nlet estimatedBytes = 0;\ntry {\n  estimatedBytes = Math.floor((audioBase64.length * 3) / 4);\n} catch (_) {\n  estimatedBytes = 0;\n}\n\nif (estimatedBytes > CONFIG.maxAudioBytes) {\n  return [{\n    json: {\n      process: false,\n      statusCode: 413,\n      body: { ok: false, error: `Áudio excede o limite de ${Math.round(CONFIG.maxAudioBytes / 1024 / 1024)}MB.` }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    process: true,\n    audioBase64,\n    mimeType,\n    language,\n    mode,\n    context,\n    openaiApiKey: CONFIG.openaiApiKey,\n    openaiBaseUrl: CONFIG.openaiBaseUrl,\n    transcriptionModel: CONFIG.transcriptionModel,\n    structuringModel: CONFIG.structuringModel,\n    timeoutMs: CONFIG.timeoutMs\n  }\n}];"
+      },
+      "id": "b23f364e-cd27-489f-9f53-a915f5762e67",
+      "name": "Normalize Notes Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0ff6aa29-a0be-4c07-89f1-d3b5dbef9446",
+              "leftValue": "={{$json.process}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5df4db8f-291d-4764-9709-963f2da333f9",
+      "name": "IF Process",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -460,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const startedAt = Date.now();\nconst baseUrl = String($json.openaiBaseUrl || 'https://api.openai.com/v1').replace(/\\\/$/, '');\nconst apiKey = String($json.openaiApiKey || '');\n\nconst controller = new AbortController();\nconst timeout = setTimeout(() => controller.abort(), Number($json.timeoutMs || 45000));\n\ntry {\n  const audioBuffer = Buffer.from(String($json.audioBase64), 'base64');\n  if (!audioBuffer || audioBuffer.length === 0) {\n    return [{ json: { statusCode: 422, body: { ok: false, error: 'Base64 de áudio inválido.' } } }];\n  }\n\n  const blob = new Blob([audioBuffer], { type: String($json.mimeType || 'audio/webm') });\n  const formData = new FormData();\n  formData.append('file', blob, 'notes-recording.webm');\n  formData.append('model', String($json.transcriptionModel || 'gpt-4o-mini-transcribe'));\n  formData.append('language', String($json.language || 'pt-BR'));\n\n  const transcriptionResponse = await fetch(`${baseUrl}/audio/transcriptions`, {\n    method: 'POST',\n    headers: { Authorization: `Bearer ${apiKey}` },\n    body: formData,\n    signal: controller.signal\n  });\n\n  const transcriptionRaw = await transcriptionResponse.text();\n  if (!transcriptionResponse.ok) {\n    return [{\n      json: {\n        statusCode: 502,\n        body: {\n          ok: false,\n          error: `Falha na transcrição (${transcriptionResponse.status}).`,\n          detail: transcriptionRaw.slice(0, 600)\n        }\n      }\n    }];\n  }\n\n  let transcript = '';\n  try {\n    const parsed = JSON.parse(transcriptionRaw);\n    transcript = String(parsed.text ?? parsed.transcript ?? '').trim();\n  } catch (_) {\n    transcript = String(transcriptionRaw || '').trim();\n  }\n\n  if (!transcript) {\n    return [{ json: { statusCode: 502, body: { ok: false, error: 'Transcrição vazia retornada pelo provedor.' } } }];\n  }\n\n  if (String($json.mode) === 'transcript') {\n    clearTimeout(timeout);\n    return [{\n      json: {\n        statusCode: 200,\n        body: {\n          ok: true,\n          provider: 'n8n-openai',\n          transcript,\n          titleSuggestion: null,\n          structuredContent: transcript,\n          tags: [],\n          confidence: null,\n          durationMs: Date.now() - startedAt\n        }\n      }\n    }];\n  }\n\n  const systemPrompt = [\n    'Você recebe uma transcrição de áudio em português e deve devolver SOMENTE JSON válido.',\n    'Formato obrigatório com chaves: titleSuggestion, structuredContent, tags, confidence.',\n    'structuredContent deve ser markdown executivo: Resumo, Decisões, Próximos passos, Pendências.',\n    'tags deve ter no máximo 8 itens curtos.'\n  ].join('\\n');\n\n  const userPrompt = [\n    `Contexto: ${String($json.context || 'nota geral')}`,\n    'Transcrição:',\n    transcript\n  ].join('\\n\\n');\n\n  const chatResponse = await fetch(`${baseUrl}/chat/completions`, {\n    method: 'POST',\n    headers: {\n      Authorization: `Bearer ${apiKey}`,\n      'Content-Type': 'application/json'\n    },\n    body: JSON.stringify({\n      model: String($json.structuringModel || 'gpt-4o-mini'),\n      temperature: 0.2,\n      response_format: { type: 'json_object' },\n      messages: [\n        { role: 'system', content: systemPrompt },\n        { role: 'user', content: userPrompt }\n      ]\n    }),\n    signal: controller.signal\n  });\n\n  const chatRaw = await chatResponse.text();\n  let structuredContent = transcript;\n  let titleSuggestion = null;\n  let confidence = null;\n  let tags = [];\n\n  if (chatResponse.ok) {\n    try {\n      const parsed = JSON.parse(chatRaw);\n      const content = parsed?.choices?.[0]?.message?.content ?? '';\n      const payload = JSON.parse(String(content || '{}'));\n\n      structuredContent = typeof payload.structuredContent === 'string' && payload.structuredContent.trim()\n        ? payload.structuredContent.trim()\n        : transcript;\n      titleSuggestion = typeof payload.titleSuggestion === 'string' && payload.titleSuggestion.trim()\n        ? payload.titleSuggestion.trim().slice(0, 120)\n        : null;\n      confidence = typeof payload.confidence === 'number' ? payload.confidence : null;\n      tags = Array.isArray(payload.tags)\n        ? Array.from(new Set(payload.tags\n            .map((tag) => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))\n            .filter((tag) => tag.length > 0)))\n            .slice(0, 8)\n        : [];\n    } catch (_) {\n      // fallback para transcript puro\n    }\n  }\n\n  clearTimeout(timeout);\n  return [{\n    json: {\n      statusCode: 200,\n      body: {\n        ok: true,\n        provider: 'n8n-openai',\n        transcript,\n        titleSuggestion,\n        structuredContent,\n        tags,\n        confidence,\n        durationMs: Date.now() - startedAt\n      }\n    }\n  }];\n} catch (error) {\n  clearTimeout(timeout);\n\n  const message = error && error.name === 'AbortError'\n    ? 'Timeout na transcrição/estruturação.'\n    : `Erro no gateway de transcrição: ${error.message || 'desconhecido'}`;\n\n  return [{\n    json: {\n      statusCode: error && error.name === 'AbortError' ? 504 : 502,\n      body: { ok: false, error: message }\n    }\n  }];\n}"
+      },
+      "id": "4cbe4d4c-f8bb-4be7-887d-733f17775625",
+      "name": "Transcribe + Structure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -210,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json.body}}",
+        "options": {
+          "responseCode": "={{$json.statusCode || 200}}"
+        }
+      },
+      "id": "8a9303b3-c3ac-4f4e-a34f-e6cd9b5ea9b6",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        40,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json.body || { ok: false, error: 'Rejected by gateway' }}}",
+        "options": {
+          "responseCode": "={{$json.statusCode || 400}}"
+        }
+      },
+      "id": "690c3f47-bce7-40f8-8707-b945a2f32de2",
+      "name": "Respond Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        -200,
+        250
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Notes Transcribe": {
+      "main": [
+        [
+          {
+            "node": "Normalize Notes Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Notes Payload": {
+      "main": [
+        [
+          {
+            "node": "IF Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Process": {
+      "main": [
+        [
+          {
+            "node": "Transcribe + Structure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe + Structure": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "228f4fec-f2ec-44eb-8ab2-5b27765dc8e6",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}

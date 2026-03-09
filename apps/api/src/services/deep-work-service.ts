@@ -274,12 +274,7 @@ export class DeepWorkService {
     }
 
     const completionDelta = stopped.actualMinutes - stopped.targetMinutes;
-    const stopImpact =
-      stopped.state === 'completed'
-        ? completionDelta >= 0
-          ? 7
-          : 4
-        : -5;
+    const stopImpact = stopped.state === 'completed' ? 7 : -5;
 
     await safeRecordStrategicDecisionEvent(this.prisma, {
       workspaceId: stopped.workspaceId,
@@ -296,10 +291,13 @@ export class DeepWorkService {
       rationale:
         stopped.state === 'broken'
           ? 'Sessão interrompida por troca de tarefa.'
-          : 'Sessão concluída com minutos reais computados.',
+          : completionDelta < 0
+            ? 'Sessão concluída antes da meta estimada, com minutos reais válidos.'
+            : 'Sessão concluída com minutos reais computados.',
       payload: {
         targetMinutes: stopped.targetMinutes,
         actualMinutes: stopped.actualMinutes,
+        completedBeforeTarget: completionDelta < 0,
         interruptionCount: stopped.interruptionCount,
         breakCount: stopped.breakCount
       }

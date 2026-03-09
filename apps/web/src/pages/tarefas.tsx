@@ -34,6 +34,7 @@ import {
   Workspace
 } from '../api';
 import { Modal } from '../components/modal';
+import { TaskCompletionModal } from '../components/task-completion-modal';
 import {
   EmptyState,
   MetricCard,
@@ -50,6 +51,11 @@ type TaskView = 'open' | 'done' | 'all' | 'restricted';
 type TaskPanel = 'tasks' | 'inbox';
 type DetailTab = 'overview' | 'checklist' | 'restrictions' | 'history';
 type TaskListMode = 'list' | 'table';
+const TASK_TYPE_PRIORITY_SUGGESTION: Record<TaskType, number> = {
+  a: 5,
+  b: 3,
+  c: 1
+};
 
 function priorityLabel(priority: number) {
   if (priority >= 5) {
@@ -130,6 +136,27 @@ function taskTypeLabel(type: TaskType) {
   return 'C';
 }
 
+function suggestedPriorityFromTaskType(type: TaskType) {
+  return TASK_TYPE_PRIORITY_SUGGESTION[type];
+}
+
+function isStrategicExecutionKind(kind?: TaskExecutionKind) {
+  return kind === 'construcao' || kind === 'otimizacao';
+}
+
+function executionKindLabel(kind?: TaskExecutionKind) {
+  if (kind === 'construcao') {
+    return 'Construção';
+  }
+  if (kind === 'otimizacao') {
+    return 'Otimização';
+  }
+  if (kind === 'suporte') {
+    return 'Suporte';
+  }
+  return 'Operação';
+}
+
 function failureReasonLabel(value?: string) {
   if (!value) {
     return '';
@@ -179,6 +206,7 @@ export function TarefasPage() {
   const [taskListMode, setTaskListMode] = useState<TaskListMode>('table');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const [completionTaskId, setCompletionTaskId] = useState('');
 
   const [search, setSearch] = useState('');
   const [horizonFilter, setHorizonFilter] = useState<'all' | TaskHorizon>('all');
@@ -192,8 +220,18 @@ export function TarefasPage() {
   const [createExecutionKind, setCreateExecutionKind] = useState<TaskExecutionKind>('operacao');
   const [createHorizon, setCreateHorizon] = useState<TaskHorizon>('active');
   const [createEstimatedMinutes, setCreateEstimatedMinutes] = useState('60');
+  const [createDueDate, setCreateDueDate] = useState('');
   const [createIsMultiBlock, setCreateIsMultiBlock] = useState(false);
-  const [createMultiBlockGoalMinutes, setCreateMultiBlockGoalMinutes] = useState('');
+  const [createUseDueDate, setCreateUseDueDate] = useState(false);
+  const [createUseRestriction, setCreateUseRestriction] = useState(false);
+  const [createRestrictionTitle, setCreateRestrictionTitle] = useState('');
+  const [createRestrictionDetail, setCreateRestrictionDetail] = useState('');
+  const [createRestrictionDependsOnPerson, setCreateRestrictionDependsOnPerson] = useState(false);
+  const [createRestrictionWaitingOnPerson, setCreateRestrictionWaitingOnPerson] = useState('');
+  const [createRestrictionWaitingType, setCreateRestrictionWaitingType] = useState<WaitingType>('resposta');
+  const [createRestrictionWaitingPriority, setCreateRestrictionWaitingPriority] =
+    useState<WaitingPriority>('media');
+  const [createRestrictionWaitingDueDate, setCreateRestrictionWaitingDueDate] = useState('');
   const [createWorkspaceId, setCreateWorkspaceId] = useState('');
   const [createProjectId, setCreateProjectId] = useState('');
 
@@ -427,6 +465,7 @@ export function TarefasPage() {
   const waitingTasks = waitingRadar?.rows ?? [];
 
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) ?? null;
+  const completionTask = tasks.find((task) => task.id === completionTaskId) ?? null;
 
   function openTaskDetails(taskId: string, tab: DetailTab = 'overview') {
     setSelectedTaskId(taskId);
@@ -540,13 +579,13 @@ export function TarefasPage() {
   const resolvedRestrictions = taskRestrictions.filter((restriction) => restriction.status === 'resolvida');
 
   useEffect(() => {
-    if (createWorkspace?.mode === 'manutencao' && createExecutionKind === 'construcao') {
+    if (createWorkspace?.mode === 'manutencao' && isStrategicExecutionKind(createExecutionKind)) {
       setCreateExecutionKind('operacao');
     }
   }, [createWorkspace?.mode, createExecutionKind]);
 
   useEffect(() => {
-    if (detailWorkspace?.mode === 'manutencao' && detailExecutionKind === 'construcao') {
+    if (detailWorkspace?.mode === 'manutencao' && isStrategicExecutionKind(detailExecutionKind)) {
       setDetailExecutionKind('operacao');
     }
     if (
@@ -571,13 +610,49 @@ export function TarefasPage() {
       return;
     }
 
-    if (createIsMultiBlock && createMultiBlockGoalMinutes) {
-      const goal = Number(createMultiBlockGoalMinutes);
-      if (!Number.isFinite(goal) || goal <= 0) {
-        setError('Informe uma meta de minutos válida para tarefa multiblock.');
-        return;
-      }
+    if (createUseDueDate && !createDueDate) {
+      setError('Selecione a data limite da tarefa.');
+      return;
     }
+
+    if (
+      createUseRestriction &&
+      !createRestrictionDependsOnPerson &&
+      !createRestrictionTitle.trim()
+    ) {
+      setError('Informe o título da restrição inicial.');
+      return;
+    }
+
+    if (
+      createUseRestriction &&
+      createRestrictionDependsOnPerson &&
+      !createRestrictionWaitingOnPerson.trim()
+    ) {
+      setError('Informe quem destrava a dependência externa da tarefa.');
+      return;
+    }
+
+    if (
+      createUseRestriction &&
+      createRestrictionDependsOnPerson &&
+      !createRestrictionWaitingDueDate
+    ) {
+      setError('Informe a data limite da dependência externa.');
+      return;
+    }
+
+    const hasRestrictionSeed = Boolean(
+      createUseRestriction &&
+        (createRestrictionTitle.trim() ||
+          createRestrictionDetail.trim() ||
+          createRestrictionDependsOnPerson)
+    );
+    const restrictionTitleSeed =
+      createRestrictionTitle.trim() ||
+      (createRestrictionDependsOnPerson
+        ? `Aguardando ${createRestrictionWaitingOnPerson.trim()}`
+        : '');
 
     try {
       setBusy(true);
@@ -591,13 +666,35 @@ export function TarefasPage() {
         executionKind: createExecutionKind,
         estimatedMinutes,
         isMultiBlock: createIsMultiBlock,
-        multiBlockGoalMinutes: createIsMultiBlock
-          ? createMultiBlockGoalMinutes
-            ? Number(createMultiBlockGoalMinutes)
-            : estimatedMinutes
-          : null,
+        multiBlockGoalMinutes: createIsMultiBlock ? estimatedMinutes : null,
         priority: createPriority,
-        horizon: createHorizon
+        horizon: createHorizon,
+        dueDate: createUseDueDate && createDueDate ? toStableIsoFromDateInput(createDueDate) : null,
+        waitingOnPerson:
+          createUseRestriction &&
+          createRestrictionDependsOnPerson &&
+          createRestrictionWaitingOnPerson.trim()
+            ? createRestrictionWaitingOnPerson.trim()
+            : null,
+        waitingType:
+          createUseRestriction && createRestrictionDependsOnPerson ? createRestrictionWaitingType : null,
+        waitingPriority:
+          createUseRestriction && createRestrictionDependsOnPerson ? createRestrictionWaitingPriority : null,
+        waitingDueDate:
+          createUseRestriction &&
+          createRestrictionDependsOnPerson &&
+          createRestrictionWaitingDueDate
+            ? toStableIsoFromDateInput(createRestrictionWaitingDueDate)
+            : null,
+        restrictions:
+          hasRestrictionSeed && restrictionTitleSeed
+            ? [
+                {
+                  title: restrictionTitleSeed,
+                  detail: createRestrictionDetail.trim() ? createRestrictionDetail.trim() : null
+                }
+              ]
+            : undefined
       });
 
       setCreateTitle('');
@@ -606,8 +703,17 @@ export function TarefasPage() {
       setCreateEnergyLevel('media');
       setCreateExecutionKind('operacao');
       setCreateEstimatedMinutes('60');
+      setCreateDueDate('');
       setCreateIsMultiBlock(false);
-      setCreateMultiBlockGoalMinutes('');
+      setCreateUseDueDate(false);
+      setCreateUseRestriction(false);
+      setCreateRestrictionTitle('');
+      setCreateRestrictionDetail('');
+      setCreateRestrictionDependsOnPerson(false);
+      setCreateRestrictionWaitingOnPerson('');
+      setCreateRestrictionWaitingType('resposta');
+      setCreateRestrictionWaitingPriority('media');
+      setCreateRestrictionWaitingDueDate('');
       setCreatePriority(3);
       setCreateHorizon('active');
       setCreateProjectId('');
@@ -678,15 +784,30 @@ export function TarefasPage() {
     }
   }
 
-  async function completeTask(taskId: string) {
+  function requestTaskCompletion(taskId: string) {
+    setCompletionTaskId(taskId);
+  }
+
+  async function confirmTaskCompletion(input: {
+    completionMode: 'note' | 'no_note';
+    completionNote?: string;
+  }) {
+    if (!completionTaskId) {
+      return;
+    }
+
     try {
       setBusy(true);
-      await api.completeTask(taskId);
+      await api.completeTask(completionTaskId, {
+        completionMode: input.completionMode,
+        completionNote: input.completionNote
+      });
       await load();
 
-      if (selectedTaskId === taskId) {
-        await refreshSelectedTaskContext(taskId);
+      if (selectedTaskId === completionTaskId) {
+        await refreshSelectedTaskContext(completionTaskId);
       }
+      setCompletionTaskId('');
     } catch (requestError) {
       setError((requestError as Error).message);
     } finally {
@@ -1075,7 +1196,7 @@ export function TarefasPage() {
                 selectedTaskId={selectedTaskId}
                 busy={busy}
                 onSelectTask={(taskId) => openTaskDetails(taskId, 'overview')}
-                onCompleteTask={completeTask}
+                onCompleteTask={requestTaskCompletion}
                 onDeleteTask={deleteTask}
               />
             </section>
@@ -1315,7 +1436,7 @@ export function TarefasPage() {
                       selectedTaskId={selectedTaskId}
                       busy={busy}
                       onSelectTask={(taskId) => openTaskDetails(taskId, 'overview')}
-                      onCompleteTask={completeTask}
+                      onCompleteTask={requestTaskCompletion}
                       onDeleteTask={deleteTask}
                     />
                   ) : (
@@ -1330,7 +1451,7 @@ export function TarefasPage() {
                             <strong>{task.title}</strong>
                             <small>
                               {task.workspace?.name ?? 'Sem frente'} • {task.project?.title ?? 'Sem projeto'} • Tipo{' '}
-                              {taskTypeLabel(task.taskType ?? 'b')} • {task.executionKind ?? 'operacao'}
+                              {taskTypeLabel(task.taskType ?? 'b')} • {executionKindLabel(task.executionKind)}
                               {task.isMultiBlock ? ' • multiblock' : ''} • {openRestrictionCount(task)} restrições
                             </small>
                           </div>
@@ -1410,71 +1531,121 @@ export function TarefasPage() {
               </select>
             </div>
 
-            <div className="row-2">
-              <label>
-                Tempo estimado (min)
-                <input
-                  type="number"
-                  min={15}
-                  step={15}
-                  value={createEstimatedMinutes}
-                  onChange={(event) => setCreateEstimatedMinutes(event.target.value)}
-                  required
-                />
-              </label>
-              <select value={createTaskType} onChange={(event) => setCreateTaskType(event.target.value as TaskType)}>
-                <option value="a">Tipo A (alto impacto)</option>
-                <option value="b">Tipo B (importante)</option>
-                <option value="c">Tipo C (conveniência)</option>
-              </select>
-            </div>
+            <label>
+              Tempo estimado (min)
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={createEstimatedMinutes}
+                onChange={(event) => setCreateEstimatedMinutes(event.target.value)}
+                required
+              />
+            </label>
 
-            <div className="row-2">
-              <label className="checkbox-line">
-                <input
-                  type="checkbox"
-                  checked={createIsMultiBlock}
-                  onChange={(event) => setCreateIsMultiBlock(event.target.checked)}
-                />
-                Tarefa complexa (multiblock)
-              </label>
-              <label>
-                Meta total (min)
-                <input
-                  type="number"
-                  min={30}
-                  step={15}
-                  value={createMultiBlockGoalMinutes}
-                  onChange={(event) => setCreateMultiBlockGoalMinutes(event.target.value)}
-                  placeholder={createEstimatedMinutes || '180'}
-                  disabled={!createIsMultiBlock}
-                />
-              </label>
-            </div>
+            <section className="compose-choice-group">
+              <div className="compose-choice-label">Tipo (impacto)</div>
+              <div className="compose-option-grid">
+                {[
+                  { value: 'a' as const, title: 'Tipo A', subtitle: 'Alto impacto' },
+                  { value: 'b' as const, title: 'Tipo B', subtitle: 'Importante' },
+                  { value: 'c' as const, title: 'Tipo C', subtitle: 'Conveniência' }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={
+                      option.value === createTaskType
+                        ? `compose-option-card active tone-${option.value}`
+                        : `compose-option-card tone-${option.value}`
+                    }
+                    onClick={() => {
+                      setCreateTaskType(option.value);
+                      setCreatePriority(suggestedPriorityFromTaskType(option.value));
+                    }}
+                  >
+                    <strong>{option.title}</strong>
+                    <small>{option.subtitle}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
 
-            <div className="row-2">
-              <select
-                value={createEnergyLevel}
-                onChange={(event) => setCreateEnergyLevel(event.target.value as TaskEnergy)}
-              >
-                <option value="alta">Energia alta</option>
-                <option value="media">Energia média</option>
-                <option value="baixa">Energia baixa</option>
-              </select>
-              <select
-                value={createExecutionKind}
-                onChange={(event) => setCreateExecutionKind(event.target.value as TaskExecutionKind)}
-              >
-                <option value="construcao" disabled={createWorkspace?.mode === 'manutencao'}>
-                  Construção
-                </option>
-                <option value="operacao">Operação</option>
-              </select>
-            </div>
+            <section className="compose-choice-group">
+              <div className="compose-choice-label">Energia necessária</div>
+              <div className="compose-option-grid">
+                {[
+                  { value: 'alta' as const, title: 'Alta energia', subtitle: 'Foco intenso' },
+                  { value: 'media' as const, title: 'Média energia', subtitle: 'Fluxo padrão' },
+                  { value: 'baixa' as const, title: 'Baixa energia', subtitle: 'Leve/rápida' }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={
+                      option.value === createEnergyLevel
+                        ? `compose-option-card active tone-energy-${option.value}`
+                        : `compose-option-card tone-energy-${option.value}`
+                    }
+                    onClick={() => setCreateEnergyLevel(option.value)}
+                  >
+                    <strong>{option.title}</strong>
+                    <small>{option.subtitle}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="compose-choice-group">
+              <div className="compose-choice-label">Natureza</div>
+              <div className="compose-option-grid two">
+                {[
+                  {
+                    value: 'construcao' as const,
+                    title: 'Construção',
+                    subtitle: 'Ativo de futuro',
+                    strategic: true
+                  },
+                  {
+                    value: 'otimizacao' as const,
+                    title: 'Otimização',
+                    subtitle: 'Melhoria de sistema',
+                    strategic: true
+                  },
+                  {
+                    value: 'operacao' as const,
+                    title: 'Operação',
+                    subtitle: 'Execução recorrente',
+                    strategic: false
+                  },
+                  {
+                    value: 'suporte' as const,
+                    title: 'Suporte',
+                    subtitle: 'Resolver bloqueios',
+                    strategic: false
+                  }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={
+                      option.value === createExecutionKind
+                        ? `compose-option-card active tone-kind-${option.value}`
+                        : `compose-option-card tone-kind-${option.value}`
+                    }
+                    onClick={() => setCreateExecutionKind(option.value)}
+                    disabled={createWorkspace?.mode === 'manutencao' && option.strategic}
+                  >
+                    <strong>{option.title}</strong>
+                    <small>{option.subtitle}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
 
             {createWorkspace?.mode === 'manutencao' && (
               <p className="premium-empty">
-                Frente em manutenção: tarefas de construção ficam bloqueadas por coerência estratégica.
+                Frente em manutenção: construção e otimização ficam bloqueadas por coerência estratégica.
               </p>
             )}
             {createWorkspace?.mode === 'standby' && (
@@ -1495,11 +1666,209 @@ export function TarefasPage() {
                 </button>
               ))}
             </div>
+            <p className="premium-empty">
+              Tipo define impacto ({createTaskType.toUpperCase()}) e prioridade define urgência.
+              Sugestão automática: P{suggestedPriorityFromTaskType(createTaskType)}.
+            </p>
 
-            <select value={createHorizon} onChange={(event) => setCreateHorizon(event.target.value as TaskHorizon)}>
-              <option value="active">Ativo</option>
-              <option value="future">Futuro</option>
-            </select>
+            <section className="compose-choice-group">
+              <div className="compose-choice-label">Horizonte</div>
+              <div className="compose-option-grid two">
+                <button
+                  type="button"
+                  className={
+                    createHorizon === 'active'
+                      ? 'compose-option-card active tone-horizon-active'
+                      : 'compose-option-card tone-horizon-active'
+                  }
+                  onClick={() => setCreateHorizon('active')}
+                >
+                  <strong>Ativo</strong>
+                  <small>Entrar no fluxo</small>
+                </button>
+                <button
+                  type="button"
+                  className={
+                    createHorizon === 'future'
+                      ? 'compose-option-card active tone-horizon-future'
+                      : 'compose-option-card tone-horizon-future'
+                  }
+                  onClick={() => setCreateHorizon('future')}
+                >
+                  <strong>Futuro</strong>
+                  <small>Sem pressão agora</small>
+                </button>
+              </div>
+            </section>
+
+            <section className="compose-choice-group">
+              <div className="compose-choice-label">Opções avançadas</div>
+              <div className="compose-option-grid three">
+                <button
+                  type="button"
+                  className={createUseRestriction ? 'compose-option-card active' : 'compose-option-card'}
+                  onClick={() => {
+                    setCreateUseRestriction((current) => {
+                      const next = !current;
+                      if (!next) {
+                        setCreateRestrictionTitle('');
+                        setCreateRestrictionDetail('');
+                        setCreateRestrictionDependsOnPerson(false);
+                        setCreateRestrictionWaitingOnPerson('');
+                        setCreateRestrictionWaitingType('resposta');
+                        setCreateRestrictionWaitingPriority('media');
+                        setCreateRestrictionWaitingDueDate('');
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <strong>Restrição inicial</strong>
+                  <small>{createUseRestriction ? 'Ativa' : 'Fechada'}</small>
+                </button>
+                <button
+                  type="button"
+                  className={createUseDueDate ? 'compose-option-card active' : 'compose-option-card'}
+                  onClick={() => {
+                    setCreateUseDueDate((current) => {
+                      const next = !current;
+                      if (!next) {
+                        setCreateDueDate('');
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <strong>Data limite</strong>
+                  <small>{createUseDueDate ? 'Ativa' : 'Fechada'}</small>
+                </button>
+                <button
+                  type="button"
+                  className={createIsMultiBlock ? 'compose-option-card active' : 'compose-option-card'}
+                  onClick={() => setCreateIsMultiBlock((current) => !current)}
+                >
+                  <strong>Tarefa complexa</strong>
+                  <small>{createIsMultiBlock ? 'Multissessão ativa' : 'Sessão única'}</small>
+                </button>
+              </div>
+            </section>
+
+            {createUseDueDate && (
+              <label>
+                Data limite da tarefa
+                <input
+                  type="date"
+                  value={createDueDate}
+                  onChange={(event) => setCreateDueDate(event.target.value)}
+                  required={createUseDueDate}
+                />
+              </label>
+            )}
+
+            {createUseRestriction && (
+              <>
+                <div className="task-restriction-summary">
+                  <strong>Restrição inicial</strong>
+                  <small>Cadastre bloqueio já na criação para não perder contexto.</small>
+                </div>
+                <input
+                  value={createRestrictionTitle}
+                  onChange={(event) => setCreateRestrictionTitle(event.target.value)}
+                  placeholder="Ex: Obter extratos bancários"
+                />
+                <textarea
+                  value={createRestrictionDetail}
+                  onChange={(event) => setCreateRestrictionDetail(event.target.value)}
+                  placeholder="Contexto da restrição (opcional)"
+                  rows={2}
+                />
+                <div className="inline-actions">
+                  <span className="premium-empty">Essa restrição depende de outra pessoa?</span>
+                  <button
+                    type="button"
+                    className={
+                      createRestrictionDependsOnPerson
+                        ? 'ghost-button task-filter active'
+                        : 'ghost-button'
+                    }
+                    onClick={() => setCreateRestrictionDependsOnPerson(true)}
+                  >
+                    Sim
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      !createRestrictionDependsOnPerson
+                        ? 'ghost-button task-filter active'
+                        : 'ghost-button'
+                    }
+                    onClick={() => {
+                      setCreateRestrictionDependsOnPerson(false);
+                      setCreateRestrictionWaitingOnPerson('');
+                      setCreateRestrictionWaitingType('resposta');
+                      setCreateRestrictionWaitingPriority('media');
+                      setCreateRestrictionWaitingDueDate('');
+                    }}
+                  >
+                    Não
+                  </button>
+                </div>
+
+                {createRestrictionDependsOnPerson && (
+                  <div className="row-2">
+                    <label>
+                      Aguardando pessoa
+                      <input
+                        value={createRestrictionWaitingOnPerson}
+                        onChange={(event) => setCreateRestrictionWaitingOnPerson(event.target.value)}
+                        placeholder="Ex: Leonardo"
+                        required={createRestrictionDependsOnPerson}
+                      />
+                    </label>
+                    <label>
+                      Tipo
+                      <select
+                        value={createRestrictionWaitingType}
+                        onChange={(event) =>
+                          setCreateRestrictionWaitingType(event.target.value as WaitingType)
+                        }
+                      >
+                        <option value="resposta">Aguardando resposta</option>
+                        <option value="entrega">Aguardando entrega</option>
+                      </select>
+                    </label>
+                    <label>
+                      Prioridade do follow-up
+                      <select
+                        value={createRestrictionWaitingPriority}
+                        onChange={(event) =>
+                          setCreateRestrictionWaitingPriority(event.target.value as WaitingPriority)
+                        }
+                      >
+                        <option value="alta">alta</option>
+                        <option value="media">média</option>
+                        <option value="baixa">baixa</option>
+                      </select>
+                    </label>
+                    <label>
+                      Data limite da dependência
+                      <input
+                        type="date"
+                        value={createRestrictionWaitingDueDate}
+                        onChange={(event) => setCreateRestrictionWaitingDueDate(event.target.value)}
+                        required={createRestrictionDependsOnPerson}
+                      />
+                    </label>
+                  </div>
+                )}
+              </>
+            )}
+
+            {createIsMultiBlock && (
+              <p className="premium-empty">
+                Tarefa complexa ativa: o progresso será acompanhado por múltiplas sessões de execução/deep work.
+              </p>
+            )}
 
             <button type="submit" disabled={busy}>
               Criar tarefa
@@ -1524,7 +1893,11 @@ export function TarefasPage() {
                   <span className="restriction-chip">{openRestrictions.length} restrições abertas</span>
                 )}
                 {selectedTask.status !== 'feito' && (
-                  <button type="button" className="success-button" onClick={() => completeTask(selectedTask.id)}>
+                  <button
+                    type="button"
+                    className="success-button"
+                    onClick={() => requestTaskCompletion(selectedTask.id)}
+                  >
                     Concluir
                   </button>
                 )}
@@ -1639,13 +2012,17 @@ export function TarefasPage() {
                         <option value="construcao" disabled={detailWorkspace?.mode === 'manutencao'}>
                           Construção
                         </option>
+                        <option value="otimizacao" disabled={detailWorkspace?.mode === 'manutencao'}>
+                          Otimização
+                        </option>
                         <option value="operacao">Operação</option>
+                        <option value="suporte">Suporte</option>
                       </select>
                     </label>
 
                     {detailWorkspace?.mode === 'manutencao' && (
                       <p className="premium-empty">
-                        Modo manutenção ativo: tarefa de construção é bloqueada nesta frente.
+                        Modo manutenção ativo: construção e otimização são bloqueadas nesta frente.
                       </p>
                     )}
                     {detailWorkspace?.mode === 'standby' && (
@@ -1708,6 +2085,19 @@ export function TarefasPage() {
                           </button>
                         ))}
                       </div>
+                      <div className="inline-actions">
+                        <small className="premium-empty">
+                          Tipo {detailTaskType.toUpperCase()} sugere P
+                          {suggestedPriorityFromTaskType(detailTaskType)}.
+                        </small>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() => setDetailPriority(suggestedPriorityFromTaskType(detailTaskType))}
+                        >
+                          Aplicar sugestão
+                        </button>
+                      </div>
                     </div>
 
                     <div className="row-2">
@@ -1724,8 +2114,8 @@ export function TarefasPage() {
                         Duração estimada (min)
                         <input
                           type="number"
-                          min={15}
-                          step={15}
+                          min={1}
+                          step={1}
                           value={detailEstimatedMinutes}
                           onChange={(event) => setDetailEstimatedMinutes(event.target.value)}
                           placeholder="60"
@@ -2206,6 +2596,14 @@ export function TarefasPage() {
           </article>
         </section>
       )}
+
+      <TaskCompletionModal
+        open={Boolean(completionTask)}
+        taskTitle={completionTask?.title ?? 'Tarefa'}
+        busy={busy}
+        onClose={() => setCompletionTaskId('')}
+        onConfirm={(input) => confirmTaskCompletion(input)}
+      />
     </PremiumPage>
   );
 }

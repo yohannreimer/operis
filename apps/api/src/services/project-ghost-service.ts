@@ -21,6 +21,7 @@ export async function refreshGhostProjects(
     select: {
       id: true,
       status: true,
+      createdAt: true,
       tasks: {
         where: {
           taskType: 'a',
@@ -48,6 +49,7 @@ export async function refreshGhostProjects(
     .filter(
       (project) =>
         project.status === 'ativo' &&
+        project.createdAt.getTime() <= threshold.getTime() &&
         project.tasks.length === 0 &&
         project.deepWorkSessions.length === 0
     )
@@ -57,7 +59,11 @@ export async function refreshGhostProjects(
     .filter(
       (project) =>
         project.status === 'fantasma' &&
-        (project.tasks.length > 0 || project.deepWorkSessions.length > 0)
+        (
+          project.createdAt.getTime() > threshold.getTime() ||
+          project.tasks.length > 0 ||
+          project.deepWorkSessions.length > 0
+        )
     )
     .map((project) => project.id);
 

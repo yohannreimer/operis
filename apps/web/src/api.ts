@@ -1,6 +1,7 @@
 export type WorkspaceType = 'empresa' | 'pessoal' | 'vida' | 'autoridade' | 'geral' | 'outro';
 export type WorkspaceMode = 'expansao' | 'manutencao' | 'standby';
 export type ProjectType = 'construcao' | 'operacao' | 'crescimento';
+export type ProjectMethodology = 'fourdx' | 'delivery' | 'launch' | 'discovery' | 'growth';
 export type ProjectMetricKind = 'lead' | 'lag';
 export type ProjectStatus =
   | 'ativo'
@@ -16,7 +17,15 @@ export type WaitingPriority = 'alta' | 'media' | 'baixa';
 export type WaitingType = 'resposta' | 'entrega';
 export type TaskType = 'a' | 'b' | 'c';
 export type TaskEnergy = 'alta' | 'media' | 'baixa';
-export type TaskExecutionKind = 'construcao' | 'operacao';
+export type TaskExecutionKind = 'construcao' | 'otimizacao' | 'operacao' | 'suporte';
+export type NoteType =
+  | 'inbox'
+  | 'geral'
+  | 'pessoas'
+  | 'conteudo'
+  | 'produto'
+  | 'conclusao_tarefa'
+  | 'referencia';
 export type DeepWorkState = 'active' | 'completed' | 'broken';
 export type ReviewPeriodType = 'weekly' | 'monthly';
 export type CommitmentLevel = 'baixo' | 'medio' | 'alto';
@@ -45,9 +54,12 @@ export type Project = {
   description?: string | null;
   status?: ProjectStatus;
   type?: ProjectType;
+  methodology?: ProjectMethodology;
   objective?: string | null;
   primaryMetric?: string | null;
   actionStatement?: string | null;
+  methodologyExtraOne?: string | null;
+  methodologyExtraTwo?: string | null;
   timeHorizonEnd?: string | null;
   resultStartValue?: number | null;
   resultCurrentValue?: number | null;
@@ -90,6 +102,71 @@ export type Task = {
   workspace?: Workspace;
   project?: Project | null;
   restrictions?: TaskRestriction[];
+};
+
+export type Note = {
+  id: string;
+  title: string;
+  content?: string | null;
+  type: NoteType;
+  tags: string[];
+  pinned: boolean;
+  folderId?: string | null;
+  workspaceId?: string | null;
+  projectId?: string | null;
+  taskId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string | null;
+  folder?: NoteFolder | null;
+  workspace?: Workspace | null;
+  project?: Project | null;
+  task?: Pick<Task, 'id' | 'title' | 'status'> | null;
+};
+
+export type NoteRevision = {
+  id: string;
+  noteId: string;
+  title: string;
+  content?: string | null;
+  type: NoteType;
+  tags: string[];
+  pinned: boolean;
+  folderId?: string | null;
+  workspaceId?: string | null;
+  projectId?: string | null;
+  taskId?: string | null;
+  source: string;
+  createdAt: string;
+};
+
+export type NoteFolder = {
+  id: string;
+  name: string;
+  color?: string | null;
+  parentId?: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string | null;
+};
+
+export type NotesTranscriptionCapabilities = {
+  enabled: boolean;
+  provider: 'webhook' | 'disabled' | string;
+  maxAudioBytes: number;
+  maxAudioMB: number;
+};
+
+export type NotesAudioTranscriptionResult = {
+  ok: boolean;
+  provider: string;
+  transcript: string | null;
+  titleSuggestion?: string | null;
+  structuredContent?: string | null;
+  tags: string[];
+  confidence?: number | null;
+  durationMs?: number | null;
 };
 
 export type ProjectMetric = {
@@ -138,6 +215,36 @@ export type ProjectScorecard = {
     lastScorecardCheckinAt: string | null;
     cadenceDays: number;
     isWeeklyCheckinMissing: boolean;
+  };
+  framework: {
+    methodology: ProjectMethodology;
+    guide: string;
+    board: {
+      chartFamily: 'line' | 'burndown' | 'launch' | 'validation' | 'momentum';
+      xAxis: string;
+      yAxis: string;
+    };
+    cards: Array<{
+      id: string;
+      title: string;
+      value: string;
+      hint: string;
+      tone: 'ok' | 'risk' | 'neutral' | 'pending';
+    }>;
+    rituals: Array<{
+      id: string;
+      title: string;
+      status: 'done' | 'pending' | 'risk';
+      description: string;
+    }>;
+    weekly: {
+      weekStart: string;
+      leadOneDone: boolean;
+      leadTwoDone: boolean;
+      lagValue: number | null;
+      note: string | null;
+      extra: Record<string, string | number | boolean | null>;
+    } | null;
   };
 };
 
@@ -814,6 +921,7 @@ export type GhostProjectResolution = Project;
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 const REQUEST_TIMEOUT_MS = 12000;
+const NOTES_TRANSCRIBE_TIMEOUT_MS = 180000;
 
 function withQuery(path: string, params?: Record<string, string | number | boolean | undefined>) {
   if (!params) {
@@ -834,9 +942,15 @@ function withQuery(path: string, params?: Record<string, string | number | boole
   return queryString ? `${path}?${queryString}` : path;
 }
 
-async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+type ApiRequestOptions = RequestInit & {
+  timeoutMs?: number;
+};
+
+async function apiRequest<T>(path: string, options?: ApiRequestOptions): Promise<T> {
+  const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const { timeoutMs: _ignoredTimeoutMs, ...fetchOptions } = options ?? {};
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const headers = new Headers(options?.headers ?? {});
@@ -849,13 +963,18 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
     const response = await fetch(`${API_BASE}${path}`, {
       headers,
-      ...options,
+      ...fetchOptions,
       signal: controller.signal
     });
 
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({ error: response.statusText }));
-      throw new Error(payload.error ?? `Erro ${response.status} ao chamar API.`);
+      const payload = await response.json().catch(() => ({} as Record<string, unknown>));
+      const detail = typeof payload.detail === 'string' ? payload.detail : '';
+      const message =
+        (typeof payload.error === 'string' && payload.error) ||
+        (typeof payload.message === 'string' && payload.message) ||
+        `Erro ${response.status} ao chamar API.`;
+      throw new Error(detail ? `${message} ${detail}` : message);
     }
 
     if (response.status === 204) {
@@ -921,9 +1040,12 @@ export const api = {
     description?: string | null;
     status?: ProjectStatus;
     type?: ProjectType;
+    methodology?: ProjectMethodology;
     objective?: string | null;
     primaryMetric?: string | null;
     actionStatement?: string | null;
+    methodologyExtraOne?: string | null;
+    methodologyExtraTwo?: string | null;
     timeHorizonEnd?: string | null;
     resultStartValue?: number | null;
     resultCurrentValue?: number | null;
@@ -950,9 +1072,12 @@ export const api = {
       description: string | null;
       status: ProjectStatus;
       type: ProjectType;
+      methodology: ProjectMethodology;
       objective: string | null;
       primaryMetric: string | null;
       actionStatement: string | null;
+      methodologyExtraOne: string | null;
+      methodologyExtraTwo: string | null;
       timeHorizonEnd: string | null;
       resultStartValue: number | null;
       resultCurrentValue: number | null;
@@ -1032,6 +1157,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input)
     }),
+  createProjectFrameworkCheckin: (
+    projectId: string,
+    input: {
+      weekStart?: string;
+      leadOneDone: boolean;
+      leadTwoDone: boolean;
+      lagValue?: number | null;
+      note?: string | null;
+      extra?: Record<string, string | number | boolean | null>;
+    }
+  ) =>
+    apiRequest<{
+      ok: boolean;
+      weekStart: string;
+      leadOne: { id: string; value: number };
+      leadTwo: { id: string; value: number };
+      lag: { id: string; value: number } | null;
+    }>(`/projects/${projectId}/framework-checkin`, {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
   deleteProjectMetricCheckin: (metricId: string, query: { weekStart: string }) =>
     apiRequest<{ ok: boolean; deleted: boolean }>(
       withQuery(`/project-metrics/${metricId}/checkins`, query),
@@ -1068,6 +1214,10 @@ export const api = {
     waitingType?: WaitingType | null;
     waitingPriority?: WaitingPriority | null;
     waitingDueDate?: string | null;
+    restrictions?: Array<{
+      title: string;
+      detail?: string | null;
+    }>;
   }) =>
     apiRequest<Task>('/tasks', {
       method: 'POST',
@@ -1105,9 +1255,20 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input)
     }),
-  completeTask: (taskId: string, query?: { strictMode?: boolean }) =>
-    apiRequest<Task>(withQuery(`/tasks/${taskId}/complete`, query), {
-      method: 'POST'
+  completeTask: (
+    taskId: string,
+    options?: {
+      strictMode?: boolean;
+      completionMode?: 'note' | 'no_note';
+      completionNote?: string;
+    }
+  ) =>
+    apiRequest<Task>(withQuery(`/tasks/${taskId}/complete`, { strictMode: options?.strictMode }), {
+      method: 'POST',
+      body: JSON.stringify({
+        completionMode: options?.completionMode,
+        completionNote: options?.completionNote
+      })
     }),
   postponeTask: (taskId: string) =>
     apiRequest<Task>(`/tasks/${taskId}/postpone`, {
@@ -1183,6 +1344,115 @@ export const api = {
     apiRequest<WaitingFollowupRadar['rows'][number]>(`/tasks/${taskId}/waiting-followup`, {
       method: 'POST',
       body: JSON.stringify(input ?? {})
+    }),
+  getNoteFolders: (query?: { includeArchived?: boolean }) =>
+    apiRequest<NoteFolder[]>(withQuery('/note-folders', query)),
+  createNoteFolder: (input: {
+    name: string;
+    color?: string | null;
+    parentId?: string | null;
+    sortOrder?: number;
+  }) =>
+    apiRequest<NoteFolder>('/note-folders', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+  updateNoteFolder: (
+    folderId: string,
+    input: Partial<{
+      name: string;
+      color: string | null;
+      parentId: string | null;
+      sortOrder: number;
+      archived: boolean;
+    }>
+  ) =>
+    apiRequest<NoteFolder>(`/note-folders/${folderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input)
+    }),
+  deleteNoteFolder: (folderId: string) =>
+    apiRequest<{ ok: boolean }>(`/note-folders/${folderId}`, {
+      method: 'DELETE'
+    }),
+
+  getNotes: (query?: {
+    type?: NoteType;
+    folderId?: string;
+    workspaceId?: string;
+    projectId?: string;
+    taskId?: string;
+    q?: string;
+    limit?: number;
+  }) => apiRequest<Note[]>(withQuery('/notes', query)),
+  createNote: (input: {
+    title: string;
+    content?: string | null;
+    type?: NoteType;
+    tags?: string[];
+    pinned?: boolean;
+    folderId?: string | null;
+    workspaceId?: string | null;
+    projectId?: string | null;
+    taskId?: string | null;
+  }) =>
+    apiRequest<Note>('/notes', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+  updateNote: (
+    noteId: string,
+    input: Partial<{
+      title: string;
+      content: string | null;
+      type: NoteType;
+      tags: string[];
+      pinned: boolean;
+      folderId: string | null;
+      workspaceId: string | null;
+      projectId: string | null;
+      taskId: string | null;
+      archived: boolean;
+      saveSource: 'manual' | 'autosave' | 'restore' | 'system';
+    }>
+  ) =>
+    apiRequest<Note>(`/notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input)
+    }),
+  getNoteRevisions: (noteId: string, query?: { limit?: number }) =>
+    apiRequest<NoteRevision[]>(withQuery(`/notes/${noteId}/revisions`, query)),
+  createNoteRevision: (
+    noteId: string,
+    input?: {
+      source?: string;
+    }
+  ) =>
+    apiRequest<{ ok: boolean }>(`/notes/${noteId}/revisions`, {
+      method: 'POST',
+      body: JSON.stringify(input ?? {})
+    }),
+  restoreNoteRevision: (noteId: string, revisionId: string) =>
+    apiRequest<Note>(`/notes/${noteId}/revisions/${revisionId}/restore`, {
+      method: 'POST'
+    }),
+  deleteNote: (noteId: string) =>
+    apiRequest<{ ok: boolean }>(`/notes/${noteId}`, {
+      method: 'DELETE'
+    }),
+  getNotesTranscriptionCapabilities: () =>
+    apiRequest<NotesTranscriptionCapabilities>('/notes/transcription-capabilities'),
+  transcribeNoteAudio: (input: {
+    audioBase64: string;
+    mimeType?: string;
+    language?: string;
+    mode?: 'transcript' | 'note';
+    context?: string | null;
+  }) =>
+    apiRequest<NotesAudioTranscriptionResult>('/notes/transcribe-audio', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      timeoutMs: NOTES_TRANSCRIBE_TIMEOUT_MS
     }),
 
   getExecutionBriefing: (date: string, query?: { workspaceId?: string; strictMode?: boolean }) =>

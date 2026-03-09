@@ -22,6 +22,9 @@ const envSchema = z.object({
   RABBITMQ_URL: z.string().url().or(z.string().startsWith('amqp://')),
   EVOLUTION_API_URL: optionalUrl(),
   EVOLUTION_API_KEY: optionalString(),
+  NOTES_TRANSCRIBE_WEBHOOK_URL: optionalUrl(),
+  NOTES_TRANSCRIBE_WEBHOOK_SECRET: optionalString(),
+  NOTES_TRANSCRIBE_TIMEOUT_MS: z.coerce.number().int().min(5000).max(180000).default(45000),
   WHATSAPP_WEBHOOK_SECRET: optionalString(),
   DEFAULT_PHONE_NUMBER: z.string().min(8)
 });

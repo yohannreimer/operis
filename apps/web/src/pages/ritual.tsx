@@ -12,6 +12,7 @@ import {
 } from '../api';
 import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock, TabSwitch } from '../components/premium-ui';
 import { useShellContext } from '../components/shell-context';
+import { formatIsoDate, formatIsoDateMonth } from '../utils/date';
 
 type ReviewDraft = {
   nextPriority: string;
@@ -197,7 +198,7 @@ function formatDeltaPercent(value: number) {
 }
 
 export function RitualPage() {
-  const { activeWorkspaceId, setActiveWorkspaceId, workspaces: sharedWorkspaces, refreshGlobal } = useShellContext();
+  const { setActiveWorkspaceId, workspaces: sharedWorkspaces, refreshGlobal } = useShellContext();
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [weeklyAllocation, setWeeklyAllocation] = useState<WeeklyAllocation | null>(null);
@@ -212,7 +213,6 @@ export function RitualPage() {
   const [monthlyDraft, setMonthlyDraft] = useState<ReviewDraft>({ ...EMPTY_REVIEW_DRAFT });
   const [allocationDraft, setAllocationDraft] = useState<Record<string, number>>({});
   const [allocationDirty, setAllocationDirty] = useState(false);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('all');
   const [weekStart, setWeekStart] = useState(() => currentWeekStartIso());
   const [monthStart, setMonthStart] = useState(() => currentMonthStartIso());
   const [ritualPanel, setRitualPanel] = useState<RitualPanel>('planejamento');
@@ -236,15 +236,9 @@ export function RitualPage() {
     [workspaces]
   );
 
-  const selectedWorkspace =
-    selectedWorkspaceId === 'all'
-      ? null
-      : visibleWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null;
-
   async function load() {
     try {
       setError(null);
-      const strategyWorkspaceId = selectedWorkspaceId === 'all' ? undefined : selectedWorkspaceId;
       const [
         workspaceData,
         allocationData,
@@ -257,35 +251,28 @@ export function RitualPage() {
       ] = await Promise.all([
         api.getWorkspaces(),
         api.getWeeklyAllocation({
-          weekStart,
-          workspaceId: strategyWorkspaceId
+          weekStart
         }),
         api.getWeeklyReview({
-          weekStart,
-          workspaceId: strategyWorkspaceId
+          weekStart
         }),
         api.getMonthlyReview({
-          monthStart,
-          workspaceId: strategyWorkspaceId
+          monthStart
         }),
         api.getReviewJournal({
           periodType: 'weekly',
-          periodStart: weekStart,
-          workspaceId: strategyWorkspaceId
+          periodStart: weekStart
         }),
         api.getReviewJournal({
           periodType: 'monthly',
-          periodStart: monthStart,
-          workspaceId: strategyWorkspaceId
+          periodStart: monthStart
         }),
         api.getReviewHistory({
           periodType: 'weekly',
-          workspaceId: strategyWorkspaceId,
           limit: 8
         }),
         api.getReviewHistory({
           periodType: 'monthly',
-          workspaceId: strategyWorkspaceId,
           limit: 8
         })
       ]);
@@ -317,14 +304,6 @@ export function RitualPage() {
         Object.fromEntries(allocationData.rows.map((entry) => [entry.workspaceId, entry.plannedPercent]))
       );
       setAllocationDirty(false);
-
-      const selectableWorkspaceIds = new Set(
-        workspaceData.filter((workspace) => workspace.type !== 'geral').map((workspace) => workspace.id)
-      );
-
-      if (selectedWorkspaceId !== 'all' && !selectableWorkspaceIds.has(selectedWorkspaceId)) {
-        setSelectedWorkspaceId('all');
-      }
     } catch (requestError) {
       setError((requestError as Error).message);
     } finally {
@@ -334,19 +313,11 @@ export function RitualPage() {
 
   useEffect(() => {
     void load();
-  }, [sharedWorkspaces.length, selectedWorkspaceId, weekStart, monthStart]);
+  }, [sharedWorkspaces.length, weekStart, monthStart]);
 
   useEffect(() => {
-    if (activeWorkspaceId === 'all') {
-      setSelectedWorkspaceId('all');
-      return;
-    }
-
-    const existsInVisibleList = visibleWorkspaces.some((workspace) => workspace.id === activeWorkspaceId);
-    if (existsInVisibleList) {
-      setSelectedWorkspaceId(activeWorkspaceId);
-    }
-  }, [activeWorkspaceId, visibleWorkspaces]);
+    setActiveWorkspaceId('all');
+  }, [setActiveWorkspaceId]);
 
   useEffect(() => {
     try {
@@ -355,12 +326,6 @@ export function RitualPage() {
       // Ignore persistence failures.
     }
   }, [closedWeeks]);
-
-  function selectScope(workspaceId: string) {
-    setRitualNotice(null);
-    setSelectedWorkspaceId(workspaceId);
-    setActiveWorkspaceId(workspaceId);
-  }
 
   function nextWeeklyReviewFocusTarget(): RitualFocusTarget {
     if (!weeklyDraft.nextPriority.trim()) {
@@ -437,7 +402,7 @@ export function RitualPage() {
     const canForce = Boolean(options?.force);
     const movingForward = isIsoDateAfter(nextWeekStart, weekStart);
 
-    if (!canForce && movingForward && !weekClosed) {
+    if (!canForce && movingForward && enforceChecklistForSelectedWeek && !weekClosed) {
       setRitualNotice(
         !reviewWindowOpen && !weeklyReviewSaved
           ? 'A revisão desta semana abre na sexta às 20h. Feche a semana depois dessa janela.'
@@ -454,6 +419,11 @@ export function RitualPage() {
   }
 
   function closeWeek() {
+    if (!enforceChecklistForSelectedWeek) {
+      setRitualNotice('Semana sem uso obrigatório detectada. Avance direto para o ciclo atual.');
+      return;
+    }
+
     if (!reviewWindowOpen && !weeklyReviewSaved) {
       setRitualNotice('Fechamento liberado na sexta às 20h (ou após salvar revisão antecipada).');
       setRitualPanel('revisao');
@@ -518,9 +488,7 @@ export function RitualPage() {
 
     try {
       setBusy(true);
-      const strategyWorkspaceId = selectedWorkspaceId === 'all' ? undefined : selectedWorkspaceId;
       await api.updateReviewJournal('weekly', weekStart, {
-        workspaceId: strategyWorkspaceId,
         nextPriority: weeklyDraft.nextPriority,
         strategicDecision: weeklyDraft.strategicDecision,
         commitmentLevel: weeklyDraft.commitmentLevel,
@@ -553,9 +521,7 @@ export function RitualPage() {
 
     try {
       setBusy(true);
-      const strategyWorkspaceId = selectedWorkspaceId === 'all' ? undefined : selectedWorkspaceId;
       await api.updateReviewJournal('monthly', monthStart, {
-        workspaceId: strategyWorkspaceId,
         nextPriority: monthlyDraft.nextPriority,
         strategicDecision: monthlyDraft.strategicDecision,
         commitmentLevel: monthlyDraft.commitmentLevel,
@@ -579,29 +545,46 @@ export function RitualPage() {
   const monthlyWindowOpen = isMonthlyReviewWindowOpen(monthStart);
   const weeklyReviewSaved = Boolean(weeklyJournal?.review?.updatedAt);
   const monthlyReviewSaved = Boolean(monthlyJournal?.review?.updatedAt);
+  const currentWeekKey = currentWeekStartIso();
+  const isPastWeek = isIsoDateAfter(currentWeekKey, weekStart);
+  const firstWorkspaceCreatedAt = visibleWorkspaces
+    .map((workspace) => workspace.createdAt)
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => left.localeCompare(right))[0];
+  const weeklyGate = weeklyReviewGateDate(weekStart);
+  const firstUseGraceForSelectedWeek =
+    isPastWeek &&
+    !weeklyPlanConfigured &&
+    !weeklyReviewSaved &&
+    Boolean(firstWorkspaceCreatedAt) &&
+    Boolean(weeklyGate) &&
+    new Date(firstWorkspaceCreatedAt as string).getTime() > (weeklyGate as Date).getTime();
+  const enforceChecklistForSelectedWeek = !firstUseGraceForSelectedWeek;
   const reviewExpectedNow = reviewWindowOpen || weeklyReviewSaved;
-  const weeklyChecklistBase = [
-    {
-      key: 'allocation',
-      label: 'Planejamento semanal salvo',
-      description: 'Distribuição de energia por frente definida.',
-      panel: 'planejamento' as const,
-      actionLabel: 'Ir para planejamento',
-      done: weeklyPlanConfigured
-    },
-    ...(reviewExpectedNow
-      ? [
-          {
-            key: 'review',
-            label: 'Revisão semanal salva',
-            description: 'Journal registrado no fim da semana.',
-            panel: 'revisao' as const,
-            actionLabel: 'Abrir revisão',
-            done: weeklyReviewSaved
-          }
-        ]
-      : [])
-  ] as const;
+  const weeklyChecklistBase = enforceChecklistForSelectedWeek
+    ? ([
+        {
+          key: 'allocation',
+          label: 'Planejamento semanal salvo',
+          description: 'Distribuição de energia por frente definida.',
+          panel: 'planejamento' as const,
+          actionLabel: 'Ir para planejamento',
+          done: weeklyPlanConfigured
+        },
+        ...(reviewExpectedNow
+          ? [
+              {
+                key: 'review',
+                label: 'Revisão semanal salva',
+                description: 'Journal registrado no fim da semana.',
+                panel: 'revisao' as const,
+                actionLabel: 'Abrir revisão',
+                done: weeklyReviewSaved
+              }
+            ]
+          : [])
+      ] as const)
+    : ([] as const);
 
   const weeklyChecklistReviewDetails = [
     {
@@ -635,13 +618,16 @@ export function RitualPage() {
   const weeklyPendingItems = weeklyClosingChecklist.filter((item) => !item.done);
   const nextWeeklyPendingKey = weeklyPendingItems[0]?.key ?? null;
   const weeklyClosingDone = weeklyClosingChecklist.filter((item) => item.done).length;
-  const weeklyCompletionPercent = Math.round((weeklyClosingDone / weeklyClosingChecklist.length) * 100);
-  const currentClosureKey = closureKeyFor(selectedWorkspaceId, weekStart);
+  const weeklyCompletionPercent =
+    weeklyClosingChecklist.length === 0
+      ? 100
+      : Math.round((weeklyClosingDone / weeklyClosingChecklist.length) * 100);
+  const currentClosureKey = closureKeyFor('all', weekStart);
   const weekClosedAt = closedWeeks[currentClosureKey] ?? null;
-  const weekClosed = Boolean(weekClosedAt && weeklyCompletionPercent === 100);
+  const weekClosed = !enforceChecklistForSelectedWeek || Boolean(weekClosedAt && weeklyCompletionPercent === 100);
   const mandatoryPendingItems = [
     ...weeklyPendingItems,
-    ...(!monthlyReviewSaved && monthlyWindowOpen
+    ...(enforceChecklistForSelectedWeek && !monthlyReviewSaved && monthlyWindowOpen
       ? [
           {
             key: 'monthly',
@@ -690,14 +676,6 @@ export function RitualPage() {
     return () => window.clearTimeout(timeoutId);
   }, [guideAfterWeeklySave, ritualPanel, nextWeeklyPendingKey]);
 
-  const scopeOptions = [
-    { value: 'all', label: 'Visão geral' },
-    ...visibleWorkspaces.map((workspace) => ({
-      value: workspace.id,
-      label: workspace.name
-    }))
-  ];
-
   const panelOptions: Array<{ value: RitualPanel; label: string }> = [
     { value: 'planejamento', label: 'Planejamento' },
     { value: 'revisao', label: 'Revisão semanal' },
@@ -705,7 +683,9 @@ export function RitualPage() {
     { value: 'historico', label: 'Histórico' }
   ];
 
-  const nextRequiredPanel: RitualPanel = !weeklyPlanConfigured
+  const nextRequiredPanel: RitualPanel = !enforceChecklistForSelectedWeek
+    ? 'historico'
+    : !weeklyPlanConfigured
     ? 'planejamento'
     : reviewWindowOpen && !weeklyReviewSaved
       ? 'revisao'
@@ -714,7 +694,9 @@ export function RitualPage() {
         : 'historico';
 
   const nextRequiredCopy =
-    nextRequiredPanel === 'planejamento'
+    !enforceChecklistForSelectedWeek
+      ? 'Semana anterior sem uso registrado. Sem pendências obrigatórias neste ciclo.'
+      : nextRequiredPanel === 'planejamento'
       ? 'Definir energia por frente para iniciar a semana.'
       : nextRequiredPanel === 'revisao'
         ? 'Fechar a semana com decisão guiada e ações executáveis.'
@@ -732,21 +714,21 @@ export function RitualPage() {
       label: 'Início da semana',
       title: 'Planejar energia',
       description: 'Alocação % por frente',
-      done: weeklyPlanConfigured
+      done: enforceChecklistForSelectedWeek ? weeklyPlanConfigured : true
     },
     {
       panel: 'revisao' as const,
       label: 'Fim da semana',
       title: 'Revisão executiva',
       description: 'Journal + compromissos',
-      done: weeklyReviewSaved
+      done: enforceChecklistForSelectedWeek ? weeklyReviewSaved : true
     },
     {
       panel: 'mensal' as const,
       label: 'Fechamento de ciclo',
       title: 'Revisão mensal',
       description: monthlyWindowOpen ? 'Síntese + decisão do mês' : 'Disponível no fim do mês',
-      done: monthlyReviewSaved || !monthlyWindowOpen
+      done: enforceChecklistForSelectedWeek ? monthlyReviewSaved || !monthlyWindowOpen : true
     }
   ];
 
@@ -776,18 +758,8 @@ export function RitualPage() {
       {error && <p className="surface-error">{error}</p>}
       {ritualNotice && <p className="ritual-notice">{ritualNotice}</p>}
 
-      <PremiumCard title="Ritmo da semana" subtitle={`Escopo: ${selectedWorkspace?.name ?? 'Visão geral'}`}>
+      <PremiumCard title="Ritmo da semana" subtitle="Escopo: Visão geral">
         <div className="ritual-scope-grid">
-          <label>
-            Escopo estratégico
-            <select value={selectedWorkspaceId} onChange={(event) => selectScope(event.target.value)}>
-              {scopeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
           <label>
             Semana de referência
             <input type="date" value={weekStart} onChange={(event) => changeWeek(event.target.value)} />
@@ -887,7 +859,9 @@ export function RitualPage() {
         )}
         <p className="ritual-week-lock">
           <strong>Status do ciclo:</strong>{' '}
-          {weekClosed
+          {!enforceChecklistForSelectedWeek
+            ? 'Semana histórica sem obrigatoriedade. Avance para o ciclo atual quando quiser.'
+            : weekClosed
             ? `Fechado em ${new Date(weekClosedAt as string).toLocaleString('pt-BR')}`
             : !reviewWindowOpen && !weeklyReviewSaved
               ? 'Aberto. Sem pendências de revisão até sexta às 20h.'
@@ -898,7 +872,7 @@ export function RitualPage() {
       </PremiumCard>
 
       {ritualPanel === 'planejamento' && (
-        <PremiumCard title="Planejamento da semana" subtitle={`Semana iniciando em ${weekStart}`}>
+        <PremiumCard title="Planejamento da semana" subtitle={`Semana iniciando em ${formatIsoDate(weekStart)}`}>
           <div className="inline-actions ritual-panel-actions">
             <button type="button" disabled={!allocationDirty || busy} onClick={saveWeeklyAllocation}>
               Salvar planejamento semanal
@@ -985,7 +959,7 @@ export function RitualPage() {
         <>
           <PremiumCard
             title="Checklist obrigatório de encerramento"
-            subtitle={`Semana ${weekStart} • ${weeklyClosingDone}/${weeklyClosingChecklist.length} itens concluídos`}
+            subtitle={`Semana ${formatIsoDate(weekStart)} • ${weeklyClosingDone}/${weeklyClosingChecklist.length} itens concluídos`}
           >
             <div className="ritual-checklist-head">
               <strong>{weeklyCompletionPercent}%</strong>
@@ -1021,7 +995,9 @@ export function RitualPage() {
               </div>
             ) : (
               <p className="ritual-pending-empty">
-                {reviewWindowOpen || weeklyReviewSaved
+                {!enforceChecklistForSelectedWeek
+                  ? 'Semana anterior sem uso registrado. Sem pendências obrigatórias.'
+                  : reviewWindowOpen || weeklyReviewSaved
                   ? 'Sem pendências. Semana pronta para fechamento.'
                   : 'Sem pendências agora. Revisão obrigatória libera na sexta às 20h.'}
               </p>
@@ -1192,7 +1168,7 @@ export function RitualPage() {
       )}
 
       {ritualPanel === 'mensal' && (
-        <PremiumCard title="Fechamento mensal" subtitle={`Mês iniciado em ${monthStart}`}>
+        <PremiumCard title="Fechamento mensal" subtitle={`Mês de ${formatIsoDateMonth(monthStart)}`}>
           <div className="inline-actions ritual-panel-actions">
             <label>
               Mês de referência
@@ -1343,7 +1319,7 @@ export function RitualPage() {
                 {weeklyHistory.map((entry) => (
                   <article key={entry.id} className="ritual-history-card">
                     <header>
-                      <strong>{entry.periodStart}</strong>
+                      <strong>{formatIsoDate(entry.periodStart)}</strong>
                       <span className="priority-chip">{commitmentLabel(entry.commitmentLevel)}</span>
                     </header>
                     <p>{entry.nextPriority ?? 'Sem prioridade definida'}</p>
@@ -1372,7 +1348,7 @@ export function RitualPage() {
                 {monthlyHistory.map((entry) => (
                   <article key={entry.id} className="ritual-history-card">
                     <header>
-                      <strong>{entry.periodStart}</strong>
+                      <strong>{formatIsoDate(entry.periodStart)}</strong>
                       <span className="priority-chip">{commitmentLabel(entry.commitmentLevel)}</span>
                     </header>
                     <p>{entry.nextPriority ?? 'Sem prioridade definida'}</p>

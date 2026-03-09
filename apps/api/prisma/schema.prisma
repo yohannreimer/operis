@@ -38,6 +38,14 @@ enum ProjectType {
   crescimento
 }
 
+enum ProjectMethodology {
+  fourdx
+  delivery
+  launch
+  discovery
+  growth
+}
+
 enum ProjectMetricKind {
   lead
   lag
@@ -65,7 +73,9 @@ enum TaskEnergy {
 
 enum TaskExecutionKind {
   construcao
+  otimizacao
   operacao
+  suporte
 }
 
 enum TaskHorizon {
@@ -143,6 +153,16 @@ enum CommitmentLevel {
   alto
 }
 
+enum NoteType {
+  inbox
+  geral
+  pessoas
+  conteudo
+  produto
+  conclusao_tarefa
+  referencia
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -164,12 +184,32 @@ model Workspace {
 
   projects Project[]
   tasks    Task[]
+  notes    Note[]
   deepWorkSessions DeepWorkSession[]
   weeklyEnergyPlans WeeklyEnergyPlan[]
   strategicReviews StrategicReview[]
   strategicDecisionEvents StrategicDecisionEvent[]
 
   @@map("workspaces")
+}
+
+model NoteFolder {
+  id        String    @id @default(uuid())
+  name      String
+  color     String?   @default("#4f7cff")
+  parentId  String?   @map("parent_id")
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  parent   NoteFolder?  @relation("NoteFolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children NoteFolder[] @relation("NoteFolderHierarchy")
+  notes    Note[]
+
+  @@index([parentId, sortOrder])
+  @@index([archivedAt, sortOrder])
+  @@map("note_folders")
 }
 
 model Project {
@@ -179,9 +219,12 @@ model Project {
   description       String?
   status            ProjectStatus @default(ativo)
   type              ProjectType   @default(operacao)
+  methodology       ProjectMethodology @default(fourdx)
   objective         String?
   primaryMetric     String?       @map("primary_metric")
   actionStatement   String?       @map("action_statement")
+  methodologyExtraOne String?     @map("methodology_extra_one")
+  methodologyExtraTwo String?     @map("methodology_extra_two")
   timeHorizonEnd    DateTime?     @map("time_horizon_end")
   resultStartValue  Float?        @map("result_start_value")
   resultCurrentValue Float?       @map("result_current_value")
@@ -195,6 +238,7 @@ model Project {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tasks     Task[]
+  notes     Note[]
   deepWorkSessions DeepWorkSession[]
   strategicDecisionEvents StrategicDecisionEvent[]
   metrics ProjectMetric[]
@@ -243,6 +287,7 @@ model Task {
   whatsappEvents WhatsappEvent[]
   deepWorkSessions DeepWorkSession[]
   strategicDecisionEvents StrategicDecisionEvent[]
+  notes Note[]
 
   dependencies     TaskDependency[] @relation("TaskDependsOn")
   dependedBy       TaskDependency[] @relation("TaskDependedBy")
@@ -329,6 +374,56 @@ model TaskRestriction {
   @@map("task_restrictions")
 }
 
+model Note {
+  id          String    @id @default(uuid())
+  title       String
+  content     String?
+  type        NoteType  @default(geral)
+  tags        String[]  @default([])
+  pinned      Boolean   @default(false)
+  folderId    String?   @map("folder_id")
+  workspaceId String?   @map("workspace_id")
+  projectId   String?   @map("project_id")
+  taskId      String?   @map("task_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  archivedAt  DateTime? @map("archived_at")
+
+  folder    NoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  revisions NoteRevision[]
+
+  @@index([folderId, updatedAt])
+  @@index([type, updatedAt])
+  @@index([workspaceId, updatedAt])
+  @@index([projectId, updatedAt])
+  @@index([taskId, updatedAt])
+  @@map("notes")
+}
+
+model NoteRevision {
+  id          String   @id @default(uuid())
+  noteId      String   @map("note_id")
+  title       String
+  content     String?
+  type        NoteType @default(geral)
+  tags        String[] @default([])
+  pinned      Boolean  @default(false)
+  folderId    String?  @map("folder_id")
+  workspaceId String?  @map("workspace_id")
+  projectId   String?  @map("project_id")
+  taskId      String?  @map("task_id")
+  source      String   @default("manual")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId, createdAt(sort: Desc)])
+  @@map("note_revisions")
+}
+
 model TaskDependency {
   id              String @id @default(uuid())
   taskId          String @map("task_id")
@@ -405,6 +500,20 @@ model WhatsappEvent {
 
   @@index([relatedTaskId])
   @@map("whatsapp_events")
+}
+
+model WhatsappConversationSession {
+  id               String   @id @default(uuid())
+  phoneNumber      String   @unique @map("phone_number")
+  state            String   @default("idle")
+  payload          Json?
+  expiresAt        DateTime? @map("expires_at")
+  lastInteractionAt DateTime @default(now()) @map("last_interaction_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([state, expiresAt])
+  @@map("whatsapp_conversation_sessions")
 }
 
 model ExecutionEvent {

@@ -17,6 +17,11 @@ const executableTitleSchema = z
   .min(3)
   .refine((value) => value.trim().split(/\s+/).length >= 2, 'Use verbo + objeto no título da tarefa.');
 
+const restrictionInputSchema = z.object({
+  title: z.string().min(1),
+  detail: z.string().optional().nullable()
+});
+
 const taskBodyBaseSchema = z.object({
   workspaceId: z.string().uuid(),
   projectId: z.string().uuid().nullable().optional(),
@@ -48,7 +53,8 @@ const taskCreateSchema = taskBodyBaseSchema
     taskType: z.nativeEnum(TaskType),
     energyLevel: z.nativeEnum(TaskEnergy),
     executionKind: z.nativeEnum(TaskExecutionKind),
-    estimatedMinutes: z.number().int().positive()
+    estimatedMinutes: z.number().int().positive(),
+    restrictions: z.array(restrictionInputSchema).max(10).optional()
   })
   .superRefine((payload, context) => {
     const waitingPerson = payload.waitingOnPerson?.trim();
@@ -117,10 +123,7 @@ const subtaskUpdateSchema = z
     message: 'Informe ao menos um campo para atualizar.'
   });
 
-const restrictionCreateSchema = z.object({
-  title: z.string().min(1),
-  detail: z.string().optional().nullable()
-});
+const restrictionCreateSchema = restrictionInputSchema;
 
 const restrictionUpdateSchema = z
   .object({
@@ -131,6 +134,13 @@ const restrictionUpdateSchema = z
   .refine((payload) => payload.title !== undefined || payload.detail !== undefined || payload.status !== undefined, {
     message: 'Informe ao menos um campo para atualizar.'
   });
+
+const completeTaskBodySchema = z
+  .object({
+    completionMode: z.enum(['note', 'no_note']).optional(),
+    completionNote: z.string().max(5000).optional()
+  })
+  .optional();
 
 export function registerTaskRoutes(app: FastifyInstance, taskService: TaskService) {
   app.get('/tasks', async (request) => {
@@ -178,9 +188,12 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
         strictMode: z.coerce.boolean().optional()
       })
       .parse(request.query);
+    const body = completeTaskBodySchema.parse(request.body);
 
     return taskService.complete(params.taskId, {
-      strictMode: query.strictMode ?? false
+      strictMode: query.strictMode ?? false,
+      completionMode: body?.completionMode,
+      completionNote: body?.completionNote
     });
   });
 

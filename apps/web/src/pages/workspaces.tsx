@@ -17,6 +17,7 @@ import {
   WorkspaceType
 } from '../api';
 import { Modal } from '../components/modal';
+import { TaskCompletionModal } from '../components/task-completion-modal';
 import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock, TabSwitch } from '../components/premium-ui';
 import { useShellContext } from '../components/shell-context';
 import { TaskIntelligenceTable } from '../components/task-intelligence-table';
@@ -147,6 +148,7 @@ export function WorkspacesPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [completionTaskId, setCompletionTaskId] = useState('');
   const [weeklyAllocation, setWeeklyAllocation] = useState<WeeklyAllocation | null>(null);
   const [workspacePortfolioWeekly, setWorkspacePortfolioWeekly] = useState<WorkspacePortfolio | null>(null);
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(null);
@@ -185,6 +187,7 @@ export function WorkspacesPage() {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const completionTask = tasks.find((task) => task.id === completionTaskId) ?? null;
 
   const visibleWorkspaces = useMemo(
     () => workspaces.filter((workspace) => workspace.type !== 'geral'),
@@ -597,11 +600,26 @@ export function WorkspacesPage() {
     navigate(`/workspaces/${workspaceId}`);
   }
 
-  async function completeFrontTask(taskId: string) {
+  function requestTaskCompletion(taskId: string) {
+    setCompletionTaskId(taskId);
+  }
+
+  async function confirmTaskCompletion(input: {
+    completionMode: 'note' | 'no_note';
+    completionNote?: string;
+  }) {
+    if (!completionTaskId) {
+      return;
+    }
+
     try {
       setBusy(true);
-      await api.completeTask(taskId);
+      await api.completeTask(completionTaskId, {
+        completionMode: input.completionMode,
+        completionNote: input.completionNote
+      });
       await Promise.all([load(), refreshGlobal()]);
+      setCompletionTaskId('');
     } catch (requestError) {
       setError((requestError as Error).message);
     } finally {
@@ -840,7 +858,7 @@ export function WorkspacesPage() {
                   selectedTaskId={selectedFrontTaskId}
                   busy={busy}
                   onSelectTask={setSelectedFrontTaskId}
-                  onCompleteTask={completeFrontTask}
+                  onCompleteTask={requestTaskCompletion}
                   onDeleteTask={deleteFrontTask}
                 />
               )}
@@ -1203,6 +1221,14 @@ export function WorkspacesPage() {
           </button>
         </form>
       </Modal>
+
+      <TaskCompletionModal
+        open={Boolean(completionTask)}
+        taskTitle={completionTask?.title ?? 'Tarefa'}
+        busy={busy}
+        onClose={() => setCompletionTaskId('')}
+        onConfirm={(input) => confirmTaskCompletion(input)}
+      />
     </PremiumPage>
   );
 }

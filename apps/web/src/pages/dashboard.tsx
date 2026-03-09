@@ -31,7 +31,7 @@ import {
 } from '../api';
 import { EmptyState, MetricCard, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock, TabSwitch } from '../components/premium-ui';
 import { useShellContext } from '../components/shell-context';
-import { todayIsoDate } from '../utils/date';
+import { formatIsoDate, todayIsoDate } from '../utils/date';
 import { workspaceQuery } from '../utils/workspace';
 
 type SignalTone = 'danger' | 'warning' | 'info' | 'success';
@@ -823,7 +823,7 @@ export function DashboardPage() {
                                 <strong>{decision.decision}</strong>
                                 <span className="priority-chip">
                                   {decision.kind === 'review'
-                                    ? `${decision.periodType === 'monthly' ? 'Mensal' : 'Semanal'} • ${decision.periodStart ?? '-'}`
+                                    ? `${decision.periodType === 'monthly' ? 'Mensal' : 'Semanal'} • ${decision.periodStart ? formatIsoDate(decision.periodStart) : '-'}`
                                     : `Evento • ${decision.eventCode}`}
                                 </span>
                               </div>
@@ -1182,7 +1182,7 @@ export function DashboardPage() {
       {dashboardSection === 'estrategia' && (
         <>
           <section className="premium-grid two">
-            <PremiumCard title="Alocação planejado vs real" subtitle={`semana iniciada em ${weekStart}`}>
+            <PremiumCard title="Alocação planejado vs real" subtitle={`semana iniciada em ${formatIsoDate(weekStart)}`}>
               {!data.weeklyAllocation || data.weeklyAllocation.rows.length === 0 ? (
                 <EmptyState
                   title="Sem alocação registrada"

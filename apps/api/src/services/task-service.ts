@@ -4,6 +4,7 @@ import {
   TaskEnergy,
   TaskExecutionKind,
   FailureReason,
+  NoteType,
   TaskHorizon,
   TaskRestrictionStatus,
   TaskStatus,
@@ -42,10 +43,17 @@ type CreateTaskInput = {
   waitingType?: WaitingType | null;
   waitingPriority?: 'alta' | 'media' | 'baixa' | null;
   waitingDueDate?: string | null;
+  restrictions?: CreateTaskRestrictionInput[];
 };
 
 type UpdateTaskInput = Partial<CreateTaskInput> & {
   status?: TaskStatus;
+};
+
+type CompleteTaskOptions = {
+  strictMode?: boolean;
+  completionMode?: 'note' | 'no_note';
+  completionNote?: string;
 };
 
 type UpdateSubtaskInput = Partial<{
@@ -109,6 +117,23 @@ type WaitingFollowupEntry = {
 export class TaskService {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private isStrategicExecutionKind(kind: TaskExecutionKind) {
+    return kind === 'construcao' || kind === 'otimizacao';
+  }
+
+  private executionKindLabel(kind: TaskExecutionKind) {
+    if (kind === 'construcao') {
+      return 'construção';
+    }
+    if (kind === 'otimizacao') {
+      return 'otimização';
+    }
+    if (kind === 'suporte') {
+      return 'suporte';
+    }
+    return 'operação';
+  }
+
   private clampPercent(value: number) {
     if (!Number.isFinite(value)) {
       return 0;
@@ -135,6 +160,8 @@ export class TaskService {
 
     if (task.executionKind === 'construcao') {
       score += 3;
+    } else if (task.executionKind === 'otimizacao') {
+      score += 2;
     } else {
       score -= 1;
     }
@@ -233,10 +260,10 @@ export class TaskService {
     executionKind: TaskExecutionKind;
     status: TaskStatus;
   }): WorkspaceGuardrailViolation | null {
-    if (input.workspaceMode === 'manutencao' && input.executionKind === 'construcao') {
+    if (input.workspaceMode === 'manutencao' && this.isStrategicExecutionKind(input.executionKind)) {
       return {
         code: 'maintenance_construction',
-        message: `Frente ${input.workspaceName} está em manutenção: tarefas de construção não são permitidas neste modo.`
+        message: `Frente ${input.workspaceName} está em manutenção: tarefas de construção/otimização não são permitidas neste modo.`
       };
     }
 
@@ -550,6 +577,15 @@ export class TaskService {
       throw new Error(createViolation.message);
     }
 
+    const initialRestrictions =
+      input.restrictions
+        ?.map((restriction) => ({
+          title: restriction.title.trim(),
+          detail: restriction.detail?.trim() || null,
+          status: 'aberta' as const
+        }))
+        .filter((restriction) => restriction.title.length > 0) ?? [];
+
     const task = await this.prisma.task.create({
       data: {
         workspaceId: input.workspaceId,
@@ -576,6 +612,7 @@ export class TaskService {
         waitingType: input.waitingType,
         waitingPriority: input.waitingPriority,
         waitingDueDate: input.waitingDueDate ? new Date(input.waitingDueDate) : null,
+        restrictions: initialRestrictions.length ? { create: initialRestrictions } : undefined,
         status: 'backlog'
       }
     });
@@ -788,11 +825,11 @@ export class TaskService {
     }
 
     if (currentTask.executionKind !== task.executionKind) {
-      if (task.executionKind === 'construcao') {
-        changeReasons.push('Natureza alterada para construção de futuro.');
-        updateImpact += 2;
+      if (this.isStrategicExecutionKind(task.executionKind)) {
+        changeReasons.push(`Natureza alterada para ${this.executionKindLabel(task.executionKind)} estratégica.`);
+        updateImpact += task.executionKind === 'construcao' ? 2 : 1;
       } else {
-        changeReasons.push('Natureza alterada para operação.');
+        changeReasons.push(`Natureza alterada para ${this.executionKindLabel(task.executionKind)}.`);
         updateImpact -= 1;
       }
     }
@@ -973,7 +1010,7 @@ export class TaskService {
     });
   }
 
-  async complete(taskId: string, options?: { strictMode?: boolean }) {
+  async complete(taskId: string, options?: CompleteTaskOptions) {
     const currentTask = await this.prisma.task.findUnique({
       where: { id: taskId },
       select: {
@@ -1000,13 +1037,47 @@ export class TaskService {
       }
     }
 
+    const completedAt = new Date();
+
     const task = await this.prisma.task.update({
       where: { id: taskId },
       data: {
         status: 'feito',
-        completedAt: new Date()
+        completedAt
       }
     });
+
+    const activePlannedItem = await this.prisma.dayPlanItem.findFirst({
+      where: {
+        taskId,
+        confirmationState: 'pending',
+        startTime: {
+          lte: completedAt
+        },
+        endTime: {
+          gte: completedAt
+        }
+      },
+      orderBy: {
+        startTime: 'desc'
+      }
+    });
+
+    if (activePlannedItem) {
+      const minimumEnd = new Date(activePlannedItem.startTime.getTime() + 60 * 1000);
+      const normalizedEnd =
+        completedAt.getTime() <= minimumEnd.getTime() ? minimumEnd : completedAt;
+
+      await this.prisma.dayPlanItem.update({
+        where: {
+          id: activePlannedItem.id
+        },
+        data: {
+          endTime: normalizedEnd,
+          confirmationState: 'confirmed_done'
+        }
+      });
+    }
 
     await this.prisma.executionEvent.create({
       data: {
@@ -1043,6 +1114,30 @@ export class TaskService {
     await publishEvent(queueNames.updateGamification, {
       taskId,
       result
+    });
+
+    const completionMode = options?.completionMode ?? 'no_note';
+    const rawCompletionNote = options?.completionNote?.trim();
+    const completionContent =
+      completionMode === 'note' && rawCompletionNote
+        ? rawCompletionNote
+        : 'Nada a registrar.';
+
+    const completionTags = ['conclusao', 'tarefa'];
+    if (completionContent === 'Nada a registrar.') {
+      completionTags.push('sem_observacoes');
+    }
+
+    await this.prisma.note.create({
+      data: {
+        title: `Conclusão · ${currentTask.title}`,
+        content: completionContent,
+        type: NoteType.conclusao_tarefa,
+        tags: completionTags,
+        workspaceId: currentTask.workspaceId,
+        projectId: currentTask.projectId,
+        taskId: currentTask.id
+      }
     });
 
     return task;

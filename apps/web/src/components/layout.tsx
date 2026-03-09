@@ -15,6 +15,7 @@ import {
   Layers3,
   LayoutDashboard,
   ListTodo,
+  NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -158,6 +159,7 @@ const links: NavItem[] = [
   { to: '/workspaces', label: 'Frentes', caption: 'Contextos', icon: Layers3 },
   { to: '/projetos', label: 'Projetos', caption: 'Entregas', icon: BriefcaseBusiness },
   { to: '/tarefas', label: 'Tarefas', caption: 'Backlog e detalhe', icon: ListTodo },
+  { to: '/notas', label: 'Notas', caption: 'Segundo cérebro', icon: NotebookPen },
   { to: '/gamificacao', label: 'Gamificação', caption: 'Performance', icon: Gauge }
 ];
 
@@ -170,6 +172,7 @@ const GO_ROUTE_MAP: Record<string, string> = {
   w: '/workspaces',
   p: '/projetos',
   t: '/tarefas',
+  n: '/notas',
   g: '/gamificacao'
 };
 
@@ -262,17 +265,28 @@ export function Layout() {
     const reviewWindowOpen = isWeeklyReviewWindowOpen(weekStart);
     const monthlyDone = Boolean(monthlyJournal.review?.updatedAt);
     const monthlyWindowOpen = isMonthlyReviewWindowOpen(monthStart);
+    const firstWorkspaceCreatedAt = workspaceData
+      .filter((workspace) => workspace.type !== 'geral' && workspace.createdAt)
+      .map((workspace) => workspace.createdAt as string)
+      .sort((left, right) => left.localeCompare(right))[0];
+    const weeklyGate = weeklyReviewGateDate(weekStart);
+    const firstWeekGrace =
+      !planningDone &&
+      !reviewDone &&
+      Boolean(firstWorkspaceCreatedAt) &&
+      Boolean(weeklyGate) &&
+      new Date(firstWorkspaceCreatedAt as string).getTime() > (weeklyGate as Date).getTime();
     const pendingLabels: string[] = [];
 
-    if (!planningDone) {
+    if (!planningDone && !firstWeekGrace) {
       pendingLabels.push('Definir planejamento semanal');
     }
 
-    if (reviewWindowOpen && !reviewDone) {
+    if (reviewWindowOpen && !reviewDone && !firstWeekGrace) {
       pendingLabels.push('Salvar revisão semanal');
     }
 
-    if (monthlyWindowOpen && !monthlyDone) {
+    if (monthlyWindowOpen && !monthlyDone && !firstWeekGrace) {
       pendingLabels.push('Salvar fechamento mensal');
     }
 
@@ -833,7 +847,7 @@ export function Layout() {
     { keys: 'F', label: 'Entrar/sair do foco total da tabela' },
     { keys: 'S', label: 'Colapsar/expandir sidebar' },
     { keys: '[ / ]', label: 'Trocar contexto (frente)' },
-    { keys: 'G depois D/H/A/R/F/P/T/G', label: 'Ir para páginas rapidamente' }
+    { keys: 'G depois D/H/A/R/F/P/T/N/G', label: 'Ir para páginas rapidamente' }
   ];
 
   const outletContext: ShellContext = {

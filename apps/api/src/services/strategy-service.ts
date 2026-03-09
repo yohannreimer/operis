@@ -30,6 +30,10 @@ function normalizeText(value?: string | null) {
   return trimmed ? trimmed : null;
 }
 
+function isConstructionLikeExecutionKind(kind?: string | null) {
+  return kind === 'construcao' || kind === 'otimizacao';
+}
+
 export class StrategyService {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -212,7 +216,7 @@ export class StrategyService {
         const duration = minutesBetween(item.startTime, item.endTime);
         totalTaskMinutes += duration;
 
-        if (item.task.executionKind === 'construcao') {
+        if (isConstructionLikeExecutionKind(item.task.executionKind)) {
           constructionMinutes += duration;
         } else {
           operationMinutes += duration;

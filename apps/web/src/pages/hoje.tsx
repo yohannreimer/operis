@@ -16,6 +16,7 @@ import {
   TaskType
 } from '../api';
 import { Modal } from '../components/modal';
+import { TaskCompletionModal } from '../components/task-completion-modal';
 import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock, TabSwitch } from '../components/premium-ui';
 import { DragPayload, SchedulerGrid } from '../components/scheduler-grid';
 import { useShellContext } from '../components/shell-context';
@@ -58,6 +59,27 @@ function formatDuration(totalSeconds: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function toIsoDateKey(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function formatAgendaDateLabel(isoDate: string) {
+  const safe = new Date(`${isoDate}T12:00:00.000Z`);
+  return safe.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
 const STRICT_MODE_STORAGE_KEY = 'execution-os.strict-mode';
 
 function readStrictModePreference() {
@@ -84,6 +106,11 @@ type CapacityInsight = {
 };
 
 type HojeSection = 'foco' | 'agenda';
+const TASK_TYPE_PRIORITY_SUGGESTION: Record<TaskType, number> = {
+  a: 5,
+  b: 3,
+  c: 1
+};
 
 function taskTypeWeight(taskType?: TaskType) {
   if (taskType === 'a') {
@@ -113,6 +140,24 @@ function dueUrgencyWeight(dueDate?: string | null) {
   return 0;
 }
 
+function isStrategicExecutionKind(kind?: TaskExecutionKind) {
+  return kind === 'construcao' || kind === 'otimizacao';
+}
+
+function executionKindPriorityBonus(kind?: TaskExecutionKind) {
+  if (kind === 'construcao') {
+    return 28;
+  }
+  if (kind === 'otimizacao') {
+    return 20;
+  }
+  return 0;
+}
+
+function suggestedPriorityFromTaskType(type: TaskType) {
+  return TASK_TYPE_PRIORITY_SUGGESTION[type];
+}
+
 export function HojePage() {
   const date = useMemo(() => todayIsoDate(), []);
   const { activeWorkspaceId, workspaces } = useShellContext();
@@ -136,14 +181,16 @@ export function HojePage() {
   const [blockEditorOpen, setBlockEditorOpen] = useState(false);
 
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
+  const [completionTaskId, setCompletionTaskId] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDefinitionOfDone, setNewTaskDefinitionOfDone] = useState('');
   const [newTaskType, setNewTaskType] = useState<TaskType>('a');
   const [newTaskEnergy, setNewTaskEnergy] = useState<TaskEnergy>('alta');
   const [newTaskExecutionKind, setNewTaskExecutionKind] = useState<TaskExecutionKind>('construcao');
   const [newTaskEstimatedMinutes, setNewTaskEstimatedMinutes] = useState('60');
-  const [newTaskPriority, setNewTaskPriority] = useState(3);
+  const [newTaskPriority, setNewTaskPriority] = useState(5);
   const [newTaskHorizon, setNewTaskHorizon] = useState<TaskHorizon>('active');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [hojeSection, setHojeSection] = useState<HojeSection>('foco');
   const [top3DraftIds, setTop3DraftIds] = useState<string[]>([]);
   const [top3Note, setTop3Note] = useState('');
@@ -163,7 +210,7 @@ export function HojePage() {
       : workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.mode;
 
   useEffect(() => {
-    if (activeWorkspaceMode === 'manutencao' && newTaskExecutionKind === 'construcao') {
+    if (activeWorkspaceMode === 'manutencao' && isStrategicExecutionKind(newTaskExecutionKind)) {
       setNewTaskExecutionKind('operacao');
     }
   }, [activeWorkspaceMode, newTaskExecutionKind]);
@@ -243,11 +290,18 @@ export function HojePage() {
 
   const deepWorkTargetSeconds = activeDeepWork ? Math.max(1, activeDeepWork.targetMinutes * 60) : 1;
   const deepWorkProgressPercent = Math.min(100, Math.round((deepWorkElapsedSeconds / deepWorkTargetSeconds) * 100));
+  const formattedAgendaDate = useMemo(() => formatAgendaDateLabel(date), [date]);
 
   const items = dayPlan?.items ?? [];
   const plannedTaskIds = new Set(items.map((item) => item.taskId).filter(Boolean));
 
-  const doneTasks = tasks.filter((task) => task.status === 'feito');
+  const doneTasks = tasks.filter((task) => {
+    if (task.status !== 'feito') {
+      return false;
+    }
+    const completionKey = toIsoDateKey(task.completedAt) ?? toIsoDateKey(task.updatedAt);
+    return completionKey === date;
+  });
   const openTasks = tasks.filter((task) => ['backlog', 'hoje', 'andamento'].includes(task.status));
   const focusLimit = evolution?.systemMode.focusLimit ?? 3;
   const maxNewTasksPerDay = evolution?.systemMode.maxNewTasksPerDay ?? 999;
@@ -339,7 +393,9 @@ export function HojePage() {
       alerts.push(`${briefing?.alerts.vagueTasks} tarefa(s) vagas sem executabilidade completa.`);
     }
     if (briefing?.alerts.maintenanceConstructionRisk) {
-      alerts.push(`${briefing.alerts.maintenanceConstructionCount} tarefa(s) de construção em frente de manutenção.`);
+      alerts.push(
+        `${briefing.alerts.maintenanceConstructionCount} tarefa(s) de construção/otimização em frente de manutenção.`
+      );
     }
     if (briefing?.alerts.standbyExecutionRisk) {
       alerts.push(`${briefing.alerts.standbyExecutionCount} tarefa(s) em execução em frente standby.`);
@@ -364,6 +420,7 @@ export function HojePage() {
     .sort((left, right) => right.priority - left.priority);
 
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const completionTask = tasks.find((task) => task.id === completionTaskId) ?? null;
 
   const plannedTaskBlocks = useMemo(
     () =>
@@ -452,12 +509,12 @@ export function HojePage() {
           const leftScore =
             taskTypeWeight(left.taskType) * 120 +
             left.priority * 14 +
-            (left.executionKind === 'construcao' ? 28 : 0) +
+            executionKindPriorityBonus(left.executionKind) +
             dueUrgencyWeight(left.dueDate) * 26;
           const rightScore =
             taskTypeWeight(right.taskType) * 120 +
             right.priority * 14 +
-            (right.executionKind === 'construcao' ? 28 : 0) +
+            executionKindPriorityBonus(right.executionKind) +
             dueUrgencyWeight(right.dueDate) * 26;
           return rightScore - leftScore;
         });
@@ -666,7 +723,10 @@ export function HojePage() {
         executionKind: newTaskExecutionKind,
         estimatedMinutes: Number(newTaskEstimatedMinutes) || 60,
         priority: newTaskPriority,
-        horizon: newTaskHorizon
+        horizon: newTaskHorizon,
+        dueDate: newTaskDueDate
+          ? new Date(`${newTaskDueDate}T12:00:00.000Z`).toISOString()
+          : null
       });
       setCreateTaskOpen(false);
       setNewTaskTitle('');
@@ -675,8 +735,9 @@ export function HojePage() {
       setNewTaskEnergy('alta');
       setNewTaskExecutionKind('construcao');
       setNewTaskEstimatedMinutes('60');
-      setNewTaskPriority(3);
+      setNewTaskPriority(5);
       setNewTaskHorizon('active');
+      setNewTaskDueDate('');
       await load();
     } catch (requestError) {
       setError((requestError as Error).message);
@@ -761,17 +822,33 @@ export function HojePage() {
     }
   }
 
-  async function completeTask(taskId: string) {
+  function requestTaskCompletion(taskId: string) {
+    setCompletionTaskId(taskId);
+  }
+
+  async function confirmTaskCompletion(input: {
+    completionMode: 'note' | 'no_note';
+    completionNote?: string;
+  }) {
+    if (!completionTaskId) {
+      return;
+    }
+
     try {
       setBusy(true);
-      await api.completeTask(taskId, { strictMode });
-      if (activeDeepWork?.taskId === taskId && activeDeepWork.state === 'active') {
+      await api.completeTask(completionTaskId, {
+        strictMode,
+        completionMode: input.completionMode,
+        completionNote: input.completionNote
+      });
+      if (activeDeepWork?.taskId === completionTaskId && activeDeepWork.state === 'active') {
         await api.stopDeepWork(activeDeepWork.id, {
           switchedTask: false,
           notes: 'Finalizada junto com conclusão da tarefa.'
         });
       }
       await load();
+      setCompletionTaskId('');
     } catch (requestError) {
       setError((requestError as Error).message);
     } finally {
@@ -782,9 +859,34 @@ export function HojePage() {
   async function startDeepWork(taskId: string) {
     try {
       setBusy(true);
-      await api.startDeepWork({
+      const session = await api.startDeepWork({
         taskId,
         targetMinutes: evolution?.systemMode.deepWorkTargetMinutes ?? 45
+      });
+
+      const task = tasks.find((entry) => entry.id === taskId);
+      const alreadyPlannedToday = items.some((item) => item.taskId === taskId && item.blockType === 'task');
+
+      if (!alreadyPlannedToday) {
+        const startedAt = new Date(session.startedAt ?? new Date().toISOString());
+        const blockMinutes = Math.max(1, task?.estimatedMinutes ?? session.targetMinutes ?? 45);
+        const endAt = new Date(startedAt.getTime() + blockMinutes * 60000);
+
+        try {
+          await api.createDayPlanItem(date, {
+            taskId,
+            blockType: 'task',
+            startTime: startedAt.toISOString(),
+            endTime: endAt.toISOString()
+          });
+        } catch {
+          // Keep Deep Work start resilient even if the agenda block cannot be created due to overlap rules.
+        }
+      }
+
+      await api.updateTask(taskId, {
+        status: 'andamento',
+        horizon: 'active'
       });
       await load();
     } catch (requestError) {
@@ -878,7 +980,7 @@ export function HojePage() {
           subtitle={`Contexto: ${workspaceName}`}
         />
         <section className="premium-grid two-wide">
-          <PremiumCard title={`Agenda ${date}`}>
+          <PremiumCard title={`Agenda ${formattedAgendaDate}`}>
             <SkeletonBlock lines={10} />
           </PremiumCard>
           <PremiumCard title="Pool de execução">
@@ -1183,10 +1285,21 @@ export function HojePage() {
                 </div>
                 <small>
                   {deepWorkElapsedSeconds >= deepWorkTargetSeconds
-                    ? `Meta mínima de ${activeDeepWork.targetMinutes} min atingida`
-                    : `Meta mínima: ${activeDeepWork.targetMinutes} min`}
+                    ? `Meta de foco (${activeDeepWork.targetMinutes} min) atingida.`
+                    : `Meta de foco: ${activeDeepWork.targetMinutes} min (referência).`}
                 </small>
+                {deepWorkElapsedSeconds < deepWorkTargetSeconds && (
+                  <small>Se a tarefa terminar antes, você pode concluir agora sem problema.</small>
+                )}
                 <div className="inline-actions">
+                  <button
+                    type="button"
+                    className="success-button"
+                    disabled={busy}
+                    onClick={() => requestTaskCompletion(activeDeepWork.taskId)}
+                  >
+                    Concluir tarefa + encerrar
+                  </button>
                   <button type="button" className="warning-button" disabled={busy} onClick={registerDeepWorkInterruption}>
                     Interrupção
                   </button>
@@ -1207,7 +1320,11 @@ export function HojePage() {
 
       {hojeSection === 'agenda' && (
         <section className="premium-grid two-wide">
-          <PremiumCard title={`Agenda ${date}`} subtitle="arraste tarefas para blocos de tempo" className="scheduler-card">
+          <PremiumCard
+            title={`Agenda ${formattedAgendaDate}`}
+            subtitle="arraste tarefas para blocos de tempo"
+            className="scheduler-card"
+          >
             <SchedulerGrid
               date={date}
               items={items}
@@ -1266,7 +1383,7 @@ export function HojePage() {
                       type="button"
                       className="ghost-button"
                       disabled={busy || (strictMode && task.taskType !== 'a' && (briefing?.pendingA ?? 0) > 0)}
-                      onClick={() => completeTask(task.id)}
+                      onClick={() => requestTaskCompletion(task.id)}
                     >
                       Concluir
                     </button>
@@ -1329,7 +1446,14 @@ export function HojePage() {
           <div className="row-2">
             <label>
               Tipo
-              <select value={newTaskType} onChange={(event) => setNewTaskType(event.target.value as TaskType)}>
+              <select
+                value={newTaskType}
+                onChange={(event) => {
+                  const nextType = event.target.value as TaskType;
+                  setNewTaskType(nextType);
+                  setNewTaskPriority(suggestedPriorityFromTaskType(nextType));
+                }}
+              >
                 <option value="a">A - Alto impacto</option>
                 <option value="b">B - Importante</option>
                 <option value="c">C - Conveniência</option>
@@ -1340,13 +1464,17 @@ export function HojePage() {
               Tempo estimado (min)
               <input
                 type="number"
-                min={15}
-                step={5}
+                min={1}
+                step={1}
                 value={newTaskEstimatedMinutes}
                 onChange={(event) => setNewTaskEstimatedMinutes(event.target.value)}
               />
             </label>
           </div>
+          <p className="premium-empty">
+            Tipo define impacto ({newTaskType.toUpperCase()}) e prioridade define urgência. Sugestão: P
+            {suggestedPriorityFromTaskType(newTaskType)}.
+          </p>
 
           <div className="row-2">
             <label>
@@ -1366,14 +1494,18 @@ export function HojePage() {
                 <option value="construcao" disabled={activeWorkspaceMode === 'manutencao'}>
                   Construção
                 </option>
+                <option value="otimizacao" disabled={activeWorkspaceMode === 'manutencao'}>
+                  Otimização
+                </option>
                 <option value="operacao">Operação</option>
+                <option value="suporte">Suporte</option>
               </select>
             </label>
           </div>
 
           {activeWorkspaceMode === 'manutencao' && (
             <p className="premium-empty">
-              Frente em manutenção: criação de tarefa no dia fica restrita a operação.
+              Frente em manutenção: criação de tarefa no dia fica restrita a operação/suporte.
             </p>
           )}
           {activeWorkspaceMode === 'standby' && (
@@ -1408,6 +1540,15 @@ export function HojePage() {
               </select>
             </label>
           </div>
+
+          <label>
+            Data limite (opcional)
+            <input
+              type="date"
+              value={newTaskDueDate}
+              onChange={(event) => setNewTaskDueDate(event.target.value)}
+            />
+          </label>
 
           <div className="modal-actions">
             <button type="button" className="text-button" onClick={() => setCreateTaskOpen(false)}>
@@ -1481,6 +1622,14 @@ export function HojePage() {
           />
         )}
       </Modal>
+
+      <TaskCompletionModal
+        open={Boolean(completionTask)}
+        taskTitle={completionTask?.title ?? 'Tarefa'}
+        busy={busy}
+        onClose={() => setCompletionTaskId('')}
+        onConfirm={(input) => confirmTaskCompletion(input)}
+      />
     </PremiumPage>
   );
 }

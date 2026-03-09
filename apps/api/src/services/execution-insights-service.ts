@@ -110,6 +110,10 @@ function normalizeText(value?: string | null) {
     .toLowerCase();
 }
 
+function isConstructionLikeExecutionKind(kind?: string | null) {
+  return kind === 'construcao' || kind === 'otimizacao';
+}
+
 function evaluateRule(draft: EvolutionRuleDraft): EvaluatedEvolutionRule {
   let ratio = 0;
   let passed = false;
@@ -582,7 +586,7 @@ export class ExecutionInsightsService {
         const minutes = minutesBetween(item.startTime, item.endTime);
         plannedTaskMinutes += minutes;
 
-        if (item.task.executionKind === 'construcao') {
+        if (isConstructionLikeExecutionKind(item.task.executionKind)) {
           constructionMinutes += minutes;
         } else {
           operationMinutes += minutes;
@@ -1156,7 +1160,7 @@ export class ExecutionInsightsService {
     const maintenanceConstructionCount = tasks.filter(
       (task) =>
         task.workspace?.mode === 'manutencao' &&
-        task.executionKind === 'construcao' &&
+        isConstructionLikeExecutionKind(task.executionKind) &&
         ['backlog', 'hoje', 'andamento'].includes(task.status)
     ).length;
     const standbyExecutionCount = tasks.filter(
@@ -2296,7 +2300,7 @@ export class ExecutionInsightsService {
 
         bucket.plannedMinutes += duration;
 
-        if (item.task.executionKind === 'construcao') {
+        if (isConstructionLikeExecutionKind(item.task.executionKind)) {
           bucket.constructionMinutes += duration;
         } else {
           bucket.operationMinutes += duration;
