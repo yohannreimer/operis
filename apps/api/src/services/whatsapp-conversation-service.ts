@@ -24,6 +24,24 @@ function normalizeLower(text: string) {
   return text.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+function normalizeOptionToken(text: string) {
+  return normalizeUpper(text).replace(/[\u200B-\u200D\uFE0E\uFE0F\u2060]/g, '').trim();
+}
+
+function extractNumericChoice(text: string, min: number, max: number) {
+  const digits = normalizeOptionToken(text).replace(/[^\d]/g, '');
+  if (digits.length !== 1) {
+    return null;
+  }
+
+  const value = Number(digits);
+  if (!Number.isFinite(value) || value < min || value > max) {
+    return null;
+  }
+
+  return value;
+}
+
 function parseTaskTokens(text: string) {
   return text
     .trim()
@@ -367,12 +385,12 @@ export class WhatsappConversationService {
   }
 
   private isGreeting(text: string) {
-    const normalized = normalizeUpper(text);
+    const normalized = normalizeOptionToken(text);
     return ['OI', 'OLA', 'OLAH', 'BOM DIA', 'BOA TARDE', 'BOA NOITE', 'MENU'].includes(normalized);
   }
 
   private isExit(text: string) {
-    const normalized = normalizeUpper(text);
+    const normalized = normalizeOptionToken(text);
     return ['SAIR', 'CANCELAR', 'VOLTAR'].includes(normalized);
   }
 
@@ -455,9 +473,10 @@ export class WhatsappConversationService {
   }
 
   private async processMenuInput(phoneNumber: string, text: string): Promise<CommandResult> {
-    const normalized = normalizeUpper(text);
+    const normalized = normalizeOptionToken(text);
+    const numericChoice = extractNumericChoice(text, 1, 6);
 
-    if (normalized === '1' || normalized === 'FOCO') {
+    if (numericChoice === 1 || normalized === 'FOCO') {
       const focus = await this.runCommand('foco');
       await this.setSession(
         phoneNumber,
@@ -473,7 +492,7 @@ export class WhatsappConversationService {
       };
     }
 
-    if (normalized === '2' || normalized === 'HOJE' || normalized === 'TAREFAS') {
+    if (numericChoice === 2 || normalized === 'HOJE' || normalized === 'TAREFAS') {
       const tasks = await this.runCommand('tarefas');
       await this.setSession(phoneNumber, 'menu');
       return {
@@ -482,7 +501,7 @@ export class WhatsappConversationService {
       };
     }
 
-    if (normalized === '3' || normalized === 'DEEP' || normalized === 'DEEP WORK') {
+    if (numericChoice === 3 || normalized === 'DEEP' || normalized === 'DEEP WORK') {
       await this.setSession(
         phoneNumber,
         'deep_menu',
@@ -496,7 +515,7 @@ export class WhatsappConversationService {
       };
     }
 
-    if (normalized === '4' || normalized === 'PRAZOS' || normalized === 'FOLLOWUP') {
+    if (numericChoice === 4 || normalized === 'PRAZOS' || normalized === 'FOLLOWUP' || normalized === 'FOLLOWUPS') {
       const due = await this.runCommand('prazos');
       const followups = await this.runCommand('followups');
       await this.setSession(phoneNumber, 'menu');
@@ -505,14 +524,14 @@ export class WhatsappConversationService {
       };
     }
 
-    if (normalized === '5' || normalized === 'INBOX' || normalized === 'CAPTURAR') {
+    if (numericChoice === 5 || normalized === 'INBOX' || normalized === 'CAPTURAR') {
       await this.setSession(phoneNumber, 'capture_inbox', null, LONG_SESSION_TTL_MINUTES);
       return {
         reply: '📥 Envie o texto que você quer capturar na inbox.\n\nDigite *sair* para cancelar.'
       };
     }
 
-    if (normalized === '6' || normalized === 'AJUDA') {
+    if (numericChoice === 6 || normalized === 'AJUDA') {
       await this.setSession(phoneNumber, 'menu');
       return {
         reply: `${this.helpText()}\n\n${this.menuText()}`
@@ -529,14 +548,15 @@ export class WhatsappConversationService {
     session: WhatsappConversationSession,
     text: string
   ): Promise<CommandResult> {
-    const normalized = normalizeUpper(text);
+    const normalized = normalizeOptionToken(text);
+    const numericChoice = extractNumericChoice(text, 1, 4);
     const payload =
       session.payload && typeof session.payload === 'object' && !Array.isArray(session.payload)
         ? (session.payload as Record<string, unknown>)
         : {};
 
     if (session.state === 'focus_menu') {
-      if (normalized === 'A' || normalized === '1' || normalized === 'CONFIRMAR') {
+      if (normalized === 'A' || numericChoice === 1 || normalized === 'CONFIRMAR') {
         const result = await this.runCommand('foco confirmar');
         await this.setSession(
           phoneNumber,
@@ -552,21 +572,21 @@ export class WhatsappConversationService {
         };
       }
 
-      if (normalized === 'B' || normalized === '2' || normalized === 'TROCAR') {
+      if (normalized === 'B' || numericChoice === 2 || normalized === 'TROCAR') {
         await this.setSession(phoneNumber, 'focus_swap_slot', null, LONG_SESSION_TTL_MINUTES);
         return {
           reply: 'Qual *posição* deseja trocar?\n\nResponda *1*, *2* ou *3*.'
         };
       }
 
-      if (normalized === 'C' || normalized === '3' || normalized === 'IDS') {
+      if (normalized === 'C' || numericChoice === 3 || normalized === 'IDS') {
         await this.setSession(phoneNumber, 'focus_manual_ids', null, LONG_SESSION_TTL_MINUTES);
         return {
           reply: '⚙️ Modo avançado:\nEnvie *2 ou 3 IDs* separados por espaço.\n\nPara voltar, digite *D*.'
         };
       }
 
-      if (normalized === 'D' || normalized === '4' || normalized === 'MENU') {
+      if (normalized === 'D' || numericChoice === 4 || normalized === 'MENU') {
         await this.setSession(phoneNumber, 'menu');
         return {
           reply: this.menuText()
@@ -684,10 +704,11 @@ export class WhatsappConversationService {
   }
 
   private async processDeepInput(phoneNumber: string, session: WhatsappConversationSession, text: string) {
-    const normalized = normalizeUpper(text);
+    const normalized = normalizeOptionToken(text);
+    const numericChoice = extractNumericChoice(text, 1, 5);
 
     if (session.state === 'deep_menu') {
-      if (normalized === '1' || normalized === 'INICIAR') {
+      if (numericChoice === 1 || normalized === 'INICIAR') {
         const choices = await this.listTaskChoices(8);
         await this.setSession(
           phoneNumber,
@@ -704,7 +725,7 @@ export class WhatsappConversationService {
         };
       }
 
-      if (normalized === '2' || normalized === 'PARAR') {
+      if (numericChoice === 2 || normalized === 'PARAR') {
         const result = await this.runCommand('deep parar');
         await this.setSession(
           phoneNumber,
@@ -720,7 +741,7 @@ export class WhatsappConversationService {
         };
       }
 
-      if (normalized === '3' || normalized === 'CONCLUIR') {
+      if (numericChoice === 3 || normalized === 'CONCLUIR') {
         const result = await this.runCommand('deep concluir');
         await this.setSession(
           phoneNumber,
@@ -736,14 +757,14 @@ export class WhatsappConversationService {
         };
       }
 
-      if (normalized === '4' || normalized === 'STATUS') {
+      if (numericChoice === 4 || normalized === 'STATUS') {
         const result = await this.runCommand('status');
         return {
           reply: `${this.prettifyReply(result.reply)}\n\n${this.deepMenuText()}`
         };
       }
 
-      if (normalized === '5' || normalized === 'MENU' || normalized === 'VOLTAR') {
+      if (numericChoice === 5 || normalized === 'MENU' || normalized === 'VOLTAR') {
         await this.setSession(phoneNumber, 'menu');
         return {
           reply: this.menuText()
@@ -756,7 +777,7 @@ export class WhatsappConversationService {
     }
 
     if (session.state === 'deep_start_waiting_task') {
-      if (normalized === 'MENU' || normalized === 'VOLTAR' || normalized === '5') {
+      if (normalized === 'MENU' || normalized === 'VOLTAR' || numericChoice === 5) {
         await this.setSession(phoneNumber, 'deep_menu', null, LONG_SESSION_TTL_MINUTES);
         return {
           reply: this.deepMenuText()

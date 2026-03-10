@@ -22,6 +22,7 @@ import { DeepWorkService } from './services/deep-work-service.js';
 import { ExecutionInsightsService } from './services/execution-insights-service.js';
 import { StrategyService } from './services/strategy-service.js';
 import { WhatsappConversationService } from './services/whatsapp-conversation-service.js';
+import { WhatsappAutoDispatchService } from './services/whatsapp-auto-dispatch-service.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -50,6 +51,10 @@ export async function buildApp() {
     prisma,
     whatsappCommandService
   );
+  const whatsappAutoDispatchService = new WhatsappAutoDispatchService(
+    app.log,
+    whatsappCommandService
+  );
 
   app.get('/health', async () => ({ ok: true }));
 
@@ -65,6 +70,11 @@ export async function buildApp() {
   registerNoteRoutes(app, prisma);
   registerGamificationRoutes(app, gamificationService);
   registerWebhookRoutes(app, whatsappCommandService, whatsappConversationService, prisma);
+
+  whatsappAutoDispatchService.start();
+  app.addHook('onClose', async () => {
+    whatsappAutoDispatchService.stop();
+  });
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
