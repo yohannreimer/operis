@@ -232,6 +232,58 @@ export class TaskService {
     }
   }
 
+  private async ensureTaskCompletionFolderId() {
+    const folderName = 'Conclusoes tarefas';
+
+    const existing = await this.prisma.noteFolder.findFirst({
+      where: {
+        archivedAt: null,
+        name: {
+          equals: folderName,
+          mode: 'insensitive'
+        }
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (existing) {
+      return existing.id;
+    }
+
+    const lastRootFolder = await this.prisma.noteFolder.findFirst({
+      where: {
+        archivedAt: null,
+        parentId: null
+      },
+      orderBy: [
+        {
+          sortOrder: 'desc'
+        },
+        {
+          createdAt: 'desc'
+        }
+      ],
+      select: {
+        sortOrder: true
+      }
+    });
+
+    const created = await this.prisma.noteFolder.create({
+      data: {
+        name: folderName,
+        color: '#22c55e',
+        sortOrder: (lastRootFolder?.sortOrder ?? -1) + 1
+      },
+      select: {
+        id: true
+      }
+    });
+
+    return created.id;
+  }
+
   private async touchProjectStrategicSignal(projectId?: string | null, taskType?: TaskType) {
     if (!projectId || taskType === 'c') {
       return;
@@ -1128,12 +1180,15 @@ export class TaskService {
       completionTags.push('sem_observacoes');
     }
 
+    const completionFolderId = await this.ensureTaskCompletionFolderId();
+
     await this.prisma.note.create({
       data: {
         title: `Conclusão · ${currentTask.title}`,
         content: completionContent,
         type: NoteType.conclusao_tarefa,
         tags: completionTags,
+        folderId: completionFolderId,
         workspaceId: currentTask.workspaceId,
         projectId: currentTask.projectId,
         taskId: currentTask.id

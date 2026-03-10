@@ -1361,28 +1361,28 @@ export function NotasPage() {
     () => [
       {
         id: 'todo',
-        label: '/todo',
+        label: '//todo',
         description: 'Inserir checklist simples',
         aliases: ['checklist', 'tarefa'],
         snippet: '- [ ] '
       },
       {
         id: 'checklist3',
-        label: '/checklist',
+        label: '//checklist',
         description: 'Inserir checklist de 3 itens',
         aliases: ['lista', 'execucao'],
         snippet: '- [ ] Item 1\n- [ ] Item 2\n- [ ] Item 3\n'
       },
       {
         id: 'table',
-        label: '/tabela',
+        label: '//tabela',
         description: 'Abrir construtor visual de tabela',
         aliases: ['table', 'grid'],
         run: () => openTableBuilder()
       },
       {
         id: 'decision',
-        label: '/decisao',
+        label: '//decisao',
         description: 'Template de decisão executiva',
         aliases: ['decision'],
         snippet:
@@ -1390,35 +1390,35 @@ export function NotasPage() {
       },
       {
         id: 'retro',
-        label: '/retro',
+        label: '//retro',
         description: 'Template de retrospectiva',
         aliases: ['review', 'aprendizado'],
         snippet: '## Retro rápida\n- Funcionou:\n- Não funcionou:\n- Ajuste imediato:\n'
       },
       {
         id: 'date',
-        label: '/data',
+        label: '//data',
         description: 'Inserir data atual',
         aliases: ['today', 'hoje'],
         snippet: `${new Date().toLocaleDateString('pt-BR')}\n`
       },
       {
         id: 'templates',
-        label: '/templates',
+        label: '//templates',
         description: 'Abrir painel de templates',
         aliases: ['modelos', 'template'],
         run: () => setTemplatesOpen(true)
       },
       {
         id: 'details',
-        label: '/detalhes',
+        label: '//detalhes',
         description: 'Alternar painel de detalhes',
         aliases: ['meta'],
         run: () => setWriterMetaOpen((current) => !current)
       },
       {
         id: 'save',
-        label: '/save',
+        label: '//save',
         description: 'Salvar nota e criar versão',
         aliases: ['salvar'],
         run: () => {
@@ -1950,6 +1950,99 @@ export function NotasPage() {
     selection.addRange(fallback);
   }
 
+  function resolveTextOffsetPosition(root: HTMLElement, offset: number) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let remaining = Math.max(0, offset);
+    let node: Node | null = null;
+
+    while ((node = walker.nextNode())) {
+      const len = node.textContent?.length ?? 0;
+      if (remaining <= len) {
+        return {
+          node,
+          offset: remaining
+        };
+      }
+      remaining -= len;
+    }
+
+    return null;
+  }
+
+  function deleteTextRangeFromEditor(root: HTMLElement, start: number, end: number) {
+    if (end <= start) {
+      return false;
+    }
+
+    const startPos = resolveTextOffsetPosition(root, start);
+    const endPos = resolveTextOffsetPosition(root, end);
+    if (!startPos || !endPos) {
+      return false;
+    }
+
+    const selection = window.getSelection();
+    if (!selection) {
+      return false;
+    }
+
+    const range = document.createRange();
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+    range.deleteContents();
+
+    const cursorRange = document.createRange();
+    cursorRange.setStart(startPos.node, startPos.offset);
+    cursorRange.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(cursorRange);
+    return true;
+  }
+
+  function normalizeWhatsappBody(raw: string) {
+    const lines = raw.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').split('\n');
+    const formatted: string[] = [];
+
+    const toWhatsappBullet = (line: string) => {
+      const checklistMatch = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/);
+      if (checklistMatch) {
+        return `${checklistMatch[1].toLowerCase() === 'x' ? '✅' : '⬜'} ${checklistMatch[2].trim()}`;
+      }
+
+      const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
+      if (bulletMatch) {
+        return `• ${bulletMatch[1].trim()}`;
+      }
+
+      return line.trimEnd();
+    };
+
+    const isStandaloneHeading = (line: string) => /^\*[^*\n].*[^*\n]\*$/.test(line.trim());
+
+    lines.forEach((line, index) => {
+      const current = toWhatsappBullet(line);
+      const trimmed = current.trim();
+      if (!trimmed) {
+        if (formatted.length > 0 && formatted[formatted.length - 1] !== '') {
+          formatted.push('');
+        }
+        return;
+      }
+
+      if (isStandaloneHeading(current) && formatted.length > 0 && formatted[formatted.length - 1] !== '') {
+        formatted.push('');
+      }
+
+      formatted.push(current);
+
+      const nextTrimmed = toWhatsappBullet(lines[index + 1] ?? '').trim();
+      if (isStandaloneHeading(current) && nextTrimmed) {
+        formatted.push('');
+      }
+    });
+
+    return formatted.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function autoAccentInRichEditor(root: HTMLElement) {
     const caretOffset = getCaretTextOffset(root);
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -2171,7 +2264,7 @@ export function NotasPage() {
     const container = document.createElement('div');
     container.innerHTML = normalizeEditorContent(content);
     const body = Array.from(container.childNodes).map(renderNodeToWhatsapp).join('');
-    const compactBody = body.replace(/\n{3,}/g, '\n\n').trim();
+    const compactBody = normalizeWhatsappBody(body);
     const safeTitle = (title.trim() || 'Nova nota').trim();
     return compactBody ? `*${safeTitle}*\n\n${compactBody}` : `*${safeTitle}*`;
   }
@@ -3001,13 +3094,33 @@ export function NotasPage() {
     }
 
     const isSlashTrigger = event.key === '/' || event.code === 'Slash';
-    if (
-      isSlashTrigger &&
-      !event.metaKey &&
-      !event.ctrlKey
-    ) {
-      event.preventDefault();
-      openSlashMenu();
+    if (isSlashTrigger && !event.metaKey && !event.ctrlKey && !slashMenuOpen) {
+      const editor = writerRichEditorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      const caretOffset = getCaretTextOffset(editor);
+      const editorText = editor.innerText ?? '';
+      const previousChar = typeof caretOffset === 'number' ? editorText.slice(caretOffset - 1, caretOffset) : '';
+      const boundaryChar =
+        typeof caretOffset === 'number' && caretOffset >= 2
+          ? editorText.slice(caretOffset - 2, caretOffset - 1)
+          : '';
+      const hasSingleSlashBeforeCaret =
+        typeof caretOffset === 'number' &&
+        caretOffset > 0 &&
+        previousChar === '/';
+      const startsAfterBoundary = !boundaryChar || /\s/.test(boundaryChar);
+
+      if (hasSingleSlashBeforeCaret && startsAfterBoundary) {
+        event.preventDefault();
+        const removed = deleteTextRangeFromEditor(editor, caretOffset - 1, caretOffset);
+        if (removed) {
+          setContent(editor.innerHTML);
+        }
+        openSlashMenu();
+      }
       return;
     }
 
