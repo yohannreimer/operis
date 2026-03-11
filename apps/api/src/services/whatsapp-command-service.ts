@@ -23,6 +23,8 @@ type UpcomingDigestOptions = ReminderDigestOptions & {
   withinMinutes?: number;
 };
 
+const TRANSPORT_PREFIX_REGEX = /^(?:(?:=+|--+|[•·]\s*|[–—-]{2,}\s*))+/;
+
 function clampHour(value: number) {
   return Math.max(0, Math.min(23, value));
 }
@@ -70,6 +72,14 @@ function daysDiffFromReference(isoDate: string, referenceDateKey?: string) {
   return Math.floor((startDue.getTime() - startToday.getTime()) / (24 * 60 * 60 * 1000));
 }
 
+function sanitizeTransportPrefix(rawText: string) {
+  let normalized = rawText.replace(/[\u200B-\u200D\uFE0E\uFE0F\u2060]/g, '').trim();
+  while (TRANSPORT_PREFIX_REGEX.test(normalized)) {
+    normalized = normalized.replace(TRANSPORT_PREFIX_REGEX, '').trimStart();
+  }
+  return normalized;
+}
+
 export class WhatsappCommandService {
   constructor(
     private readonly prisma: PrismaClient,
@@ -108,6 +118,19 @@ export class WhatsappCommandService {
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
       take: 12
     });
+  }
+
+  private statusShort(status: 'hoje' | 'andamento' | 'backlog') {
+    if (status === 'hoje') return 'HOJ';
+    if (status === 'andamento') return 'AND';
+    return 'BLG';
+  }
+
+  private trimLabel(value: string, max: number) {
+    if (value.length <= max) {
+      return value;
+    }
+    return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
   }
 
   private async resolveTaskByToken(idToken: string) {
@@ -280,7 +303,7 @@ export class WhatsappCommandService {
   }
 
   async handle(rawText: string): Promise<CommandResult> {
-    const text = rawText.trim();
+    const text = sanitizeTransportPrefix(rawText);
 
     if (!text) {
       return { reply: 'Comando vazio.' };
@@ -293,6 +316,7 @@ export class WhatsappCommandService {
             '❓ *Comandos disponíveis*',
             '• foco',
             '• tarefas',
+            '• abertas',
             '• projetos',
             '• deep iniciar <id>',
             '• deep parar',
@@ -306,7 +330,12 @@ export class WhatsappCommandService {
 
     const captureMatch = text.match(/^capturar\s+(.+)$/i) ?? text.match(/^inbox:\s*(.+)$/i);
     if (captureMatch) {
-      const content = captureMatch[1].trim();
+      const content = sanitizeTransportPrefix(captureMatch[1]);
+      if (!content) {
+        return {
+          reply: 'Texto vazio para inbox. Envie algo após *inbox:*.'
+        };
+      }
       const inbox = await this.prisma.inboxItem.create({
         data: {
           content,
@@ -487,6 +516,60 @@ export class WhatsappCommandService {
       return { reply: `Tarefas de hoje:\n${formatted}` };
     }
 
+    const abertasMatch = text.match(/^(?:abertas|todas\s+as\s+tarefas|tarefas\s+abertas)(?:\s+(.+))?$/i);
+    if (abertasMatch) {
+      const workspaceName = abertasMatch[1]?.trim();
+      const tasks = await this.prisma.task.findMany({
+        where: {
+          archivedAt: null,
+          status: {
+            in: ['hoje', 'andamento', 'backlog']
+          },
+          workspace: workspaceName
+            ? {
+                name: {
+                  contains: workspaceName,
+                  mode: 'insensitive'
+                }
+              }
+            : undefined
+        },
+        include: {
+          workspace: {
+            select: {
+              name: true
+            }
+          }
+        },
+        orderBy: [{ status: 'asc' }, { priority: 'asc' }, { updatedAt: 'desc' }],
+        take: 24
+      });
+
+      if (!tasks.length) {
+        return { reply: '✅ Nenhuma tarefa aberta.' };
+      }
+
+      const rows = tasks.map((task) => {
+        const id = task.id.slice(0, 8);
+        const status = this.statusShort(task.status as 'hoje' | 'andamento' | 'backlog');
+        const priority = `P${task.priority}`;
+        const workspace = this.trimLabel(task.workspace?.name ?? 'Geral', 12);
+        const title = this.trimLabel(task.title, 38);
+        return `${id} ${status} ${priority.padEnd(2, ' ')} ${workspace.padEnd(12, ' ')} ${title}`;
+      });
+
+      return {
+        reply: [
+          '📋 *Tarefas abertas*',
+          '```',
+          'ID       ST  P   FRENTE       TÍTULO',
+          ...rows,
+          '```',
+          'Use o ID para ações rápidas (ex.: *deep iniciar <id>*).'
+        ].join('\n')
+      };
+    }
+
     const backlogMatch = text.match(/^backlog(?:\s+(.+))?$/i);
     if (backlogMatch) {
       const workspaceName = backlogMatch[1]?.trim();
@@ -620,7 +703,7 @@ export class WhatsappCommandService {
 
     return {
       reply:
-        'Comando não reconhecido. Use: ajuda, foco, foco confirmar, foco trocar <slot> <id>, tarefas, backlog, projetos, deep iniciar <id>, deep parar, deep concluir, alocar <id> HH:mm, fiz <id>, adiar <id>, reagendar <id> HH:mm, prazos, followups, inbox, inbox: <texto>.'
+        'Comando não reconhecido. Use: ajuda, foco, foco confirmar, foco trocar <slot> <id>, tarefas, abertas, backlog, projetos, deep iniciar <id>, deep parar, deep concluir, alocar <id> HH:mm, fiz <id>, adiar <id>, reagendar <id> HH:mm, prazos, followups, inbox, inbox: <texto>.'
     };
   }
 }

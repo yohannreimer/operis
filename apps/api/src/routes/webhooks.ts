@@ -23,6 +23,7 @@ const INBOUND_DEDUP_TTL_MS = 5 * 60 * 1000;
 const INBOUND_SEMANTIC_DEDUP_TTL_MS = 10 * 1000;
 const inboundDedupCache = new Map<string, number>();
 const inboundSemanticDedupCache = new Map<string, number>();
+const TRANSPORT_PREFIX_REGEX = /^(?:(?:=+|--+|[•·]\s*|[–—-]{2,}\s*))+/;
 
 function pickFirstNonEmptyString(...values: unknown[]) {
   for (const value of values) {
@@ -45,6 +46,16 @@ function normalizePhone(rawPhone: string) {
   }
 
   return source.trim();
+}
+
+function stripTransportArtifacts(input: string) {
+  let normalized = input.replace(/[\u200B-\u200D\uFE0E\uFE0F\u2060]/g, '').trim();
+
+  while (TRANSPORT_PREFIX_REGEX.test(normalized)) {
+    normalized = normalized.replace(TRANSPORT_PREFIX_REGEX, '').trimStart();
+  }
+
+  return normalized;
 }
 
 function extractNestedEvolutionPayload(payload: Record<string, unknown>) {
@@ -99,8 +110,9 @@ function normalizeWebhookPayload(rawBody: unknown): NormalizedWebhookPayload {
     payload.content,
     nested.message
   );
+  const sanitizedMessage = message ? stripTransportArtifacts(message) : null;
 
-  if (!from || !message) {
+  if (!from || !sanitizedMessage) {
     throw new Error(
       'Payload de WhatsApp inválido: envie from/phone e message/text ou normalize pelo n8n.'
     );
@@ -115,7 +127,7 @@ function normalizeWebhookPayload(rawBody: unknown): NormalizedWebhookPayload {
 
   return {
     from: normalizePhone(from),
-    message,
+    message: sanitizedMessage,
     externalMessageId: externalMessageId ?? undefined
   };
 }

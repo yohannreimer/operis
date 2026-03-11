@@ -11,10 +11,15 @@ type ConversationState =
   | 'focus_swap_task'
   | 'focus_manual_ids'
   | 'deep_menu'
-  | 'deep_start_waiting_task';
+  | 'deep_start_waiting_task'
+  | 'notes_menu'
+  | 'notes_pick_folder'
+  | 'notes_pick_note'
+  | 'notes_create_quick';
 
 const SESSION_TTL_MINUTES = 45;
 const LONG_SESSION_TTL_MINUTES = 90;
+const TRANSPORT_PREFIX_REGEX = /^(?:(?:=+|--+|[•·]\s*|[–—-]{2,}\s*))+/;
 
 function normalizeUpper(text: string) {
   return text.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
@@ -56,6 +61,19 @@ function parseSwapSlot(text: string) {
   return match ? Number(match[0]) : null;
 }
 
+function sanitizeTransportPrefix(rawText: string) {
+  let normalized = rawText.replace(/[\u200B-\u200D\uFE0E\uFE0F\u2060]/g, '').trim();
+  while (TRANSPORT_PREFIX_REGEX.test(normalized)) {
+    normalized = normalized.replace(TRANSPORT_PREFIX_REGEX, '').trimStart();
+  }
+  return normalized;
+}
+
+function hasAnyIntent(text: string, intents: string[]) {
+  const normalized = normalizeLower(text);
+  return intents.some((intent) => normalized === intent || normalized.includes(`${intent},`) || normalized.includes(`${intent} `) || normalized.includes(` ${intent}`));
+}
+
 type TaskChoice = {
   index: number;
   id: string;
@@ -63,6 +81,19 @@ type TaskChoice = {
   workspaceName: string | null;
   status: string;
   priority: number;
+};
+
+type FolderChoice = {
+  index: number;
+  id: string | null;
+  name: string;
+};
+
+type NoteChoice = {
+  index: number;
+  id: string;
+  title: string;
+  updatedAt: string;
 };
 
 export class WhatsappConversationService {
@@ -82,6 +113,10 @@ export class WhatsappConversationService {
 
     if (state === 'capture_inbox') {
       return 'inbox';
+    }
+
+    if (state.startsWith('notes_')) {
+      return 'notes';
     }
 
     if (state === 'menu') {
@@ -124,6 +159,10 @@ export class WhatsappConversationService {
       return 'tarefas';
     }
 
+    if (/(abertas|todas\s+as\s+tarefas|tarefas\s+abertas)/.test(normalized)) {
+      return 'abertas';
+    }
+
     if (/(backlog|pendencias)/.test(normalized)) {
       return 'backlog';
     }
@@ -142,6 +181,10 @@ export class WhatsappConversationService {
 
     if (normalized.startsWith('inbox:') || normalized.startsWith('capturar ')) {
       return text.trim();
+    }
+
+    if (/(notas?|segundo\s+cer(e|é)bro)/.test(normalized)) {
+      return '__open_notes__';
     }
 
     if (normalized.includes('foco') || normalized.includes('top 3') || normalized.includes('top3')) {
@@ -233,8 +276,10 @@ export class WhatsappConversationService {
       '4) ⏰ Prazos e follow-ups',
       '5) 📥 Capturar inbox',
       '6) ❓ Como usar',
+      '7) 📋 Tarefas abertas',
+      '8) 🗂️ Notas',
       '',
-      'Responda com *1-6* ou digite *sair*.'
+      'Responda com *1-8* ou digite *sair*.'
     ].join('\n');
   }
 
@@ -245,10 +290,12 @@ export class WhatsappConversationService {
       '• *menu* -> abre o painel',
       '• *foco* -> mostra prioridade do dia',
       '• *tarefas* -> lista tarefas de hoje',
+      '• *abertas* -> tarefas abertas (visão geral)',
       '• *deep iniciar <id>* -> inicia deep work',
       '• *deep parar* -> encerra sessão ativa',
       '• *deep concluir* -> encerra e conclui tarefa',
       '• *capturar <texto>* -> manda para inbox',
+      '• *notas* -> abre notas no WhatsApp',
       '',
       '💡 Dica: no fluxo guiado você pode escolher por *número*.'
     ].join('\n');
@@ -272,6 +319,165 @@ export class WhatsappConversationService {
       '3) ✅ Concluir sessão + tarefa',
       '4) 📊 Status do dia',
       '5) ↩️ Voltar ao menu'
+    ].join('\n');
+  }
+
+  private notesMenuText() {
+    return [
+      '🗂️ *Notas*',
+      '1) 🔎 Buscar por pasta',
+      '2) ✍️ Nova nota rápida',
+      '3) ↩️ Voltar ao menu'
+    ].join('\n');
+  }
+
+  private toBrDateTime(iso: string | Date) {
+    const date = typeof iso === 'string' ? new Date(iso) : iso;
+    if (Number.isNaN(date.getTime())) {
+      return typeof iso === 'string' ? iso : date.toISOString();
+    }
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  private normalizeWhatsappBody(raw: string) {
+    const lines = raw.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').split('\n');
+    const formatted: string[] = [];
+
+    const toWhatsappBullet = (line: string) => {
+      const checklistMatch = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/);
+      if (checklistMatch) {
+        return `${checklistMatch[1].toLowerCase() === 'x' ? '✅' : '⬜'} ${checklistMatch[2].trim()}`;
+      }
+
+      const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
+      if (bulletMatch) {
+        return `• ${bulletMatch[1].trim()}`;
+      }
+
+      return line.trimEnd();
+    };
+
+    const isStandaloneHeading = (line: string) => /^\*[^*\n].*[^*\n]\*$/.test(line.trim());
+
+    lines.forEach((line, index) => {
+      const current = toWhatsappBullet(line);
+      const trimmed = current.trim();
+      if (!trimmed) {
+        if (formatted.length > 0 && formatted[formatted.length - 1] !== '') {
+          formatted.push('');
+        }
+        return;
+      }
+
+      if (isStandaloneHeading(current) && formatted.length > 0 && formatted[formatted.length - 1] !== '') {
+        formatted.push('');
+      }
+
+      formatted.push(current);
+
+      const nextTrimmed = toWhatsappBullet(lines[index + 1] ?? '').trim();
+      if (isStandaloneHeading(current) && nextTrimmed) {
+        formatted.push('');
+      }
+    });
+
+    return formatted.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  private noteContentToWhatsapp(content: string | null) {
+    if (!content?.trim()) {
+      return 'Sem conteúdo.';
+    }
+
+    const raw = content
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|ul|ol|h1|h2|h3|blockquote|section|article)>/gi, '\n')
+      .replace(/<(h1|h2|h3)[^>]*>(.*?)<\/\1>/gi, (_match, _tag, inner: string) => `*${inner.trim()}*\n\n`)
+      .replace(/<(strong|b)[^>]*>(.*?)<\/\1>/gi, (_match, _tag, inner: string) => `*${inner.trim()}*`)
+      .replace(/<(em|i)[^>]*>(.*?)<\/\1>/gi, (_match, _tag, inner: string) => `_${inner.trim()}_`)
+      .replace(/<(s|strike|del)[^>]*>(.*?)<\/\1>/gi, (_match, _tag, inner: string) => `~${inner.trim()}~`)
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&#039;/gi, "'")
+      .replace(/&quot;/gi, '"')
+      .trim();
+
+    return this.normalizeWhatsappBody(raw);
+  }
+
+  private async listFolderChoices() {
+    const folders = await this.prisma.noteFolder.findMany({
+      where: {
+        archivedAt: null
+      },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }]
+    });
+
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    const buildPath = (folderId: string) => {
+      const names: string[] = [];
+      let cursor = byId.get(folderId) ?? null;
+      const guard = new Set<string>();
+      while (cursor && !guard.has(cursor.id)) {
+        guard.add(cursor.id);
+        names.unshift(cursor.name);
+        cursor = cursor.parentId ? byId.get(cursor.parentId) ?? null : null;
+      }
+      return names.join(' / ');
+    };
+
+    const rows: FolderChoice[] = [{ index: 1, id: null, name: 'Sem pasta' }];
+    folders.forEach((folder, index) => {
+      rows.push({
+        index: index + 2,
+        id: folder.id,
+        name: buildPath(folder.id) || folder.name
+      });
+    });
+    return rows;
+  }
+
+  private async listNoteChoices(folderId: string | null) {
+    const notes = await this.prisma.note.findMany({
+      where: {
+        archivedAt: null,
+        folderId
+      },
+      orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
+      take: 14
+    });
+
+    return notes.map((note, index) => ({
+      index: index + 1,
+      id: note.id,
+      title: note.title,
+      updatedAt: note.updatedAt.toISOString()
+    })) satisfies NoteChoice[];
+  }
+
+  private renderNoteChoices(folderName: string, choices: NoteChoice[]) {
+    if (!choices.length) {
+      return `🗂️ *${folderName}*\n\nNenhuma nota nessa pasta.\n\nDigite *voltar* para escolher outra pasta ou *menu* para sair.`;
+    }
+
+    const rows = choices.map(
+      (choice) => `${choice.index}) ${choice.title} • ${this.toBrDateTime(choice.updatedAt)}`
+    );
+    return [
+      `🗂️ *${folderName}*`,
+      ...rows,
+      '',
+      'Digite o *número* da nota para abrir.',
+      'Digite *voltar* para pastas ou *menu* para sair.'
     ].join('\n');
   }
 
@@ -395,7 +601,7 @@ export class WhatsappConversationService {
   }
 
   private isDirectCommand(text: string) {
-    return /^(ajuda|help|\?|foco|top3|tarefas|backlog|projetos|deep\s+(iniciar|start|parar|stop|concluir)|alocar\s+|fiz\s+|adiar\s+|reagendar\s+|prazos$|followups?$|status$|inbox$|inbox:\s*|capturar\s+)/i.test(
+    return /^(ajuda|help|\?|foco|top3|tarefas|abertas|backlog|projetos|notas?|deep\s+(iniciar|start|parar|stop|concluir)|alocar\s+|fiz\s+|adiar\s+|reagendar\s+|prazos$|followups?$|status$|inbox$|inbox:\s*|capturar\s+)/i.test(
       text.trim()
     );
   }
@@ -474,7 +680,7 @@ export class WhatsappConversationService {
 
   private async processMenuInput(phoneNumber: string, text: string): Promise<CommandResult> {
     const normalized = normalizeOptionToken(text);
-    const numericChoice = extractNumericChoice(text, 1, 6);
+    const numericChoice = extractNumericChoice(text, 1, 8);
 
     if (numericChoice === 1 || normalized === 'FOCO') {
       const focus = await this.runCommand('foco');
@@ -535,6 +741,21 @@ export class WhatsappConversationService {
       await this.setSession(phoneNumber, 'menu');
       return {
         reply: `${this.helpText()}\n\n${this.menuText()}`
+      };
+    }
+
+    if (numericChoice === 7 || normalized === 'ABERTAS') {
+      const openTasks = await this.runCommand('abertas');
+      await this.setSession(phoneNumber, 'menu');
+      return {
+        reply: `${this.prettifyReply(openTasks.reply)}\n\n${this.menuText()}`
+      };
+    }
+
+    if (numericChoice === 8 || normalized === 'NOTAS' || normalized === 'NOTA') {
+      await this.setSession(phoneNumber, 'notes_menu', null, LONG_SESSION_TTL_MINUTES);
+      return {
+        reply: this.notesMenuText()
       };
     }
 
@@ -720,7 +941,7 @@ export class WhatsappConversationService {
           reply: this.renderTaskChoices(
             choices,
             'Escolha a tarefa para iniciar o *Deep Work*:',
-            'Responda com: *<número> [min]*. Exemplo: 1 45'
+            'Responda com: *<número> [min]*. Exemplo: 1 45\nPara voltar: *menu* ou *cancelar*.'
           )
         };
       }
@@ -777,7 +998,13 @@ export class WhatsappConversationService {
     }
 
     if (session.state === 'deep_start_waiting_task') {
-      if (normalized === 'MENU' || normalized === 'VOLTAR' || numericChoice === 5) {
+      if (
+        normalized === 'MENU' ||
+        normalized === 'VOLTAR' ||
+        normalized === 'CANCELAR' ||
+        normalized === 'SAIR' ||
+        hasAnyIntent(text, ['menu', 'voltar', 'cancelar', 'sair'])
+      ) {
         await this.setSession(phoneNumber, 'deep_menu', null, LONG_SESSION_TTL_MINUTES);
         return {
           reply: this.deepMenuText()
@@ -791,7 +1018,8 @@ export class WhatsappConversationService {
       const candidateToken = this.resolveChoiceToken(text.replace(/\s+\d{1,3}$/, ''), payload);
       if (!candidateToken) {
         return {
-          reply: 'Não entendi.\nResponda com o *número da tarefa* (ou ID) e minutos opcionais.'
+          reply:
+            'Não entendi.\nResponda com o *número da tarefa* (ou ID) e minutos opcionais.\nPara voltar: *menu* ou *cancelar*.'
         };
       }
 
@@ -819,8 +1047,213 @@ export class WhatsappConversationService {
     };
   }
 
+  private async processNotesInput(
+    phoneNumber: string,
+    session: WhatsappConversationSession,
+    text: string
+  ): Promise<CommandResult> {
+    const normalized = normalizeOptionToken(text);
+    const payload =
+      session.payload && typeof session.payload === 'object' && !Array.isArray(session.payload)
+        ? (session.payload as Record<string, unknown>)
+        : {};
+
+    if (session.state === 'notes_menu') {
+      const numericChoice = extractNumericChoice(text, 1, 3);
+      if (numericChoice === 1 || normalized === 'BUSCAR' || normalized === 'PASTAS') {
+        const folders = await this.listFolderChoices();
+        await this.setSession(
+          phoneNumber,
+          'notes_pick_folder',
+          {
+            folders
+          },
+          LONG_SESSION_TTL_MINUTES
+        );
+        return {
+          reply: [
+            '🗂️ *Escolha a pasta*',
+            ...folders.map((folder) => `${folder.index}) ${folder.name}`),
+            '',
+            'Digite o *número da pasta*.',
+            'Digite *menu* para sair.'
+          ].join('\n')
+        };
+      }
+
+      if (numericChoice === 2 || normalized === 'NOVA' || normalized === 'CRIAR') {
+        await this.setSession(phoneNumber, 'notes_create_quick', null, LONG_SESSION_TTL_MINUTES);
+        return {
+          reply:
+            '✍️ *Nova nota rápida*\nEnvie o conteúdo da nota.\nOpcional: use *Título | conteúdo*.\n\nDigite *cancelar* para voltar.'
+        };
+      }
+
+      if (numericChoice === 3 || normalized === 'MENU' || normalized === 'VOLTAR' || normalized === 'SAIR') {
+        await this.setSession(phoneNumber, 'menu');
+        return {
+          reply: this.menuText()
+        };
+      }
+
+      return {
+        reply: `Não entendi essa ação.\n\n${this.notesMenuText()}`
+      };
+    }
+
+    if (session.state === 'notes_pick_folder') {
+      if (normalized === 'MENU' || normalized === 'SAIR' || hasAnyIntent(text, ['menu', 'sair'])) {
+        await this.setSession(phoneNumber, 'menu');
+        return { reply: this.menuText() };
+      }
+      if (normalized === 'VOLTAR' || normalized === 'CANCELAR' || hasAnyIntent(text, ['voltar', 'cancelar'])) {
+        await this.setSession(phoneNumber, 'notes_menu', null, LONG_SESSION_TTL_MINUTES);
+        return { reply: this.notesMenuText() };
+      }
+
+      const byNumber = Number(text.trim());
+      const folderChoices = Array.isArray(payload.folders) ? (payload.folders as FolderChoice[]) : [];
+      const selectedFolder = Number.isFinite(byNumber)
+        ? folderChoices.find((folder) => folder.index === byNumber) ?? null
+        : null;
+
+      if (!selectedFolder) {
+        return {
+          reply: 'Escolha inválida.\nDigite o *número da pasta*.\nOu *voltar* / *menu*.'
+        };
+      }
+
+      const notes = await this.listNoteChoices(selectedFolder.id);
+      await this.setSession(
+        phoneNumber,
+        'notes_pick_note',
+        {
+          folderId: selectedFolder.id,
+          folderName: selectedFolder.name,
+          notes
+        },
+        LONG_SESSION_TTL_MINUTES
+      );
+      return {
+        reply: this.renderNoteChoices(selectedFolder.name, notes)
+      };
+    }
+
+    if (session.state === 'notes_pick_note') {
+      if (normalized === 'MENU' || normalized === 'SAIR' || hasAnyIntent(text, ['menu', 'sair'])) {
+        await this.setSession(phoneNumber, 'menu');
+        return { reply: this.menuText() };
+      }
+      if (normalized === 'VOLTAR' || normalized === 'CANCELAR' || hasAnyIntent(text, ['voltar', 'cancelar'])) {
+        const folders = await this.listFolderChoices();
+        await this.setSession(
+          phoneNumber,
+          'notes_pick_folder',
+          {
+            folders
+          },
+          LONG_SESSION_TTL_MINUTES
+        );
+        return {
+          reply: [
+            '🗂️ *Escolha a pasta*',
+            ...folders.map((folder) => `${folder.index}) ${folder.name}`),
+            '',
+            'Digite o *número da pasta*.',
+            'Digite *menu* para sair.'
+          ].join('\n')
+        };
+      }
+
+      const byNumber = Number(text.trim());
+      const noteChoices = Array.isArray(payload.notes) ? (payload.notes as NoteChoice[]) : [];
+      const selected = Number.isFinite(byNumber)
+        ? noteChoices.find((note) => note.index === byNumber) ?? null
+        : null;
+
+      if (!selected) {
+        return {
+          reply: 'Escolha inválida.\nDigite o *número da nota*.\nOu *voltar* / *menu*.'
+        };
+      }
+
+      const note = await this.prisma.note.findUnique({
+        where: {
+          id: selected.id
+        },
+        include: {
+          folder: {
+            select: {
+              name: true
+            }
+          }
+        }
+      });
+
+      if (!note || note.archivedAt) {
+        return {
+          reply: 'Nota não encontrada.\nDigite outro número, ou *voltar*.'
+        };
+      }
+
+      const noteText = this.noteContentToWhatsapp(note.content);
+      const folderLabel = note.folder?.name ?? 'Sem pasta';
+      return {
+        reply: [
+          `📝 *${note.title}*`,
+          `Pasta: ${folderLabel} • Atualizada: ${this.toBrDateTime(note.updatedAt)}`,
+          '',
+          noteText,
+          '',
+          'Digite outro *número* para abrir outra nota, *voltar* para pastas, ou *menu*.'
+        ].join('\n')
+      };
+    }
+
+    if (session.state === 'notes_create_quick') {
+      if (normalized === 'CANCELAR' || normalized === 'VOLTAR' || hasAnyIntent(text, ['cancelar', 'voltar'])) {
+        await this.setSession(phoneNumber, 'notes_menu', null, LONG_SESSION_TTL_MINUTES);
+        return { reply: this.notesMenuText() };
+      }
+
+      const safe = text.trim();
+      if (!safe) {
+        return {
+          reply: 'Conteúdo vazio.\nEnvie algo para salvar a nota, ou *cancelar*.'
+        };
+      }
+
+      const [rawTitle, ...rest] = safe.split('|');
+      const hasSeparator = rest.length > 0;
+      const title = hasSeparator
+        ? rawTitle.trim() || 'Nova nota'
+        : safe.slice(0, 80).trim() || 'Nova nota';
+      const content = hasSeparator ? rest.join('|').trim() : safe;
+
+      await this.prisma.note.create({
+        data: {
+          title,
+          content,
+          type: 'geral',
+          tags: [],
+          pinned: false
+        }
+      });
+
+      await this.setSession(phoneNumber, 'notes_menu', null, LONG_SESSION_TTL_MINUTES);
+      return {
+        reply: `✅ *Nota criada:* ${title}\n\n${this.notesMenuText()}`
+      };
+    }
+
+    await this.setSession(phoneNumber, 'notes_menu', null, LONG_SESSION_TTL_MINUTES);
+    return {
+      reply: this.notesMenuText()
+    };
+  }
+
   async handleInbound(phoneNumber: string, message: string): Promise<CommandResult> {
-    const text = message.trim();
+    const text = sanitizeTransportPrefix(message);
     if (!text) {
       await this.setSession(phoneNumber, 'menu');
       return {
@@ -852,6 +1285,13 @@ export class WhatsappConversationService {
       };
     }
 
+    if (inferredCommand === '__open_notes__') {
+      await this.setSession(phoneNumber, 'notes_menu', null, LONG_SESSION_TTL_MINUTES);
+      return {
+        reply: this.notesMenuText()
+      };
+    }
+
     if (inferredCommand === '__deep_waiting_task__') {
       const choices = await this.listTaskChoices(8);
       await this.setSession(
@@ -864,7 +1304,7 @@ export class WhatsappConversationService {
         reply: this.renderTaskChoices(
           choices,
           'Escolha a tarefa para iniciar o *Deep Work*:',
-          'Responda com: *<número> [min]*. Exemplo: 1 45'
+          'Responda com: *<número> [min]*. Exemplo: 1 45\nPara voltar: *menu* ou *cancelar*.'
         )
       };
     }
@@ -933,7 +1373,24 @@ export class WhatsappConversationService {
       return this.processDeepInput(phoneNumber, session, text);
     }
 
+    if (session.state.startsWith('notes_')) {
+      return this.processNotesInput(phoneNumber, session, text);
+    }
+
     if (session.state === 'capture_inbox') {
+      const normalized = normalizeOptionToken(text);
+      if (
+        normalized === 'MENU' ||
+        normalized === 'VOLTAR' ||
+        normalized === 'CANCELAR' ||
+        normalized === 'SAIR' ||
+        hasAnyIntent(text, ['menu', 'voltar', 'cancelar', 'sair'])
+      ) {
+        await this.setSession(phoneNumber, 'menu');
+        return {
+          reply: this.menuText()
+        };
+      }
       const captured = await this.runCommand(`inbox: ${text}`);
       await this.setSession(phoneNumber, 'menu');
       return {
