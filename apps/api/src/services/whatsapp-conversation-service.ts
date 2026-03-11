@@ -15,7 +15,9 @@ type ConversationState =
   | 'notes_menu'
   | 'notes_pick_folder'
   | 'notes_pick_note'
-  | 'notes_create_quick';
+  | 'notes_create_quick'
+  | 'open_tasks_list'
+  | 'open_tasks_actions';
 
 const SESSION_TTL_MINUTES = 45;
 const LONG_SESSION_TTL_MINUTES = 90;
@@ -72,6 +74,28 @@ function sanitizeTransportPrefix(rawText: string) {
 function hasAnyIntent(text: string, intents: string[]) {
   const normalized = normalizeLower(text);
   return intents.some((intent) => normalized === intent || normalized.includes(`${intent},`) || normalized.includes(`${intent} `) || normalized.includes(` ${intent}`));
+}
+
+function hasOptionLetter(text: string, letter: 'A' | 'B' | 'C' | 'D') {
+  const raw = text.trim();
+  const regex = new RegExp(`^${letter}(?:\\b|\\W|$)`, 'i');
+  return regex.test(raw);
+}
+
+function extractLeadingInteger(text: string) {
+  const match = text.trim().match(/^(\d{1,3})(?:\b|\D|$)/);
+  if (!match) {
+    return null;
+  }
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function extractChoiceNumbers(text: string, min: number, max: number) {
+  const tokens = (text.match(/\b\d+\b/g) ?? [])
+    .map((token) => Number(token))
+    .filter((value) => Number.isFinite(value) && value >= min && value <= max);
+  return Array.from(new Set(tokens));
 }
 
 type TaskChoice = {
@@ -572,6 +596,47 @@ export class WhatsappConversationService {
     return [title, ...lines, suffix ?? 'Responda com o *número* da tarefa.'].join('\n');
   }
 
+  private renderOpenTaskList(choices: TaskChoice[]) {
+    if (!choices.length) {
+      return [
+        '📋 *Tarefas abertas*',
+        'Nenhuma tarefa aberta agora.',
+        '',
+        'Digite *menu* para voltar.'
+      ].join('\n');
+    }
+
+    const rows = choices.map((choice) => {
+      const status = this.statusLabel(choice.status);
+      return [
+        `${choice.index}) ${choice.title}`,
+        `   • Frente: ${choice.workspaceName ?? 'Geral'} • P${choice.priority} • ${status}`
+      ].join('\n');
+    });
+
+    return [
+      '📋 *Tarefas abertas*',
+      ...rows,
+      '',
+      'Digite o *número* da tarefa para abrir ações.',
+      'Digite *menu* para sair.'
+    ].join('\n');
+  }
+
+  private openTaskActionsText(taskTitle: string) {
+    return [
+      `⚡ *Ações da tarefa*`,
+      `Tarefa: *${taskTitle}*`,
+      '',
+      '1) 🧠 Iniciar Deep Work',
+      '2) ✅ Concluir tarefa',
+      '3) ↩️ Voltar para lista',
+      '4) 🏠 Voltar ao menu',
+      '',
+      'Responda com *1-4*.'
+    ].join('\n');
+  }
+
   private resolveChoiceToken(text: string, payload: Record<string, unknown>) {
     const normalized = text.trim();
     const byNumber = Number(normalized);
@@ -745,10 +810,17 @@ export class WhatsappConversationService {
     }
 
     if (numericChoice === 7 || normalized === 'ABERTAS') {
-      const openTasks = await this.runCommand('abertas');
-      await this.setSession(phoneNumber, 'menu');
+      const choices = await this.listTaskChoices(18);
+      await this.setSession(
+        phoneNumber,
+        'open_tasks_list',
+        {
+          choices
+        },
+        LONG_SESSION_TTL_MINUTES
+      );
       return {
-        reply: `${this.prettifyReply(openTasks.reply)}\n\n${this.menuText()}`
+        reply: this.renderOpenTaskList(choices)
       };
     }
 
@@ -777,7 +849,7 @@ export class WhatsappConversationService {
         : {};
 
     if (session.state === 'focus_menu') {
-      if (normalized === 'A' || numericChoice === 1 || normalized === 'CONFIRMAR') {
+      if (normalized === 'A' || hasOptionLetter(text, 'A') || numericChoice === 1 || normalized === 'CONFIRMAR') {
         const result = await this.runCommand('foco confirmar');
         await this.setSession(
           phoneNumber,
@@ -793,21 +865,39 @@ export class WhatsappConversationService {
         };
       }
 
-      if (normalized === 'B' || numericChoice === 2 || normalized === 'TROCAR') {
+      if (normalized === 'B' || hasOptionLetter(text, 'B') || numericChoice === 2 || normalized === 'TROCAR') {
         await this.setSession(phoneNumber, 'focus_swap_slot', null, LONG_SESSION_TTL_MINUTES);
         return {
-          reply: 'Qual *posição* deseja trocar?\n\nResponda *1*, *2* ou *3*.'
+          reply: 'Qual *posição* deseja trocar?\n\nResponda *1*, *2* ou *3*.\nPara voltar: *menu* ou *voltar*.'
         };
       }
 
-      if (normalized === 'C' || numericChoice === 3 || normalized === 'IDS') {
-        await this.setSession(phoneNumber, 'focus_manual_ids', null, LONG_SESSION_TTL_MINUTES);
+      if (normalized === 'C' || hasOptionLetter(text, 'C') || numericChoice === 3 || normalized === 'IDS') {
+        const choices = await this.listTaskChoices(8);
+        await this.setSession(
+          phoneNumber,
+          'focus_manual_ids',
+          {
+            choices
+          },
+          LONG_SESSION_TTL_MINUTES
+        );
         return {
-          reply: '⚙️ Modo avançado:\nEnvie *2 ou 3 IDs* separados por espaço.\n\nPara voltar, digite *D*.'
+          reply: this.renderTaskChoices(
+            choices,
+            '⚙️ Ajuste manual do foco: escolha *2 ou 3 tarefas* para confirmar.',
+            'Envie as posições (ex.: *1 3*). Também aceita IDs. Para voltar: *menu* ou *voltar*.'
+          )
         };
       }
 
-      if (normalized === 'D' || numericChoice === 4 || normalized === 'MENU') {
+      if (
+        normalized === 'D' ||
+        hasOptionLetter(text, 'D') ||
+        numericChoice === 4 ||
+        normalized === 'MENU' ||
+        hasAnyIntent(text, ['menu', 'voltar', 'cancelar'])
+      ) {
         await this.setSession(phoneNumber, 'menu');
         return {
           reply: this.menuText()
@@ -820,7 +910,13 @@ export class WhatsappConversationService {
     }
 
     if (session.state === 'focus_swap_slot') {
-      if (normalized === 'MENU' || normalized === 'VOLTAR' || normalized === 'D') {
+      if (
+        normalized === 'MENU' ||
+        normalized === 'VOLTAR' ||
+        normalized === 'D' ||
+        hasOptionLetter(text, 'D') ||
+        hasAnyIntent(text, ['menu', 'voltar', 'cancelar'])
+      ) {
         await this.setSession(phoneNumber, 'focus_menu', null, LONG_SESSION_TTL_MINUTES);
         return {
           reply: this.focusMenuText()
@@ -856,7 +952,13 @@ export class WhatsappConversationService {
     }
 
     if (session.state === 'focus_swap_task') {
-      if (normalized === 'MENU' || normalized === 'VOLTAR' || normalized === 'D') {
+      if (
+        normalized === 'MENU' ||
+        normalized === 'VOLTAR' ||
+        normalized === 'D' ||
+        hasOptionLetter(text, 'D') ||
+        hasAnyIntent(text, ['menu', 'voltar', 'cancelar'])
+      ) {
         await this.setSession(phoneNumber, 'focus_menu', null, LONG_SESSION_TTL_MINUTES);
         return {
           reply: this.focusMenuText()
@@ -889,21 +991,44 @@ export class WhatsappConversationService {
     }
 
     if (session.state === 'focus_manual_ids') {
-      if (normalized === 'MENU' || normalized === 'VOLTAR' || normalized === 'D') {
+      if (
+        normalized === 'MENU' ||
+        normalized === 'VOLTAR' ||
+        normalized === 'D' ||
+        hasOptionLetter(text, 'D') ||
+        hasAnyIntent(text, ['menu', 'voltar', 'cancelar'])
+      ) {
         await this.setSession(phoneNumber, 'focus_menu', null, LONG_SESSION_TTL_MINUTES);
         return {
           reply: this.focusMenuText()
         };
       }
 
-      const tokens = parseTaskTokens(text);
-      if (tokens.length < 2) {
+      const choices = Array.isArray(payload.choices) ? (payload.choices as TaskChoice[]) : [];
+      const bySlots = extractChoiceNumbers(text, 1, Math.max(3, choices.length));
+      let taskIds: string[] = [];
+
+      if (bySlots.length >= 2) {
+        taskIds = bySlots
+          .map((slot) => choices.find((choice) => choice.index === slot)?.id ?? null)
+          .filter((value): value is string => Boolean(value));
+      } else {
+        const tokens = parseTaskTokens(text);
+        if (tokens.length >= 2) {
+          taskIds = tokens;
+        }
+      }
+
+      taskIds = Array.from(new Set(taskIds)).slice(0, 3);
+
+      if (taskIds.length < 2) {
         return {
-          reply: 'Envie pelo menos *2 IDs* (ex: abcd1234 efgh5678).\n\nPara voltar, digite *D*.'
+          reply:
+            'Envie pelo menos *2 posições* (ex.: *1 3*) ou *2 IDs*.\nPara voltar: *menu* ou *voltar*.'
         };
       }
 
-      const result = await this.runCommand(`foco confirmar ${tokens.join(' ')}`);
+      const result = await this.runCommand(`foco confirmar ${taskIds.join(' ')}`);
       await this.setSession(
         phoneNumber,
         'focus_menu',
@@ -1044,6 +1169,120 @@ export class WhatsappConversationService {
     await this.setSession(phoneNumber, 'deep_menu', null, LONG_SESSION_TTL_MINUTES);
     return {
       reply: this.deepMenuText()
+    };
+  }
+
+  private async processOpenTasksInput(
+    phoneNumber: string,
+    session: WhatsappConversationSession,
+    text: string
+  ): Promise<CommandResult> {
+    const normalized = normalizeOptionToken(text);
+    const payload =
+      session.payload && typeof session.payload === 'object' && !Array.isArray(session.payload)
+        ? (session.payload as Record<string, unknown>)
+        : {};
+
+    if (session.state === 'open_tasks_list') {
+      if (normalized === 'MENU' || normalized === 'SAIR' || hasAnyIntent(text, ['menu', 'sair'])) {
+        await this.setSession(phoneNumber, 'menu');
+        return { reply: this.menuText() };
+      }
+
+      const selectedNumber = extractLeadingInteger(text);
+      const choices = Array.isArray(payload.choices) ? (payload.choices as TaskChoice[]) : [];
+      const selected = selectedNumber
+        ? choices.find((choice) => choice.index === selectedNumber) ?? null
+        : null;
+
+      if (!selected) {
+        return {
+          reply: 'Escolha inválida.\nDigite o *número* da tarefa ou *menu*.'
+        };
+      }
+
+      await this.setSession(
+        phoneNumber,
+        'open_tasks_actions',
+        {
+          choices,
+          selectedTaskId: selected.id,
+          selectedTaskTitle: selected.title
+        },
+        LONG_SESSION_TTL_MINUTES
+      );
+      return {
+        reply: this.openTaskActionsText(selected.title)
+      };
+    }
+
+    if (session.state === 'open_tasks_actions') {
+      if (normalized === 'MENU' || hasAnyIntent(text, ['menu'])) {
+        await this.setSession(phoneNumber, 'menu');
+        return { reply: this.menuText() };
+      }
+
+      const selectedTaskId =
+        typeof payload.selectedTaskId === 'string' ? payload.selectedTaskId : null;
+      const selectedTaskTitle =
+        typeof payload.selectedTaskTitle === 'string' ? payload.selectedTaskTitle : 'tarefa';
+      if (!selectedTaskId) {
+        const refreshed = await this.listTaskChoices(18);
+        await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
+        return {
+          reply: this.renderOpenTaskList(refreshed)
+        };
+      }
+
+      const numericChoice = extractNumericChoice(text, 1, 4) ?? extractLeadingInteger(text);
+      if (numericChoice === 1 || hasAnyIntent(text, ['deep'])) {
+        const result = await this.runCommand(`deep iniciar ${selectedTaskId}`);
+        await this.setSession(
+          phoneNumber,
+          'deep_menu',
+          {
+            lastAction: 'deep_started',
+            taskToken: selectedTaskId
+          },
+          LONG_SESSION_TTL_MINUTES
+        );
+        return {
+          reply: `${this.prettifyReply(result.reply)}\n\n${this.deepMenuText()}`,
+          relatedTaskId: result.relatedTaskId
+        };
+      }
+
+      if (numericChoice === 2 || hasAnyIntent(text, ['concluir', 'conclui', 'fiz', 'feito'])) {
+        const result = await this.runCommand(`fiz ${selectedTaskId}`);
+        const refreshed = await this.listTaskChoices(18);
+        await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
+        return {
+          reply: `${this.prettifyReply(result.reply)}\n\n${this.renderOpenTaskList(refreshed)}`
+        };
+      }
+
+      if (numericChoice === 3 || normalized === 'VOLTAR' || normalized === 'CANCELAR' || hasAnyIntent(text, ['voltar', 'cancelar'])) {
+        const refreshed = await this.listTaskChoices(18);
+        await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
+        return {
+          reply: this.renderOpenTaskList(refreshed)
+        };
+      }
+
+      if (numericChoice === 4 || normalized === 'SAIR' || hasAnyIntent(text, ['sair'])) {
+        await this.setSession(phoneNumber, 'menu');
+        return { reply: this.menuText() };
+      }
+
+      return {
+        reply: `Não entendi essa ação.\n\n${this.openTaskActionsText(selectedTaskTitle)}`
+      };
+    }
+
+    const refreshed = await this.listTaskChoices(18);
+    await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
+    return {
+      reply: this.renderOpenTaskList(refreshed)
     };
   }
 
@@ -1371,6 +1610,10 @@ export class WhatsappConversationService {
 
     if (session.state.startsWith('deep_')) {
       return this.processDeepInput(phoneNumber, session, text);
+    }
+
+    if (session.state.startsWith('open_tasks_')) {
+      return this.processOpenTasksInput(phoneNumber, session, text);
     }
 
     if (session.state.startsWith('notes_')) {

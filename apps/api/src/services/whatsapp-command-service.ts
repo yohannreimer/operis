@@ -120,12 +120,6 @@ export class WhatsappCommandService {
     });
   }
 
-  private statusShort(status: 'hoje' | 'andamento' | 'backlog') {
-    if (status === 'hoje') return 'HOJ';
-    if (status === 'andamento') return 'AND';
-    return 'BLG';
-  }
-
   private trimLabel(value: string, max: number) {
     if (value.length <= max) {
       return value;
@@ -549,23 +543,25 @@ export class WhatsappCommandService {
         return { reply: '✅ Nenhuma tarefa aberta.' };
       }
 
-      const rows = tasks.map((task) => {
-        const id = task.id.slice(0, 8);
-        const status = this.statusShort(task.status as 'hoje' | 'andamento' | 'backlog');
-        const priority = `P${task.priority}`;
-        const workspace = this.trimLabel(task.workspace?.name ?? 'Geral', 12);
-        const title = this.trimLabel(task.title, 38);
-        return `${id} ${status} ${priority.padEnd(2, ' ')} ${workspace.padEnd(12, ' ')} ${title}`;
+      const rows = tasks.map((task, index) => {
+        const status =
+          task.status === 'hoje'
+            ? 'hoje'
+            : task.status === 'andamento'
+              ? 'em andamento'
+              : 'backlog';
+        return [
+          `${index + 1}) ${this.trimLabel(task.title, 64)}`,
+          `   • Frente: ${this.trimLabel(task.workspace?.name ?? 'Geral', 28)} • P${task.priority} • ${status} • id ${task.id.slice(0, 8)}`
+        ].join('\n');
       });
 
       return {
         reply: [
           '📋 *Tarefas abertas*',
-          '```',
-          'ID       ST  P   FRENTE       TÍTULO',
           ...rows,
-          '```',
-          'Use o ID para ações rápidas (ex.: *deep iniciar <id>*).'
+          '',
+          'Dica: no menu use *7* para abrir ações guiadas por número.'
         ].join('\n')
       };
     }
