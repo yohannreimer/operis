@@ -45,6 +45,8 @@ import {
 } from '../api';
 import { EmptyState, PremiumCard, SkeletonBlock } from '../components/premium-ui';
 import { DiagramCanvas } from '../components/diagram-canvas';
+import { MindMapCanvas } from '../components/mindmap-canvas';
+import { MindMapData } from '../api';
 
 type FolderScope = 'all' | 'unfiled' | string;
 type FolderModalMode = 'create' | 'rename';
@@ -971,6 +973,9 @@ export function NotasPage() {
   const [diagramState, setDiagramState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
   const [diagramData, setDiagramData] = useState<DiagramData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [mindmapState, setMindmapState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
+  const [mindmapData, setMindmapData] = useState<MindMapData | null>(null);
+  const [isMindmapGenerating, setIsMindmapGenerating] = useState(false);
 
   const contentPlain = useMemo(() => extractPlainText(content), [content]);
 
@@ -2990,6 +2995,78 @@ export function NotasPage() {
     if (mode === 'diagram' && diagramState === 'idle' && selectedNoteId) {
       void loadDiagram(selectedNoteId);
     }
+    if (mode === 'mindmap' && mindmapState === 'idle' && selectedNoteId) {
+      void loadMindMap(selectedNoteId);
+    }
+  }
+
+  async function loadMindMap(noteId: string) {
+    if (mindmapState !== 'idle') return;
+    setMindmapState('loading');
+    try {
+      const mindMap = await api.getMindMap(noteId).catch((err: unknown) => {
+        if (err instanceof Error && err.message.includes('404')) return null;
+        if (err instanceof Response && err.status === 404) return null;
+        throw err;
+      });
+      if (mindMap) {
+        setMindmapData(mindMap.data);
+        setMindmapState('ready');
+      } else {
+        setMindmapState('empty');
+      }
+    } catch {
+      setMindmapState('error');
+    }
+  }
+
+  async function handleMindMapSave(data: MindMapData) {
+    if (!selectedNoteId) return;
+    try {
+      if (mindmapState === 'empty') {
+        await api.createMindMap(selectedNoteId, data);
+        setMindmapData(data);
+        setMindmapState('ready');
+      } else {
+        await api.updateMindMap(selectedNoteId, data);
+        setMindmapData(data);
+      }
+    } catch {
+      // silent autosave failure
+    }
+  }
+
+  async function handleMindMapGenerate() {
+    if (!selectedNoteId) return;
+    setIsMindmapGenerating(true);
+    try {
+      let result = await api.generateMindMap(selectedNoteId, false).catch(() => null);
+      if (!result) {
+        setIsMindmapGenerating(false);
+        return;
+      }
+      if ('data' in result && result.data && (result.data as { error?: string }).error === 'mindmap_exists') {
+        const confirm = window.confirm('Já existe um mapa mental. Substituir com o gerado pela IA?');
+        if (confirm) {
+          result = await api.generateMindMap(selectedNoteId, true).catch(() => null);
+        }
+      }
+      if (result && 'id' in result) {
+        setMindmapData((result as { data: MindMapData }).data);
+        setMindmapState('ready');
+      }
+    } catch {
+      alert('IA indisponível, tente em instantes.');
+    } finally {
+      setIsMindmapGenerating(false);
+    }
+  }
+
+  async function handleMindMapDelete() {
+    if (!selectedNoteId) return;
+    await api.deleteMindMap(selectedNoteId).catch(() => null);
+    setMindmapData(null);
+    setMindmapState('empty');
   }
 
   async function handleDiagramSave(data: DiagramData) {
@@ -3453,6 +3530,8 @@ export function NotasPage() {
     setCanvasMode('text');
     setDiagramState('idle');
     setDiagramData(null);
+    setMindmapState('idle');
+    setMindmapData(null);
   }
 
   function insertPeopleTemplate() {
@@ -4673,9 +4752,8 @@ export function NotasPage() {
                   onClick={() => handleModeChange('diagram')}
                 >⬡ Diagrama</button>
                 <button
-                  className="canvas-mode-btn"
-                  title="Em breve"
-                  disabled
+                  className={`canvas-mode-btn ${canvasMode === 'mindmap' ? 'active' : ''}`}
+                  onClick={() => handleModeChange('mindmap')}
                 >✦ Mapa Mental</button>
               </div>
 
@@ -4866,6 +4944,48 @@ export function NotasPage() {
                       onGenerate={() => void handleDiagramGenerate()}
                       onDelete={() => void handleDiagramDelete()}
                       isGenerating={isGenerating}
+                      noteTextLength={contentPlain.length}
+                    />
+                  )}
+                </div>
+              )}
+
+              {canvasMode === 'mindmap' && (
+                <div className="canvas-area">
+                  {mindmapState === 'loading' && (
+                    <div className="canvas-loading">Carregando mapa mental...</div>
+                  )}
+                  {mindmapState === 'error' && (
+                    <div className="canvas-error">
+                      <p>Erro ao carregar o mapa mental.</p>
+                      <button onClick={() => { setMindmapState('idle'); void loadMindMap(selectedNoteId); }}>
+                        Tentar novamente
+                      </button>
+                    </div>
+                  )}
+                  {mindmapState === 'empty' && (
+                    <div className="canvas-empty-state">
+                      <div className="canvas-empty-icon">✦</div>
+                      <p>Nenhum mapa mental ainda</p>
+                      <div className="canvas-empty-actions">
+                        <button className="ghost-button" onClick={() => void handleMindMapSave({ nodeData: { id: 'root', topic: 'Ideia', children: [] } })}>
+                          Começar do zero
+                        </button>
+                        {contentPlain.length >= 50 && (
+                          <button onClick={() => void handleMindMapGenerate()} disabled={isMindmapGenerating}>
+                            {isMindmapGenerating ? 'Gerando...' : '✦ Gerar da nota'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {mindmapState === 'ready' && mindmapData && (
+                    <MindMapCanvas
+                      initialData={mindmapData}
+                      onSave={(data) => void handleMindMapSave(data)}
+                      onGenerate={() => void handleMindMapGenerate()}
+                      onDelete={() => void handleMindMapDelete()}
+                      isGenerating={isMindmapGenerating}
                       noteTextLength={contentPlain.length}
                     />
                   )}
