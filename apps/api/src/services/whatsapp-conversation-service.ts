@@ -1,6 +1,9 @@
 import { Prisma, PrismaClient, WhatsappConversationSession } from '@prisma/client';
+import { HabitService } from './habit-service.js';
 
 import { CommandResult, WhatsappCommandService } from './whatsapp-command-service.js';
+import { WhatsappLLMService, LLMIntent, LLMContext } from './whatsapp-llm-service.js';
+import { WhatsappBriefingService, DayHumor } from './whatsapp-briefing-service.js';
 
 type ConversationState =
   | 'idle'
@@ -120,11 +123,30 @@ type NoteChoice = {
   updatedAt: string;
 };
 
+// Callback called when user declares their humor so auto-dispatch can calibrate
+type OnHumorDeclared = (humor: DayHumor, dateKey: string) => void;
+
 export class WhatsappConversationService {
+  private onHumorDeclared: OnHumorDeclared | null = null;
+
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly commandService: WhatsappCommandService
+    private readonly commandService: WhatsappCommandService,
+    private readonly llmService?: WhatsappLLMService
   ) {}
+
+  /**
+   * Register a callback so the auto-dispatch service is notified when the
+   * user declares their day humor via the morning briefing question.
+   */
+  setOnHumorDeclared(callback: OnHumorDeclared) {
+    this.onHumorDeclared = callback;
+  }
+
+  private notifyHumor(humor: DayHumor) {
+    const dateKey = this.todayDateKey();
+    this.onHumorDeclared?.(humor, dateKey);
+  }
 
   private stateModule(state: ConversationState) {
     if (state.startsWith('focus_')) {
@@ -1491,6 +1513,226 @@ export class WhatsappConversationService {
     };
   }
 
+  // ─── LLM intent handler ─────────────────────────────────────────────────────
+
+  private todayDateKey(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  private dayOfWeekPt(d: Date): string {
+    return ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'][d.getDay()];
+  }
+
+  private async buildLLMContext(): Promise<LLMContext> {
+    const dateKey = this.todayDateKey();
+    const dayOfWeek = this.dayOfWeekPt(new Date());
+
+    // Fetch top 3 tasks
+    try {
+      const briefing = await this.commandService.getBriefingForLLM(dateKey);
+      return {
+        dateKey,
+        dayOfWeek,
+        top3Tasks: briefing.top3Tasks,
+        todayCommitments: briefing.todayCommitments
+      };
+    } catch {
+      return { dateKey, dayOfWeek };
+    }
+  }
+
+  private async handleLLMIntent(
+    phoneNumber: string,
+    intent: LLMIntent,
+    rawText: string
+  ): Promise<CommandResult | null> {
+    switch (intent.action) {
+      case 'open_menu': {
+        await this.setSession(phoneNumber, 'menu');
+        return { reply: this.menuText() };
+      }
+
+      case 'help': {
+        return { reply: this.helpText() };
+      }
+
+      case 'morning_briefing':
+      case 'status': {
+        const result = await this.runCommand('foco');
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'list_tasks': {
+        const result = await this.runCommand('tarefas');
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'list_commitments': {
+        const dateKey = (intent as { action: 'list_commitments'; date?: string }).date ?? this.todayDateKey();
+        const block = await this.commandService.buildCommitmentsForDate(dateKey);
+        if (!block) {
+          return { reply: `📅 Sem compromissos para ${dateKey}.` };
+        }
+        return { reply: block };
+      }
+
+      case 'create_task': {
+        const i = intent as Extract<LLMIntent, { action: 'create_task' }>;
+        const typeFlag = i.taskType ? ` tipo:${i.taskType}` : '';
+        const dueFlag = i.dueDate ? ` prazo:${i.dueDate}` : '';
+        const result = await this.runCommand(`criar tarefa ${i.title}${typeFlag}${dueFlag}`);
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'capture_inbox': {
+        const i = intent as Extract<LLMIntent, { action: 'capture_inbox' }>;
+        const result = await this.runCommand(`inbox: ${i.content}`);
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'complete_task': {
+        const i = intent as Extract<LLMIntent, { action: 'complete_task' }>;
+        const result = await this.runCommand(`fiz ${i.titleHint}`);
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'start_deep_work': {
+        const i = intent as Extract<LLMIntent, { action: 'start_deep_work' }>;
+        const result = await this.runCommand(`deep iniciar ${i.titleHint}`);
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'top3_lock': {
+        const result = await this.runCommand('foco confirmar');
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'top3_update': {
+        const i = intent as Extract<LLMIntent, { action: 'top3_update' }>;
+        if (!i.titleHints.length) {
+          return { reply: 'Qual tarefa você quer colocar no foco? Envie o nome ou parte do título.' };
+        }
+        const result = await this.runCommand(`foco confirmar ${i.titleHints.join(' ')}`);
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'list_projects': {
+        const result = await this.runCommand('projetos');
+        return { ...result, reply: this.prettifyReply(result.reply) };
+      }
+
+      case 'create_commitment': {
+        const i = intent as Extract<LLMIntent, { action: 'create_commitment' }>;
+        // Create commitment directly via DB (no CLI equivalent for complex commitments)
+        try {
+          const created = await this.commandService.createCommitmentFromIntent(i);
+          const timeStr = i.startTime ? ` às ${i.startTime}` : '';
+          const recStr = i.type === 'fixo' && i.recurrenceDays?.length
+            ? ` (toda ${i.recurrenceDays.join(', ')})`
+            : i.date ? ` no dia ${i.date}` : '';
+          return {
+            reply: `✅ *Compromisso criado:* ${created.title}${timeStr}${recStr}`
+          };
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Erro ao criar compromisso.';
+          return { reply: `❌ ${msg}` };
+        }
+      }
+
+      case 'cancel_commitment': {
+        const i = intent as Extract<LLMIntent, { action: 'cancel_commitment' }>;
+        try {
+          const result = await this.commandService.cancelCommitmentFromIntent(i);
+          return { reply: result };
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Não encontrei esse compromisso.';
+          return { reply: `❌ ${msg}` };
+        }
+      }
+
+      case 'reschedule_commitment': {
+        const i = intent as Extract<LLMIntent, { action: 'reschedule_commitment' }>;
+        try {
+          const result = await this.commandService.rescheduleCommitmentFromIntent(i);
+          return { reply: result };
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Não consegui remarcar esse compromisso.';
+          return { reply: `❌ ${msg}` };
+        }
+      }
+
+      case 'log_habit': {
+        const i = intent as Extract<LLMIntent, { action: 'log_habit' }>;
+        const habitService = new HabitService(this.prisma);
+        const dateKey = i.date ?? this.todayDateKey();
+        const habit = await habitService.findHabitByHint(i.titleHint);
+        if (!habit) {
+          const allHabits = await this.prisma.habit.findMany({ where: { status: 'ativo' }, select: { title: true } });
+          const list = allHabits.map(h => `• ${h.title}`).join('\n');
+          return { reply: `❓ Não encontrei nenhum hábito com "${i.titleHint}".\n\nSeus hábitos:\n${list || 'Nenhum hábito configurado ainda.'}` };
+        }
+        if (habit.type === 'vice') {
+          return { reply: `⚠️ "${habit.title}" é um vício. Para registrar recaída, diga "recaí em ${habit.title}".` };
+        }
+        const value = i.value ?? 1;
+        await this.prisma.habitLog.upsert({
+          where: { habitId_date: { habitId: habit.id, date: dateKey } },
+          create: { habitId: habit.id, date: dateKey, value },
+          update: { value: { increment: habit.type === 'quantitative' ? value : 0 } },
+        });
+        habitService.processXP(habit.id, dateKey).catch(() => {});
+        const streak = await habitService.calculateStreak(habit.id, dateKey, habit.type as 'binary' | 'quantitative');
+        const streakText = streak > 1 ? ` 🔥 ${streak} dias seguidos!` : '';
+        if (habit.type === 'quantitative' && habit.dailyTarget) {
+          const log = await this.prisma.habitLog.findUnique({ where: { habitId_date: { habitId: habit.id, date: dateKey } } });
+          const current = log?.value ?? value;
+          const pct = Math.min(100, Math.round((current / habit.dailyTarget) * 100));
+          return { reply: `✅ ${habit.title}: ${current}/${habit.dailyTarget} ${habit.unit ?? ''}${streakText} (${pct}%)` };
+        }
+        return { reply: `✅ ${habit.title} registrado!${streakText}` };
+      }
+
+      case 'vice_recaiu': {
+        const i = intent as Extract<LLMIntent, { action: 'vice_recaiu' }>;
+        const habitService = new HabitService(this.prisma);
+        const dateKey = i.date ?? this.todayDateKey();
+        const habit = await habitService.findHabitByHint(i.titleHint);
+        if (!habit) {
+          return { reply: `❓ Não encontrei nenhum vício com "${i.titleHint}".` };
+        }
+        if (habit.type !== 'vice') {
+          return { reply: `⚠️ "${habit.title}" não é um vício — use "fiz ${habit.title}" para registrar.` };
+        }
+        const previousStreak = await habitService.calculateStreak(habit.id, dateKey, 'vice');
+        await this.prisma.habitLog.upsert({
+          where: { habitId_date: { habitId: habit.id, date: dateKey } },
+          create: { habitId: habit.id, date: dateKey, value: -1 },
+          update: { value: -1 },
+        });
+        const msg = previousStreak > 0
+          ? `💔 Registrado. Você tinha ${previousStreak} dia${previousStreak > 1 ? 's' : ''} limpo${previousStreak > 1 ? 's' : ''} de "${habit.title}". Amanhã recomeça.`
+          : `💔 Registrado. Amanhã é um novo dia para "${habit.title}".`;
+        return { reply: msg };
+      }
+
+      case 'list_habits': {
+        const i = intent as Extract<LLMIntent, { action: 'list_habits' }>;
+        const habitService = new HabitService(this.prisma);
+        const dateKey = i.date ?? this.todayDateKey();
+        const lines = await habitService.buildHabitsForLLM(dateKey);
+        if (!lines.length) return { reply: '📋 Nenhum hábito configurado ainda. Acesse /habitos no app para criar.' };
+        return { reply: `📋 Hábitos de hoje:\n${lines.join('\n')}` };
+      }
+
+      case 'unknown':
+        return null; // fall through to regex inference
+
+      default:
+        return null;
+    }
+  }
+
   async handleInbound(phoneNumber: string, message: string): Promise<CommandResult> {
     const text = sanitizeTransportPrefix(message);
     if (!text) {
@@ -1515,6 +1757,36 @@ export class WhatsappConversationService {
     }
 
     const session = await this.getSession(phoneNumber);
+
+    // ── Humor declaration (briefing reply: "1", "2" ou "3") ──────────────────
+    const humorReply = WhatsappBriefingService.parseHumorReply(text);
+    if (humorReply) {
+      this.notifyHumor(humorReply);
+      const humorMessages: Record<DayHumor, string> = {
+        focado: '💪 Ótimo! Foco total hoje. Vamos nessa.',
+        cansado: '🤝 Entendido — dia leve. Vou manter 2 prioridades e não te interromper muito.',
+        sobrecarregado: '🧘 Ok, 1 prioridade só hoje. Faz o que puder — isso já é suficiente.'
+      };
+      return { reply: humorMessages[humorReply] };
+    }
+
+    // ── LLM intent extraction (when idle or session is not mid-flow) ──────────
+    const isInFlow = session && session.state !== 'idle' && session.state !== 'menu';
+    if (this.llmService?.isAvailable && !isInFlow) {
+      try {
+        const context = await this.buildLLMContext();
+        const intent = await this.llmService.extractIntent(text, context);
+        if (intent && intent.action !== 'unknown') {
+          const llmResult = await this.handleLLMIntent(phoneNumber, intent, text);
+          if (llmResult) {
+            return llmResult;
+          }
+        }
+      } catch {
+        // LLM extraction failed — continue with regex inference below
+      }
+    }
+
     const inferredCommand = this.inferNaturalCommand(text, session);
 
     if (inferredCommand === '__open_menu__') {

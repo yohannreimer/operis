@@ -911,6 +911,7 @@ export function NotasPage() {
   const [folderColorDraft, setFolderColorDraft] = useState(DEFAULT_FOLDER_COLOR);
   const [folderParentDraft, setFolderParentDraft] = useState('');
   const [folderModalBusy, setFolderModalBusy] = useState(false);
+  const [folderContextMenuId, setFolderContextMenuId] = useState<string | null>(null);
 
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
@@ -2868,6 +2869,38 @@ export function NotasPage() {
     }
   }
 
+  function openRenameForFolder(folder: { id: string; name: string; color?: string | null; parentId?: string | null }) {
+    setFolderScope(folder.id);
+    setFolderModalMode('rename');
+    setFolderModalTitle('Renomear pasta');
+    setFolderNameDraft(folder.name);
+    setFolderColorDraft(folder.color ?? DEFAULT_FOLDER_COLOR);
+    setFolderParentDraft(folder.parentId ?? '');
+    setFolderModalOpen(true);
+    setFolderContextMenuId(null);
+  }
+
+  async function deleteFolderById(folder: { id: string; name: string }) {
+    const shouldDelete = window.confirm(
+      `Excluir pasta "${folder.name}"? Notas internas ficarão sem pasta e subpastas sobem de nível.`
+    );
+    if (!shouldDelete) {
+      setFolderContextMenuId(null);
+      return;
+    }
+    try {
+      setBusy(true);
+      await api.deleteNoteFolder(folder.id);
+      setFolderScope('all');
+      setFolderContextMenuId(null);
+      await load();
+    } catch (requestError) {
+      setError((requestError as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function moveNoteToFolder(noteId: string, targetFolderId: string | null) {
     const note = notes.find((row) => row.id === noteId);
     if (!note) {
@@ -3794,6 +3827,37 @@ export function NotasPage() {
               {expanded ? '▾' : '▸'}
             </button>
           )}
+
+          <div className="notes-folder-context-wrap">
+            <button
+              type="button"
+              className="notes-folder-context-btn"
+              title="Ações da pasta"
+              onClick={(event) => {
+                event.stopPropagation();
+                setFolderContextMenuId((current) => (current === folder.id ? null : folder.id));
+              }}
+            >
+              ···
+            </button>
+            {folderContextMenuId === folder.id && (
+              <div className="notes-folder-context-menu">
+                <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); openRenameForFolder(folder); }}
+                >
+                  Renomear
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={(event) => { event.stopPropagation(); void deleteFolderById(folder); }}
+                >
+                  Excluir
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {hasChildren && expanded && (
@@ -5012,14 +5076,6 @@ export function NotasPage() {
             {rootFolders.map((folder) => renderFolderNode(folder, 0, new Set()))}
           </ul>
 
-          <div className="notes-sidebar-actions">
-            <button type="button" className="ghost-button" onClick={openRenameFolderModal} disabled={!activeFolder || busy}>
-              Renomear pasta
-            </button>
-            <button type="button" className="danger-button" onClick={deleteActiveFolder} disabled={!activeFolder || busy}>
-              Excluir pasta
-            </button>
-          </div>
         </aside>
 
         <section className="notes-app-list">
@@ -5064,13 +5120,6 @@ export function NotasPage() {
           </div>
 
           <div className="notes-list-toolbar">
-            <div className="notes-list-toolbar-hints">
-              <span className="notes-list-toolbar-kicker">Atalhos</span>
-              <small>/ buscar</small>
-              <small>J/K navegar</small>
-              <small>Enter abrir</small>
-              <small>N nova nota</small>
-            </div>
             <select value={sortMode} onChange={(event) => setSortMode(event.target.value as NoteSortMode)}>
               <option value="updated_desc">Mais recentes</option>
               <option value="updated_asc">Mais antigas</option>
@@ -5105,7 +5154,7 @@ export function NotasPage() {
                       onDragEnd={handleNoteDragEnd}
                     >
                       <div>
-                        <strong>{displayNoteTitle(note.title)}</strong>
+                        <strong className={(note.title ?? '').trim().length === 0 ? 'notes-untitled' : ''}>{displayNoteTitle(note.title)}</strong>
                         <small>{noteExcerpt(note)}</small>
                         <small className="notes-list-date">{resolveFolderPath(note.folderId)}</small>
                         <small className="notes-list-date">Atualizada em {formatDateLabel(note.updatedAt)}</small>

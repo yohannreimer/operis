@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { fireTaskComplete } from '../utils/celebrations';
 import { Modal } from './modal';
 
 type CompletionMode = 'note' | 'no_note';
@@ -48,6 +49,7 @@ export function TaskCompletionModal({
       return;
     }
 
+    fireTaskComplete();
     await onConfirm({
       completionMode: mode,
       completionNote: mode === 'note' ? note.trim() : undefined

@@ -7,12 +7,14 @@ import { publishEvent } from '../infra/rabbit.js';
 import { queueNames } from '@execution-os/shared';
 import { WhatsappCommandService } from '../services/whatsapp-command-service.js';
 import { WhatsappConversationService } from '../services/whatsapp-conversation-service.js';
+import { WhatsappAudioService } from '../services/whatsapp-audio-service.js';
 import { PrismaClient } from '@prisma/client';
 
 type NormalizedWebhookPayload = {
   from: string;
   message: string;
   externalMessageId?: string;
+  audioUrl?: string;
 };
 
 type DispatchRequestBody = {
@@ -79,6 +81,21 @@ function extractNestedEvolutionPayload(payload: Record<string, unknown>) {
       ? (messageObject.extendedTextMessage as Record<string, unknown>)
       : null;
 
+  // Audio message: Evolution API may provide mediaUrl or a nested audioMessage
+  const audioMessage =
+    messageObject?.audioMessage && typeof messageObject.audioMessage === 'object'
+      ? (messageObject.audioMessage as Record<string, unknown>)
+      : null;
+
+  const audioUrl =
+    pickFirstNonEmptyString(
+      typeof data?.mediaUrl === 'string' ? data.mediaUrl : null,
+      typeof data?.audioUrl === 'string' ? data.audioUrl : null,
+      typeof audioMessage?.url === 'string' ? audioMessage.url : null,
+      typeof payload.audioUrl === 'string' ? payload.audioUrl : null,
+      typeof payload.mediaUrl === 'string' ? payload.mediaUrl : null
+    ) ?? undefined;
+
   return {
     from: pickFirstNonEmptyString(key?.remoteJid, key?.participant, data?.sender),
     message: pickFirstNonEmptyString(
@@ -87,7 +104,8 @@ function extractNestedEvolutionPayload(payload: Record<string, unknown>) {
       data?.body,
       data?.text
     ),
-    externalMessageId: pickFirstNonEmptyString(key?.id, data?.id)
+    externalMessageId: pickFirstNonEmptyString(key?.id, data?.id),
+    audioUrl
   };
 }
 
@@ -103,6 +121,14 @@ function normalizeWebhookPayload(rawBody: unknown): NormalizedWebhookPayload {
     payload.senderNumber,
     nested.from
   );
+
+  const audioUrl =
+    pickFirstNonEmptyString(
+      typeof payload.audioUrl === 'string' ? payload.audioUrl : null,
+      typeof payload.mediaUrl === 'string' ? payload.mediaUrl : null,
+      nested.audioUrl ?? null
+    ) ?? undefined;
+
   const message = pickFirstNonEmptyString(
     payload.message,
     payload.text,
@@ -112,9 +138,10 @@ function normalizeWebhookPayload(rawBody: unknown): NormalizedWebhookPayload {
   );
   const sanitizedMessage = message ? stripTransportArtifacts(message) : null;
 
-  if (!from || !sanitizedMessage) {
+  // Accept payload if we have either text or audio
+  if (!from || (!sanitizedMessage && !audioUrl)) {
     throw new Error(
-      'Payload de WhatsApp inválido: envie from/phone e message/text ou normalize pelo n8n.'
+      'Payload de WhatsApp inválido: envie from/phone e message/text (ou audioUrl) ou normalize pelo n8n.'
     );
   }
 
@@ -127,8 +154,9 @@ function normalizeWebhookPayload(rawBody: unknown): NormalizedWebhookPayload {
 
   return {
     from: normalizePhone(from),
-    message: sanitizedMessage,
-    externalMessageId: externalMessageId ?? undefined
+    message: sanitizedMessage ?? '[audio]',
+    externalMessageId: externalMessageId ?? undefined,
+    audioUrl
   };
 }
 
@@ -219,6 +247,8 @@ function resolveDispatchRecipient(body: DispatchRequestBody) {
   return normalizePhone(env.DEFAULT_PHONE_NUMBER);
 }
 
+const audioService = new WhatsappAudioService();
+
 export function registerWebhookRoutes(
   app: FastifyInstance,
   commandService: WhatsappCommandService,
@@ -297,9 +327,25 @@ export function registerWebhookRoutes(
       return reply.code(200).send({ ok: true, duplicate: true, reason: 'semantic' });
     }
 
+    // ── Audio transcription ───────────────────────────────────────────────────
+    let finalMessage = payload.message;
+    if (payload.audioUrl && payload.message === '[audio]') {
+      const transcribed = await audioService.transcribeFromUrl(payload.audioUrl);
+      if (transcribed) {
+        finalMessage = transcribed;
+      } else {
+        // Cannot transcribe and no text — inform user
+        await publishEvent(queueNames.sendWhatsappMessage, {
+          to: payload.from,
+          message: '🎙️ Recebi seu áudio mas não consegui transcrever. Envie a mensagem por texto.'
+        });
+        return reply.code(202).send({ ok: true, skipped: 'audio_transcription_failed' });
+      }
+    }
+
     const loggedMessage = payload.externalMessageId
-      ? `[msg:${payload.externalMessageId}] ${payload.message}`
-      : payload.message;
+      ? `[msg:${payload.externalMessageId}] ${finalMessage}`
+      : finalMessage;
 
     await prisma.whatsappEvent.create({
       data: {
@@ -308,11 +354,11 @@ export function registerWebhookRoutes(
       }
     });
 
-    const isCheckinReply = /^(1|2|3|4)\s+(?=.*[A-Za-z])[\w-]{3,}$/.test(payload.message.trim());
+    const isCheckinReply = /^(1|2|3|4)\s+(?=.*[A-Za-z])[\w-]{3,}$/.test(finalMessage.trim());
     if (isCheckinReply) {
       await publishEvent(queueNames.processWhatsappReply, {
         from: payload.from,
-        message: payload.message
+        message: finalMessage
       });
 
       await publishEvent(queueNames.sendWhatsappMessage, {
@@ -325,7 +371,7 @@ export function registerWebhookRoutes(
 
     let commandResult: Awaited<ReturnType<typeof conversationService.handleInbound>>;
     try {
-      commandResult = await conversationService.handleInbound(payload.from, payload.message);
+      commandResult = await conversationService.handleInbound(payload.from, finalMessage);
     } catch (error) {
       const message =
         error instanceof Error && error.message.trim().length > 0

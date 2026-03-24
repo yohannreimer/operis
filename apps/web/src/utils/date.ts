@@ -1,11 +1,22 @@
+/** Returns today's date in YYYY-MM-DD using the **local** timezone.
+ *  `new Date().toISOString()` would return UTC, which is wrong for users
+ *  in UTC-3 (São Paulo) after 21h — it would already show tomorrow.
+ */
+export function localDateKey(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateKey();
 }
 
 export function tomorrowIsoDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return date.toISOString().slice(0, 10);
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return localDateKey(d);
 }
 
 export function toIsoDateTime(date: string, time: string) {

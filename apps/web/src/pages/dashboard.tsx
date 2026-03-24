@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock3, Target } from 'lucide-react';
+import { Flame, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bar,
@@ -16,6 +16,7 @@ import {
   YAxis
 } from 'recharts';
 
+import { axisProps, cartesianGridProps, chartTheme, tooltipStyle } from '../utils/chart-theme';
 import {
   api,
   DayPlan,
@@ -36,7 +37,7 @@ import { workspaceQuery } from '../utils/workspace';
 
 type SignalTone = 'danger' | 'warning' | 'info' | 'success';
 type SelfDeceptionTone = 'danger' | 'warning' | 'info' | 'success';
-type DashboardSection = 'cockpit' | 'inteligencia' | 'estrategia' | 'analitico';
+type DashboardSection = 'inteligencia' | 'ritual' | 'analitico';
 type EvolutionPanel = 'resumo' | 'regras' | 'decisoes';
 
 type DashboardData = {
@@ -91,8 +92,9 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [ghostActionBusyId, setGhostActionBusyId] = useState<string | null>(null);
   const [actionBusyKey, setActionBusyKey] = useState<string | null>(null);
-  const [dashboardSection, setDashboardSection] = useState<DashboardSection>('cockpit');
+  const [dashboardSection, setDashboardSection] = useState<DashboardSection>('inteligencia');
   const [evolutionPanel, setEvolutionPanel] = useState<EvolutionPanel>('resumo');
+  const [evolutionExpanded, setEvolutionExpanded] = useState(false);
 
   async function loadDashboard() {
     setReady(false);
@@ -261,9 +263,6 @@ export function DashboardPage() {
   }
 
   const activeTasks = data.tasks.filter((task) => task.status !== 'arquivado');
-  const todayTasks = activeTasks.filter((task) => task.status === 'hoje');
-  const backlogTasks = activeTasks.filter((task) => task.status === 'backlog');
-  const waitingTasks = activeTasks.filter((task) => Boolean(task.waitingOnPerson));
   const disconnectedActiveTasks = activeTasks.filter(
     (task) => task.status !== 'feito' && task.status !== 'arquivado' && !task.projectId
   ).length;
@@ -272,11 +271,6 @@ export function DashboardPage() {
   const todayFailures = (data.gamification?.today.failed ?? 0) + (data.gamification?.today.delayed ?? 0);
   const tracked = doneToday + todayFailures;
   const executionRate = tracked ? Math.round((doneToday / tracked) * 100) : 0;
-
-  const topPriorities = useMemo(
-    () => [...todayTasks, ...backlogTasks].sort((a, b) => b.priority - a.priority).slice(0, 8),
-    [todayTasks, backlogTasks]
-  );
 
   const top3 = data.briefing?.top3 ?? [];
   const fragmentationActions = data.briefing?.actionables.fragmentationProjects.slice(0, 5) ?? [];
@@ -491,6 +485,48 @@ export function DashboardPage() {
     return signals.slice(0, 6);
   }, [data.briefing, data.weeklyPulse, data.weeklyReview]);
 
+  const quickActions = useMemo(() => {
+    const actions: Array<{ id: string; label: string; detail: string; route: string }> = [];
+
+    if (fragmentationActions.length > 0) {
+      actions.push({
+        id: 'fragmentation',
+        label: 'Desfragmentar foco',
+        detail: `${fragmentationActions.length} projeto(s) ativos demais`,
+        route: '/projetos'
+      });
+    }
+
+    if (disconnectedActions.length > 0) {
+      actions.push({
+        id: 'disconnected',
+        label: 'Conectar tarefas',
+        detail: `${disconnectedActions.length} tarefa(s) sem projeto`,
+        route: '/tarefas'
+      });
+    }
+
+    if (ghostProjectActions.length > 0) {
+      actions.push({
+        id: 'ghost',
+        label: 'Resolver fantasmas',
+        detail: `${ghostProjectActions.length} projeto(s) sem tração`,
+        route: '/projetos'
+      });
+    }
+
+    if (evitationActions.length > 0) {
+      actions.push({
+        id: 'evitation',
+        label: 'Atacar evitação',
+        detail: `${evitationActions.length} tarefa(s) reagendada(s)`,
+        route: '/hoje'
+      });
+    }
+
+    return actions.slice(0, 3);
+  }, [fragmentationActions, disconnectedActions, ghostProjectActions, evitationActions]);
+
   const selfDeceptionGuards = useMemo(() => {
     const fragmentationCount = data.briefing?.alerts.fragmentationCount ?? 0;
     const evitationCount = data.briefing?.alerts.excessiveRescheduleA ?? 0;
@@ -514,7 +550,7 @@ export function DashboardPage() {
     return [
       {
         id: 'disconnected',
-        title: 'Tarefas desconexas',
+        title: 'Sem projeto',
         value: disconnectedActiveTasks,
         note: `${disconnectedPercent}% das horas da semana sem vínculo com projeto.`,
         tone: disconnectedTone,
@@ -523,7 +559,7 @@ export function DashboardPage() {
       },
       {
         id: 'fragmentation',
-        title: 'Fragmentação de foco',
+        title: 'Foco fragmentado',
         value: fragmentationCount,
         note: 'Projetos ativos estratégicos com tarefa A na semana (limite recomendado: 5).',
         tone: fragmentationTone,
@@ -532,7 +568,7 @@ export function DashboardPage() {
       },
       {
         id: 'evitation',
-        title: 'Evitação detectada',
+        title: 'Reagendado repetidamente',
         value: evitationCount,
         note: 'Tarefas A com 3+ reagendamentos nos últimos 30 dias.',
         tone: evitationTone,
@@ -541,7 +577,7 @@ export function DashboardPage() {
       },
       {
         id: 'vague',
-        title: 'Tarefas vagas',
+        title: 'Sem definição',
         value: vagueCount,
         note: 'Itens sem executabilidade completa (verbo+objeto, pronto e tempo).',
         tone: vagueTone,
@@ -550,12 +586,12 @@ export function DashboardPage() {
       },
       {
         id: 'mode-drift',
-        title: 'Deriva de modo',
+        title: 'Modo incompatível',
         value: modeDriftCount,
         note: 'Tarefas incompatíveis com o modo estratégico da frente (manutenção/standby).',
         tone: modeDriftTone,
         actionLabel: 'Corrigir modos',
-        route: '/workspaces'
+        route: '/projetos'
       }
     ];
   }, [data.briefing, data.weeklyPulse, disconnectedActiveTasks]);
@@ -597,9 +633,8 @@ export function DashboardPage() {
   }, [data.evolution]);
 
   const dashboardTabOptions: Array<{ value: DashboardSection; label: string }> = [
-    { value: 'cockpit', label: 'Cockpit' },
     { value: 'inteligencia', label: 'Inteligência' },
-    { value: 'estrategia', label: 'Estratégia' },
+    { value: 'ritual', label: 'Ritual' },
     { value: 'analitico', label: 'Analítico' }
   ];
   const evolutionTabOptions: Array<{ value: EvolutionPanel; label: string }> = [
@@ -612,13 +647,16 @@ export function DashboardPage() {
     return (
       <PremiumPage>
         <PremiumHeader
-          eyebrow="Visão geral"
-          title="Painel executivo"
-          subtitle="Seu cockpit de foco, ritmo e risco operacional."
+          title="Dashboard"
         />
 
+        <div className="premium-card dashboard-score-hero">
+          <SkeletonBlock height={28} />
+          <SkeletonBlock height={6} />
+        </div>
+
         <section className="premium-metric-grid">
-          {Array.from({ length: 4 }).map((_, index) => (
+          {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="premium-metric tone-default">
               <SkeletonBlock height={12} />
               <SkeletonBlock height={24} />
@@ -629,53 +667,175 @@ export function DashboardPage() {
 
         <section className="premium-grid two">
           <PremiumCard title="Sinais executivos">
-            <SkeletonBlock lines={4} />
+            <SkeletonBlock lines={3} />
           </PremiumCard>
-          <PremiumCard title="Alocação planejado vs real">
-            <SkeletonBlock lines={5} />
+          <PremiumCard title="Próximas ações">
+            <SkeletonBlock lines={3} />
           </PremiumCard>
         </section>
 
         <section className="premium-grid two">
-          <PremiumCard title="Foco de hoje">
-            <SkeletonBlock lines={4} />
+          <PremiumCard title="Ritmo semanal">
+            <SkeletonBlock height={160} />
           </PremiumCard>
-          <PremiumCard title="Radar de risco">
+          <PremiumCard title="Projetos em tração">
             <SkeletonBlock lines={5} />
           </PremiumCard>
         </section>
-
-        <PremiumCard title="Prioridades estratégicas">
-          <SkeletonBlock lines={5} />
-        </PremiumCard>
       </PremiumPage>
     );
   }
 
+  const deepWorkHoursWeek = Math.round(
+    ((data.weeklyPulse?.days ?? []).reduce((sum, day) => sum + day.deepWorkMinutes, 0) / 60) * 10
+  ) / 10;
+  const activeProjectsCount = data.projects.filter((p) => p.status === 'ativo').length;
+
   return (
     <PremiumPage>
       <PremiumHeader
-        eyebrow="Visão geral"
-        title="Painel executivo"
-        subtitle="Seu cockpit de foco, ritmo e risco operacional."
+        title="Dashboard"
       />
 
       {error && <p className="surface-error">{error}</p>}
 
+      {/* Score Hero */}
+      <div className="premium-card dashboard-score-hero">
+        {(data.gamification?.scoreSemanal ?? 0) === 0 && (data.gamification?.streak ?? 0) === 0 && executionRate === 0 ? (
+          <div className="score-hero-first-run">
+            <strong>Seu primeiro dia de execução.</strong>
+            <p>Complete uma tarefa prioritária para iniciar o streak e acumular pontos.</p>
+          </div>
+        ) : (
+          <>
+            <div className="score-hero-main">
+              <div className="score-hero-pts">
+                <Star size={14} className="score-hero-icon" />
+                <span className="score-hero-number">{data.gamification?.scoreSemanal ?? data.executionScore?.score ?? 0}</span>
+                <span className="score-hero-label">pts semanais</span>
+              </div>
+              <div className="score-hero-sep" />
+              <div className="score-hero-streak">
+                <Flame size={13} className="score-hero-streak-icon" />
+                <span>{data.gamification?.streak ?? 0} dias de streak</span>
+              </div>
+              <div className="score-hero-sep" />
+              <div className="score-hero-rate">
+                <span>{executionRate}% execução hoje</span>
+              </div>
+            </div>
+            <div className="score-hero-bar-track">
+              <div className="score-hero-bar-fill" style={{ width: `${executionRate}%` }} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 6 KPIs */}
       <section className="premium-metric-grid">
-        <MetricCard label="Taxa de execução" value={`${executionRate}%`} tone="accent" hint="hoje" />
-        <MetricCard label="Execution Score" value={data.executionScore?.score ?? 0} hint="fórmula diária" />
-        <MetricCard label="Blocos no dia" value={data.todayPlan?.items.length ?? 0} hint="agenda" />
-        <MetricCard label="Dívida de execução" value={data.gamification?.dividaExecucao ?? 0} tone="warning" hint="penalidades" />
+        <MetricCard label="Execução" value={`${executionRate}%`} tone="accent" hint="hoje" />
+        <MetricCard label="Deep Work" value={deepWorkHoursWeek} hint="horas esta semana" />
+        <MetricCard label="Foco ativo" value={top3.length} hint="de 3 prioridades" />
+        <MetricCard label="Dívida" value={data.gamification?.dividaExecucao ?? 0} tone="warning" hint="penalidades" />
+        <MetricCard label="Concluídas" value={doneToday} hint="hoje" />
+        <MetricCard label="Projetos" value={activeProjectsCount} hint="em andamento" />
       </section>
 
-      <PremiumCard title="Visões do dashboard">
+      {/* Signals + Quick Actions */}
+      <section className="premium-grid two">
+        <PremiumCard title="Sinais executivos" subtitle="alertas com impacto imediato">
+          <ul className="ceo-signal-list">
+            {ceoSignals.slice(0, 3).map((signal) => (
+              <li key={signal.id} className={`ceo-signal-card tone-${signal.tone}`}>
+                <strong>{signal.title}</strong>
+                <p>{signal.message}</p>
+              </li>
+            ))}
+          </ul>
+        </PremiumCard>
+
+        <PremiumCard title="Próximas ações" subtitle="resolver riscos em 1 clique">
+          {quickActions.length === 0 ? (
+            <EmptyState
+              title="Sem ação urgente"
+              description="Sistema sob controle. Continue com o ritmo do Top 3."
+            />
+          ) : (
+            <ul className="premium-list dense">
+              {quickActions.map((action) => (
+                <li key={action.id}>
+                  <div>
+                    <strong>{action.label}</strong>
+                    <small>{action.detail}</small>
+                  </div>
+                  <button type="button" className="ghost-button" onClick={() => navigate(action.route)}>
+                    Resolver
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </PremiumCard>
+      </section>
+
+      {/* Trend + Project Momentum */}
+      <section className="premium-grid two">
+        <PremiumCard title="Ritmo das últimas semanas" subtitle="score e entregas por semana">
+          {weeklyTrend.length === 0 ? (
+            <EmptyState
+              title="Sem histórico ainda"
+              description="Conforme executa, a curva de ritmo aparece aqui."
+            />
+          ) : (
+            <div className="premium-chart-wrap">
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={weeklyTrend}>
+                  <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                  <XAxis dataKey="semana" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                  <YAxis allowDecimals={false} tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                  <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} />
+                  <Line type="monotone" dataKey="score" stroke={chartTheme.colors.primary} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="concluidas" stroke={chartTheme.colors.success} strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </PremiumCard>
+
+        <PremiumCard title="Projetos em tração" subtitle="momentum por execução recente">
+          {projectMomentum.length === 0 ? (
+            <EmptyState
+              title="Sem projetos com tração"
+              description="Conecte tarefas a projetos para gerar ranking."
+            />
+          ) : (
+            <ul className="premium-list dense">
+              {projectMomentum.slice(0, 5).map((entry, index) => {
+                const trend = entry.doneAThisWeek > 0 ? '↑' : entry.score < 5 ? '↓' : '→';
+                const trendClass = entry.doneAThisWeek > 0 ? 'delta-positive' : entry.score < 5 ? 'delta-negative' : '';
+                return (
+                  <li key={entry.project.id}>
+                    <div>
+                      <strong>{index + 1}. {entry.project.title}</strong>
+                      <small>A abertas {entry.openA} · concluídas (7d) {entry.doneAThisWeek}</small>
+                    </div>
+                    <span className={trendClass}>{trend}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </PremiumCard>
+      </section>
+
+      {/* Bottom tabs */}
+      <PremiumCard title="Detalhes">
         <TabSwitch value={dashboardSection} onChange={setDashboardSection} options={dashboardTabOptions} />
       </PremiumCard>
 
       {dashboardSection === 'inteligencia' && (
         <>
-          <PremiumCard title="Motor de evolução explicável" subtitle="peso, regra, dado usado e ação recomendada">
+          <PremiumCard title="Motor de evolução">
             {!data.evolution ? (
               <EmptyState
                 title="Sem leitura evolutiva"
@@ -683,206 +843,174 @@ export function DashboardPage() {
               />
             ) : (
               <div className="evolution-engine-panel">
-                <div className="evolution-head-row">
-                  <div className="evolution-stage-wrap">
-                    <span className={`evolution-stage-chip tone-${evolutionStageTone}`}>Nível: {data.evolution.stage.label}</span>
-                    <small>
-                      Exigência: Top {data.evolution.systemMode.focusLimit} • Deep Work {data.evolution.systemMode.deepWorkTargetMinutes} min
-                    </small>
-                  </div>
+                {/* Bloco A — Status compacto sempre visível */}
+                <div className="evolution-compact-head">
+                  <span className={`evolution-stage-chip tone-${evolutionStageTone}`}>{data.evolution.stage.label}</span>
+                  <span className="evolution-compact-index">Índice: {data.evolution.index}</span>
                   <span className={data.evolution.deltaIndex >= 0 ? 'delta-positive' : 'delta-negative'}>
-                    {data.evolution.deltaIndex >= 0 ? '+' : ''}
-                    {data.evolution.deltaIndex} vs ciclo anterior
+                    {data.evolution.deltaIndex >= 0 ? '↑' : '↓'} {evolutionTrendLabel}
                   </span>
                 </div>
 
-                <div className="premium-metric-grid mini">
-                  <div className="premium-metric tone-accent">
-                    <span>Índice estratégico</span>
-                    <strong>{data.evolution.index}</strong>
-                    <small>0-100</small>
-                  </div>
-                  <div className="premium-metric tone-default">
-                    <span>Tendência</span>
-                    <strong>{evolutionTrendLabel}</strong>
-                    <small>janela {data.evolution.windowDays} dias</small>
-                  </div>
-                  <div className="premium-metric tone-default">
-                    <span>Confiança</span>
-                    <strong>{data.evolution.confidence}%</strong>
-                    <small>qualidade de sinal</small>
-                  </div>
-                  <div className="premium-metric tone-default">
-                    <span>Alinhamento percepção</span>
-                    <strong>{data.evolution.perceptionAlignment.status}</strong>
-                    <small>{data.evolution.perceptionAlignment.note}</small>
-                  </div>
+                <p className="evolution-compact-challenge">{data.evolution.challenge.title}</p>
+
+                <div className="meter-track evolution-compact-meter">
+                  <div
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round(
+                          (data.evolution.challenge.current / Math.max(1, data.evolution.challenge.target)) * 100
+                        )
+                      )}%`
+                    }}
+                  />
                 </div>
+                <small className="evolution-compact-meter-label">
+                  {data.evolution.challenge.current}{data.evolution.challenge.unit} de {data.evolution.challenge.target}{data.evolution.challenge.unit}
+                </small>
 
-                <TabSwitch value={evolutionPanel} onChange={setEvolutionPanel} options={evolutionTabOptions} />
+                {/* Bloco B — Narrativa */}
+                <p className="evolution-compact-summary">{data.evolution.narrative.summary}</p>
 
-                {evolutionPanel === 'resumo' && (
-                  <>
-                    <div className="evolution-challenge-card">
-                      <div className="evolution-challenge-head">
-                        <strong>Desafio adaptativo (7 dias)</strong>
-                        <span>{data.evolution.challenge.dueDate}</span>
-                      </div>
-                      <p>{data.evolution.challenge.title}</p>
-                      <small>
-                        Atual {data.evolution.challenge.current}
-                        {data.evolution.challenge.unit} • Meta {data.evolution.challenge.target}
-                        {data.evolution.challenge.unit}
-                      </small>
-                      <div className="meter-track">
-                        <div
-                          style={{
-                            width: `${Math.min(
-                              100,
-                              Math.round(
-                                (data.evolution.challenge.current / Math.max(1, data.evolution.challenge.target)) * 100
-                              )
-                            )}%`
-                          }}
-                        />
-                      </div>
-                      <small>{data.evolution.challenge.reason}</small>
-                    </div>
-
-                    <div className="evolution-narrative-grid">
-                      <p className="premium-empty">{data.evolution.narrative.summary}</p>
-                      <p className="surface-error">{data.evolution.narrative.pressureMessage}</p>
-                      <p className={data.evolution.regression.risk ? 'surface-error' : 'premium-empty'}>
-                        {data.evolution.narrative.riskIfIgnored}
-                      </p>
-                    </div>
-
-                    <div className="evolution-status-grid">
-                      <p className={data.evolution.promotion.recommended ? 'status-toast' : 'premium-empty'}>
-                        {data.evolution.promotion.reason}
-                      </p>
-                      {data.evolution.promotion.blockedBySelfAssessment && data.evolution.promotion.blockReason && (
-                        <p className="surface-error">{data.evolution.promotion.blockReason}</p>
-                      )}
-                      <p className={data.evolution.regression.risk ? 'surface-error' : 'premium-empty'}>
-                        {data.evolution.regression.reason}
-                      </p>
-                    </div>
-
-                    {data.evolution.nextActions.length > 0 && (
-                      <div className="evolution-next-actions">
-                        <strong>Próximas ações de maior alavanca</strong>
-                        <ul className="premium-list dense">
-                          {data.evolution.nextActions.slice(0, 4).map((action, index) => (
-                            <li key={`${index}-${action}`}>
-                              <div>
-                                <strong>{index + 1}. {action}</strong>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
+                {data.evolution.narrative.pressureMessage && (
+                  <div className="evolution-compact-pressure">{data.evolution.narrative.pressureMessage}</div>
                 )}
 
-                {evolutionPanel === 'regras' && (
-                  <ul className="evolution-rule-list">
-                    {data.evolution.explainableRules.slice(0, 10).map((rule) => (
-                      <li key={rule.id} className={`evolution-rule-item status-${rule.status}`}>
-                        <div className="evolution-rule-head">
-                          <strong>{rule.title}</strong>
-                          <span className="priority-chip">
-                            Peso {rule.weight} • Impacto {rule.impact}
-                          </span>
-                        </div>
-                        <p>{rule.description}</p>
-                        <small>
-                          Atual {rule.current}
-                          {rule.unit} • Meta {rule.operator === 'gte' ? '>=' : '<='} {rule.target}
-                          {rule.unit} • Dados: {rule.dataUsed}
-                        </small>
-                        <small>Ação: {rule.recommendation}</small>
-                      </li>
+                {/* Bloco C — Próximas ações (até 3) */}
+                {data.evolution.nextActions.length > 0 && (
+                  <ul className="evolution-compact-actions">
+                    {data.evolution.nextActions.slice(0, 3).map((action, index) => (
+                      <li key={`${index}-${action}`}>→ {action}</li>
                     ))}
                   </ul>
                 )}
 
-                {evolutionPanel === 'decisoes' && (
-                  <>
-                    {data.evolution.decisionJournal.length > 0 ? (
-                      <div className="evolution-decision-journal">
-                        <strong>Diário de decisões estratégicas</strong>
-                        <ul className="evolution-rule-list">
-                          {data.evolution.decisionJournal.slice(0, 8).map((decision) => (
-                            <li
-                              key={decision.id}
-                              className={`evolution-rule-item status-${decision.signal === 'risco' ? 'warning' : decision.signal === 'executiva' ? 'ok' : 'default'}`}
-                            >
-                              <div className="evolution-rule-head">
-                                <strong>{decision.decision}</strong>
-                                <span className="priority-chip">
-                                  {decision.kind === 'review'
-                                    ? `${decision.periodType === 'monthly' ? 'Mensal' : 'Semanal'} • ${decision.periodStart ? formatIsoDate(decision.periodStart) : '-'}`
-                                    : `Evento • ${decision.eventCode}`}
-                                </span>
-                              </div>
-                              <small>
-                                Fonte: {decision.source} • Impacto {decision.impactScore >= 0 ? '+' : ''}
-                                {decision.impactScore} • Compromisso: {decision.commitmentLevel ?? 'sem_dados'} • Atualizado em{' '}
-                                {new Date(decision.updatedAt).toLocaleDateString('pt-BR')}
-                              </small>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : (
-                      <EmptyState
-                        title="Sem decisões registradas"
-                        description="As decisões estratégicas aparecem aqui conforme você revisa e executa."
-                      />
+                {/* Expansível */}
+                <button
+                  type="button"
+                  className="evolution-expand-toggle"
+                  onClick={() => setEvolutionExpanded((v) => !v)}
+                >
+                  {evolutionExpanded ? 'Ver menos ▲' : 'Ver mais ▼'}
+                </button>
+
+                {evolutionExpanded && (
+                  <div className="evolution-expanded-section">
+                    <TabSwitch value={evolutionPanel} onChange={setEvolutionPanel} options={evolutionTabOptions} />
+
+                    {evolutionPanel === 'resumo' && (
+                      <>
+                        {data.evolution.narrative.riskIfIgnored && (
+                          <p className="surface-error">{data.evolution.narrative.riskIfIgnored}</p>
+                        )}
+
+                        <div className="evolution-status-grid">
+                          <p className={data.evolution.promotion.recommended ? 'status-toast' : 'premium-empty'}>
+                            {data.evolution.promotion.reason}
+                          </p>
+                          {data.evolution.promotion.blockedBySelfAssessment && data.evolution.promotion.blockReason && (
+                            <p className="surface-error">{data.evolution.promotion.blockReason}</p>
+                          )}
+                          <p className={data.evolution.regression.risk ? 'surface-error' : 'premium-empty'}>
+                            {data.evolution.regression.reason}
+                          </p>
+                        </div>
+
+                        {data.evolution.narrative.next7DaysPlan.length > 0 && (
+                          <div className="evolution-next-actions">
+                            <strong>Plano de 7 dias</strong>
+                            <ul className="premium-list dense">
+                              {data.evolution.narrative.next7DaysPlan.map((action, index) => (
+                                <li key={`${index}-plan-${action}`}>
+                                  <div><strong>{index + 1}. {action}</strong></div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
                     )}
-                    {data.evolution.narrative.next7DaysPlan.length > 0 && (
-                      <div className="evolution-next-actions">
-                        <strong>Plano de 7 dias</strong>
-                        <ul className="premium-list dense">
-                          {data.evolution.narrative.next7DaysPlan.map((action, index) => (
-                            <li key={`${index}-plan-${action}`}>
-                              <div>
-                                <strong>{index + 1}. {action}</strong>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+
+                    {evolutionPanel === 'regras' && (
+                      <ul className="evolution-rule-list">
+                        {data.evolution.explainableRules.slice(0, 10).map((rule) => (
+                          <li key={rule.id} className={`evolution-rule-item status-${rule.status}`}>
+                            <div className="evolution-rule-head">
+                              <strong>{rule.title}</strong>
+                              <span className="priority-chip">Peso {rule.weight} • Impacto {rule.impact}</span>
+                            </div>
+                            <p>{rule.description}</p>
+                            <small>
+                              Atual {rule.current}{rule.unit} • Meta {rule.operator === 'gte' ? '>=' : '<='} {rule.target}{rule.unit} • Dados: {rule.dataUsed}
+                            </small>
+                            <small>Ação: {rule.recommendation}</small>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </>
+
+                    {evolutionPanel === 'decisoes' && (
+                      <>
+                        {data.evolution.decisionJournal.length > 0 ? (
+                          <ul className="evolution-rule-list">
+                            {data.evolution.decisionJournal.slice(0, 8).map((decision) => (
+                              <li
+                                key={decision.id}
+                                className={`evolution-rule-item status-${decision.signal === 'risco' ? 'warning' : decision.signal === 'executiva' ? 'ok' : 'default'}`}
+                              >
+                                <div className="evolution-rule-head">
+                                  <strong>{decision.decision}</strong>
+                                  <span className="priority-chip">
+                                    {decision.kind === 'review'
+                                      ? `${decision.periodType === 'monthly' ? 'Mensal' : 'Semanal'} • ${decision.periodStart ? formatIsoDate(decision.periodStart) : '-'}`
+                                      : `Evento • ${decision.eventCode}`}
+                                  </span>
+                                </div>
+                                <small>
+                                  Fonte: {decision.source} • Impacto {decision.impactScore >= 0 ? '+' : ''}
+                                  {decision.impactScore} • Compromisso: {decision.commitmentLevel ?? 'sem_dados'} • Atualizado em{' '}
+                                  {new Date(decision.updatedAt).toLocaleDateString('pt-BR')}
+                                </small>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <EmptyState
+                            title="Sem decisões registradas"
+                            description="As decisões estratégicas aparecem aqui conforme você revisa e executa."
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             )}
           </PremiumCard>
 
-          <PremiumCard title="Proteções contra autoengano" subtitle="forçar clareza, escolha e consequência no ciclo diário">
-            <ul className="self-deception-list">
-              {selfDeceptionGuards.map((guard) => (
-                <li key={guard.id} className="self-deception-item">
-                  <div className="self-deception-head">
-                    <strong>{guard.title}</strong>
-                    <span className={`self-deception-value ${guard.tone}`}>{guard.value}</span>
-                  </div>
-                  <p>{guard.note}</p>
-                  <div className="self-deception-foot">
-                    <button
-                      type="button"
-                      className="ghost-button self-deception-action"
-                      onClick={() => navigate(guard.route)}
-                    >
-                      {guard.actionLabel}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+          <PremiumCard title="Saúde do sistema">
+            {selfDeceptionGuards.every((g) => g.tone === 'success') ? (
+              <div className="system-health-ok">Sistema saudável. Sem alertas.</div>
+            ) : (
+              <ul className="system-health-list">
+                {selfDeceptionGuards
+                  .filter((g) => g.tone !== 'success')
+                  .map((guard) => (
+                    <li key={guard.id} className="system-health-item">
+                      <span className={`system-health-value ${guard.tone}`}>{guard.value}</span>
+                      <span className="system-health-label">{guard.title}</span>
+                      <button
+                        type="button"
+                        className="ghost-button system-health-action"
+                        onClick={() => navigate(guard.route)}
+                      >
+                        {guard.actionLabel}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            )}
           </PremiumCard>
 
           <PremiumCard title="Ações de maior alavanca" subtitle="resolver riscos críticos em 1 clique">
@@ -1080,106 +1208,7 @@ export function DashboardPage() {
         </>
       )}
 
-      {dashboardSection === 'cockpit' && (
-        <>
-          <PremiumCard title="Sinais executivos (CEO)" subtitle="alertas com impacto estratégico imediato">
-            <ul className="ceo-signal-list">
-              {ceoSignals.map((signal) => (
-                <li key={signal.id} className={`ceo-signal-card tone-${signal.tone}`}>
-                  <strong>{signal.title}</strong>
-                  <p>{signal.message}</p>
-                </li>
-              ))}
-            </ul>
-          </PremiumCard>
-
-          <section className="premium-grid two">
-            <PremiumCard title="Top 3 do dia" subtitle="prioridades A com maior impacto">
-              {data.briefing?.top3Meta && (
-                <p className="premium-empty">
-                  {data.briefing.top3Meta.locked
-                    ? `Compromisso confirmado${data.briefing.top3Meta.committedAt ? ` às ${new Date(data.briefing.top3Meta.committedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.`
-                    : 'Top em modo sugestão automática. Confirme no Hoje para travar o foco.'}
-                </p>
-              )}
-              {top3.length === 0 ? (
-                <EmptyState
-                  title="Sem Top 3 automático"
-                  description="Crie tarefas A para o motor montar o foco dominante do dia."
-                />
-              ) : (
-                <ul className="premium-list">
-                  {top3.map((task, index) => (
-                    <li key={task.id}>
-                      <div>
-                        <strong>
-                          {index + 1}. {task.title}
-                        </strong>
-                        <small>prioridade {task.priority} • {task.workspace?.name ?? 'Sem frente'}</small>
-                      </div>
-                      <span className="list-icon success"><Target size={15} /></span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </PremiumCard>
-
-            <PremiumCard title="Radar de risco" subtitle="itens que pedem atenção">
-              {data.briefing?.capacity.isUnrealistic && (
-                <p className="surface-error">
-                  Planejamento irreal hoje: excesso de {data.briefing.capacity.overloadMinutes} min na capacidade.
-                </p>
-              )}
-              <ul className="premium-kv-list">
-                <li>
-                  <span><Clock3 size={15} /> Aguardando terceiros</span>
-                  <strong>{waitingTasks.length}</strong>
-                </li>
-                <li>
-                  <span><CheckCircle2 size={15} /> Confirmadas hoje</span>
-                  <strong>{doneToday}</strong>
-                </li>
-                <li>
-                  <span><AlertTriangle size={15} /> Falhas/adiamentos</span>
-                  <strong>{todayFailures}</strong>
-                </li>
-                <li>
-                  <span><Target size={15} /> Backlog ativo</span>
-                  <strong>{backlogTasks.length}</strong>
-                </li>
-              </ul>
-            </PremiumCard>
-          </section>
-
-          <PremiumCard title="Prioridades estratégicas" subtitle="ordem por impacto">
-            {topPriorities.length === 0 ? (
-              <EmptyState
-                title="Sem prioridades neste contexto"
-                description="Quando houver tarefas de maior impacto, elas aparecem aqui para guiar seu foco."
-              />
-            ) : (
-              <ul className="premium-list dense">
-                {topPriorities.map((task) => (
-                  <li key={task.id}>
-                    <div>
-                      <strong>{task.title}</strong>
-                      <small>
-                        {task.workspace?.name ?? 'Sem frente'} • {task.project?.title ?? 'Sem projeto'}
-                      </small>
-                    </div>
-                    <div className="inline-actions">
-                      <span className={`priority-chip priority-${task.priority}`}>P{task.priority}</span>
-                      <span className={`status-tag ${task.status}`}>{task.status}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </PremiumCard>
-        </>
-      )}
-
-      {dashboardSection === 'estrategia' && (
+      {dashboardSection === 'ritual' && (
         <>
           <section className="premium-grid two">
             <PremiumCard title="Alocação planejado vs real" subtitle={`semana iniciada em ${formatIsoDate(weekStart)}`}>
@@ -1292,7 +1321,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             className="ghost-button"
-                            onClick={() => navigate(`/workspaces/${project.id}`)}
+                            onClick={() => navigate(`/projetos/${project.id}`)}
                           >
                             Abrir frente
                           </button>
@@ -1345,12 +1374,12 @@ export function DashboardPage() {
                 <div className="premium-chart-wrap">
                   <ResponsiveContainer width="100%" height={230}>
                     <BarChart data={weeklyExecutionLoad}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                      <XAxis dataKey="dia" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }} />
-                      <Bar dataKey="planejado" fill="#93c5fd" name="Planejado (h)" radius={[8, 8, 0, 0]} />
-                      <Bar dataKey="deepWork" fill="#1f5eff" name="Deep Work (h)" radius={[8, 8, 0, 0]} />
+                      <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                      <XAxis dataKey="dia" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} />
+                      <Bar dataKey="planejado" fill={chartTheme.colors.secondary} name="Planejado (h)" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="deepWork" fill={chartTheme.colors.primary} name="Deep Work (h)" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1394,14 +1423,14 @@ export function DashboardPage() {
                 <div className="premium-chart-wrap">
                   <ResponsiveContainer width="100%" height={230}>
                     <BarChart data={statusDistribution}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                      <XAxis dataKey="name" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                      <YAxis allowDecimals={false} tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                      <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                      <XAxis dataKey="name" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <YAxis allowDecimals={false} tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                       <Tooltip
-                        cursor={{ fill: 'rgba(31, 94, 255, 0.08)' }}
-                        contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                        cursor={{ fill: 'rgba(224,124,74,0.06)' }}
+                        contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                       />
-                      <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="#2563eb" />
+                      <Bar dataKey="value" radius={[8, 8, 0, 0]} fill={chartTheme.colors.primary} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1418,12 +1447,12 @@ export function DashboardPage() {
                 <div className="premium-chart-wrap">
                   <ResponsiveContainer width="100%" height={230}>
                     <LineChart data={weeklyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                      <XAxis dataKey="semana" tick={{ fill: '#60708a', fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis allowDecimals={false} tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }} />
-                      <Line type="monotone" dataKey="score" stroke="#1f5eff" strokeWidth={3} dot={false} />
-                      <Line type="monotone" dataKey="concluidas" stroke="#16a34a" strokeWidth={2} dot={false} />
+                      <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                      <XAxis dataKey="semana" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <YAxis allowDecimals={false} tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} />
+                      <Line type="monotone" dataKey="score" stroke={chartTheme.colors.primary} strokeWidth={3} dot={false} />
+                      <Line type="monotone" dataKey="concluidas" stroke={chartTheme.colors.success} strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -1458,13 +1487,13 @@ export function DashboardPage() {
                           {row.days.map((day) => {
                             const intensity = day.minutes / weeklyWorkspaceHeatmap.maxMinutes;
                             const alpha = day.minutes === 0 ? 0.04 : 0.14 + intensity * 0.72;
-                            const color = intensity > 0.55 ? '#eff6ff' : '#1e3a8a';
+                            const color = intensity > 0.55 ? '#e8e4df' : '#1a1a1e';
                             return (
                               <span
                                 key={`${row.workspaceId}-${day.date}`}
                                 className="workspace-heatmap-cell"
                                 style={{
-                                  backgroundColor: `rgba(37, 99, 235, ${alpha})`,
+                                  backgroundColor: `rgba(224, 124, 74, ${alpha})`,
                                   color
                                 }}
                                 title={`${row.name} • ${day.date} • ${day.hours}h`}
@@ -1496,17 +1525,17 @@ export function DashboardPage() {
                         {priorityDistribution.map((entry, index) => (
                           <Cell
                             key={entry.name}
-                            fill={['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#1d4ed8'][index] ?? '#1d4ed8'}
+                            fill={chartTheme.palette[index % chartTheme.palette.length]}
                           />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }} />
+                      <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="chart-legend">
                     {priorityDistribution.map((entry, index) => (
                       <span key={entry.name}>
-                        <i style={{ background: ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#1d4ed8'][index] ?? '#1d4ed8' }} />
+                        <i style={{ background: chartTheme.palette[index % chartTheme.palette.length] }} />
                         {entry.name}: {entry.value}
                       </span>
                     ))}

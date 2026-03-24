@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { Prisma, PrismaClient, ProjectMetricKind, ProjectStatus, ProjectType } from '@prisma/client';
 import {
   safeRecordStrategicDecisionEvent,
@@ -28,7 +29,27 @@ function cleanText(value?: string | null) {
   return trimmed ? trimmed : null;
 }
 
-const projectMethodologySchema = z.enum(['fourdx', 'delivery', 'launch', 'discovery', 'growth']);
+const projectMethodologySchema = z.enum([
+  'fourdx',
+  'delivery',
+  'launch',
+  'discovery',
+  'growth',
+  'entrega',
+  'exploracao',
+  'pipeline',
+  'captacao',
+  'campanha',
+  'processo',
+  'okr',
+  'decisao',
+  'mentoria',
+  'autoridade',
+  'cenario',
+  'runway',
+  'sistema_receita',
+  'funil'
+]);
 type ProjectMethodologyInput = z.infer<typeof projectMethodologySchema>;
 
 const METHODOLOGY_DEFAULTS: Record<
@@ -69,6 +90,90 @@ const METHODOLOGY_DEFAULTS: Record<
     leadTwo: 'Iterações de funil concluídas',
     lagMetric: 'Crescimento da métrica norte (%)',
     actionStatement: 'Loops de aquisição, ativação e retenção com iteração contínua.'
+  },
+  entrega: {
+    leadOne: 'Marcos concluídos na semana',
+    leadTwo: 'Bloqueios resolvidos na semana',
+    lagMetric: 'Escopo entregue (%)',
+    actionStatement: 'Ritmo de entrega estruturado com controle de marcos e bloqueios.'
+  },
+  exploracao: {
+    leadOne: 'Descobertas validadas na semana',
+    leadTwo: 'Experimentos executados na semana',
+    lagMetric: 'Hipóteses validadas (%)',
+    actionStatement: 'Exploração estruturada com descobertas e validações.'
+  },
+  pipeline: {
+    leadOne: 'Oportunidades avançadas no pipeline',
+    leadTwo: 'Atividades de follow-up realizadas',
+    lagMetric: 'Valor total do pipeline (R$)',
+    actionStatement: 'Gestão ativa do pipeline com avanço de oportunidades.'
+  },
+  captacao: {
+    leadOne: 'Leads qualificados gerados',
+    leadTwo: 'Conversas de captação realizadas',
+    lagMetric: 'Captação acumulada (R$)',
+    actionStatement: 'Captação estruturada com qualificação e conversão de leads.'
+  },
+  campanha: {
+    leadOne: 'Ativos de campanha publicados',
+    leadTwo: 'Segmentos de audiência ativados',
+    lagMetric: 'Resultado da campanha (conversões/receita)',
+    actionStatement: 'Execução de campanha com ativação de audiência e acompanhamento de resultados.'
+  },
+  processo: {
+    leadOne: 'Etapas do processo executadas',
+    leadTwo: 'Desvios identificados e corrigidos',
+    lagMetric: 'Eficiência do processo (%)',
+    actionStatement: 'Operação de processo com execução padronizada e melhoria contínua.'
+  },
+  okr: {
+    leadOne: 'Key Results avançados na semana',
+    leadTwo: 'Iniciativas de KR executadas',
+    lagMetric: 'Progresso médio dos OKRs (%)',
+    actionStatement: 'Execução de OKRs com rastreamento semanal de Key Results.'
+  },
+  decisao: {
+    leadOne: 'Critérios de decisão avaliados',
+    leadTwo: 'Stakeholders consultados',
+    lagMetric: 'Decisão tomada (0-100%)',
+    actionStatement: 'Processo decisório estruturado com avaliação de critérios e alinhamento.'
+  },
+  mentoria: {
+    leadOne: 'Sessões de mentoria realizadas',
+    leadTwo: 'Ações do mentorado executadas',
+    lagMetric: 'Progresso do mentorado (%)',
+    actionStatement: 'Mentoria estruturada com sessões recorrentes e acompanhamento de evolução.'
+  },
+  autoridade: {
+    leadOne: 'Conteúdos de autoridade publicados',
+    leadTwo: 'Interações de audiência geradas',
+    lagMetric: 'Alcance acumulado (impressões/seguidores)',
+    actionStatement: 'Construção de autoridade com publicação consistente e engajamento de audiência.'
+  },
+  cenario: {
+    leadOne: 'Variáveis do cenário monitoradas',
+    leadTwo: 'Análises de cenário atualizadas',
+    lagMetric: 'Clareza do cenário (%)',
+    actionStatement: 'Análise de cenários com monitoramento de variáveis e atualização de premissas.'
+  },
+  runway: {
+    leadOne: 'Despesas controladas na semana',
+    leadTwo: 'Receitas registradas na semana',
+    lagMetric: 'Runway restante (meses)',
+    actionStatement: 'Gestão de runway com controle de burn rate e projeção de caixa.'
+  },
+  sistema_receita: {
+    leadOne: 'Ativações de componente de receita',
+    leadTwo: 'Iterações de sistema executadas',
+    lagMetric: 'Receita recorrente (MRR/ARR)',
+    actionStatement: 'Sistema de receita com ativação de componentes e iteração de alavancas.'
+  },
+  funil: {
+    leadOne: 'Etapas do funil atualizadas',
+    leadTwo: 'Conversões registradas na semana',
+    lagMetric: 'Taxa de conversão geral (%)',
+    actionStatement: 'Funil de conversão com análise etapa a etapa.'
   }
 };
 
@@ -583,7 +688,8 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
         resultCurrentValue: z.number().finite().optional().nullable(),
         resultTargetValue: z.number().finite().optional().nullable(),
         scorecardCadenceDays: z.number().int().min(1).max(14).optional(),
-        metrics: z.array(projectMetricSchema).max(12).optional()
+        metrics: z.array(projectMetricSchema).max(12).optional(),
+        methodologyData: z.unknown().optional()
       })
       .parse(request.body);
 
@@ -619,6 +725,7 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
         resultTargetValue: payload.resultTargetValue ?? null,
         scorecardCadenceDays: payload.scorecardCadenceDays ?? 7,
         status: payload.status ?? 'ativo',
+        methodologyData: payload.methodologyData !== undefined ? (payload.methodologyData as Prisma.InputJsonValue) : undefined,
         metrics: metricsToCreate.length
           ? {
               create: metricsToCreate
@@ -669,7 +776,8 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
         resultStartValue: z.number().finite().nullable().optional(),
         resultCurrentValue: z.number().finite().nullable().optional(),
         resultTargetValue: z.number().finite().nullable().optional(),
-        scorecardCadenceDays: z.number().int().min(1).max(14).optional()
+        scorecardCadenceDays: z.number().int().min(1).max(14).optional(),
+        methodologyData: z.unknown().optional()
       })
       .parse(request.body);
 
@@ -740,6 +848,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
     if (payload.scorecardCadenceDays !== undefined) {
       updateData.scorecardCadenceDays = payload.scorecardCadenceDays;
     }
+    if (payload.methodologyData !== undefined) {
+      updateData.methodologyData = payload.methodologyData as Prisma.InputJsonValue;
+    }
 
     const updated = await prisma.project.update({
       where: {
@@ -795,6 +906,118 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
     }
 
     return updated;
+  });
+
+  // Methodology data items — CRUD for items inside methodology_data JSON arrays
+  const VALID_ARRAY_KEYS = [
+    'milestones',
+    'deals',
+    'krs',
+    'discoveries',
+    'sessions',
+    'options',
+    'criteria',
+    'stages',
+    'events',
+    // Extended engine arrays
+    'proofs',
+    'scenarioActions',
+    'dailyTasks',
+    'cycles',
+    'runwayEvents',
+    'blockers',
+    'stageCriteria',
+    'funilStages'
+  ] as const;
+
+  app.post('/projects/:projectId/methodology-items', async (request, reply) => {
+    const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    const payload = z
+      .object({
+        arrayKey: z.enum(VALID_ARRAY_KEYS),
+        item: z.record(z.unknown())
+      })
+      .parse(request.body);
+
+    const project = await prisma.project.findUniqueOrThrow({
+      where: { id: params.projectId },
+      select: { id: true, methodologyData: true }
+    });
+
+    const existing = (project.methodologyData ?? {}) as Record<string, unknown>;
+    const array = Array.isArray(existing[payload.arrayKey]) ? (existing[payload.arrayKey] as Record<string, unknown>[]) : [];
+    const newItem = { ...payload.item, id: randomUUID() };
+    const updatedArray = [...array, newItem];
+    const updatedData = { ...existing, [payload.arrayKey]: updatedArray };
+
+    await prisma.project.update({
+      where: { id: params.projectId },
+      data: { methodologyData: updatedData as Prisma.InputJsonValue }
+    });
+
+    return reply.code(201).send({ ok: true, item: newItem });
+  });
+
+  app.patch('/projects/:projectId/methodology-items/:itemId', async (request) => {
+    const params = z
+      .object({ projectId: z.string().uuid(), itemId: z.string().min(1) })
+      .parse(request.params);
+    const payload = z
+      .object({
+        arrayKey: z.enum(VALID_ARRAY_KEYS),
+        item: z.record(z.unknown())
+      })
+      .parse(request.body);
+
+    const project = await prisma.project.findUniqueOrThrow({
+      where: { id: params.projectId },
+      select: { id: true, methodologyData: true }
+    });
+
+    const existing = (project.methodologyData ?? {}) as Record<string, unknown>;
+    const array = Array.isArray(existing[payload.arrayKey]) ? (existing[payload.arrayKey] as Record<string, unknown>[]) : [];
+    const index = array.findIndex((i) => i['id'] === params.itemId);
+    if (index === -1) {
+      throw new Error('Item não encontrado no array informado.');
+    }
+    const updatedItem = { ...array[index], ...payload.item, id: params.itemId };
+    const updatedArray = [...array.slice(0, index), updatedItem, ...array.slice(index + 1)];
+    const updatedData = { ...existing, [payload.arrayKey]: updatedArray };
+
+    const updated = await prisma.project.update({
+      where: { id: params.projectId },
+      data: { methodologyData: updatedData as Prisma.InputJsonValue }
+    });
+
+    return { ok: true, item: updatedItem, methodologyData: updated.methodologyData };
+  });
+
+  app.delete('/projects/:projectId/methodology-items/:itemId', async (request) => {
+    const params = z
+      .object({ projectId: z.string().uuid(), itemId: z.string().min(1) })
+      .parse(request.params);
+    const payload = z
+      .object({
+        arrayKey: z.enum(VALID_ARRAY_KEYS)
+      })
+      .parse(request.body);
+
+    const project = await prisma.project.findUniqueOrThrow({
+      where: { id: params.projectId },
+      select: { id: true, methodologyData: true }
+    });
+
+    const existing = (project.methodologyData ?? {}) as Record<string, unknown>;
+    const array = Array.isArray(existing[payload.arrayKey]) ? (existing[payload.arrayKey] as Record<string, unknown>[]) : [];
+    const filteredArray = array.filter((i) => i['id'] !== params.itemId);
+    const updatedData = { ...existing, [payload.arrayKey]: filteredArray };
+
+    await prisma.project.update({
+      where: { id: params.projectId },
+      data: { methodologyData: updatedData as Prisma.InputJsonValue }
+    });
+
+    return { ok: true, deleted: array.length !== filteredArray.length };
   });
 
   app.post('/projects/:projectId/ghost-action', async (request) => {
@@ -1047,10 +1270,11 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
       })
     ]);
 
+    const projectMethodology = project.methodology as ProjectMethodologyInput;
     const framework = buildMethodologyFramework({
-      methodology: project.methodology,
+      methodology: projectMethodology,
       objective: project.objective,
-      lagMetricName: lagMetrics[0]?.name ?? project.primaryMetric ?? METHODOLOGY_DEFAULTS[project.methodology].lagMetric,
+      lagMetricName: lagMetrics[0]?.name ?? project.primaryMetric ?? METHODOLOGY_DEFAULTS[projectMethodology].lagMetric,
       lagCurrent: project.resultCurrentValue ?? project.resultStartValue ?? null,
       lagTarget: project.resultTargetValue ?? null,
       leadDoneCount: leadCompletedThisWeek,

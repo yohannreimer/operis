@@ -13,12 +13,14 @@
     "prisma:migrate": "set -a && . ../../.env && set +a && prisma migrate dev --name init"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@execution-os/shared": "0.1.0",
+    "@fastify/cors": "^9.0.1",
     "@prisma/client": "^5.20.0",
     "amqplib": "^0.10.4",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
-    "@fastify/cors": "^9.0.1",
+    "openai": "^6.32.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

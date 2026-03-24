@@ -4,11 +4,12 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {
   BriefcaseBusiness,
   CalendarCheck2,
-  CalendarDays,
+  CalendarClock,
+  ChevronDown,
   CircleHelp,
   Command,
   Copy,
-  Gauge,
+  Flame,
   Inbox,
   Keyboard,
   LaptopMinimalCheck,
@@ -19,7 +20,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
-  Sparkles
+  Star,
+  Target
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -152,28 +154,22 @@ function readClosedWeeks() {
 }
 
 const links: NavItem[] = [
-  { to: '/', label: 'Dashboard', caption: 'Resumo geral', icon: LayoutDashboard },
   { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
-  { to: '/amanha', label: 'Amanhã', caption: 'Agenda futura', icon: CalendarDays },
-  { to: '/ritual', label: 'Ritual', caption: 'Planejamento semanal', icon: LaptopMinimalCheck },
-  { to: '/workspaces', label: 'Frentes', caption: 'Contextos', icon: Layers3 },
-  { to: '/projetos', label: 'Projetos', caption: 'Entregas', icon: BriefcaseBusiness },
-  { to: '/tarefas', label: 'Tarefas', caption: 'Backlog e detalhe', icon: ListTodo },
+  { to: '/agenda', label: 'Agenda', caption: 'Compromissos', icon: CalendarClock },
+  { to: '/habitos', label: 'Hábitos', caption: 'RPG de vida', icon: Target },
+  { to: '/projetos', label: 'Projetos', caption: 'Entregas ativas', icon: BriefcaseBusiness },
+  { to: '/tarefas', label: 'Tarefas', caption: 'Backlog e inbox', icon: ListTodo },
   { to: '/notas', label: 'Notas', caption: 'Segundo cérebro', icon: NotebookPen },
-  { to: '/gamificacao', label: 'Gamificação', caption: 'Performance', icon: Gauge }
+  { to: '/', label: 'Dashboard', caption: 'Métricas e ritual', icon: LayoutDashboard }
 ];
 
 const GO_ROUTE_MAP: Record<string, string> = {
-  d: '/',
   h: '/hoje',
-  a: '/amanha',
-  r: '/ritual',
-  f: '/workspaces',
-  w: '/workspaces',
+  a: '/agenda',
   p: '/projetos',
   t: '/tarefas',
   n: '/notas',
-  g: '/gamificacao'
+  d: '/'
 };
 
 function formatToday() {
@@ -206,6 +202,7 @@ export function Layout() {
   const [gamification, setGamification] = useState<Gamification | null>(null);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState('all');
   const [quickCapture, setQuickCapture] = useState('');
+  const [captureExpanded, setCaptureExpanded] = useState(false);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
@@ -372,6 +369,7 @@ export function Layout() {
     try {
       await api.createInboxItem(quickCapture.trim(), 'app');
       setQuickCapture('');
+      setCaptureExpanded(false);
       toast.success('Capturado na inbox.');
     } catch (error) {
       toast.error((error as Error).message);
@@ -401,7 +399,8 @@ export function Layout() {
   }, []);
 
   const focusCaptureInput = useCallback(() => {
-    quickCaptureInputRef.current?.focus();
+    setCaptureExpanded(true);
+    setTimeout(() => quickCaptureInputRef.current?.focus(), 50);
   }, []);
 
   const openTaskComposer = useCallback(() => {
@@ -847,7 +846,7 @@ export function Layout() {
     { keys: 'F', label: 'Entrar/sair do foco total da tabela' },
     { keys: 'S', label: 'Colapsar/expandir sidebar' },
     { keys: '[ / ]', label: 'Trocar contexto (frente)' },
-    { keys: 'G depois D/H/A/R/F/P/T/N/G', label: 'Ir para páginas rapidamente' }
+    { keys: 'G depois H/P/T/N/D', label: 'Ir para páginas rapidamente' }
   ];
 
   const outletContext: ShellContext = {
@@ -979,29 +978,16 @@ export function Layout() {
     <div className={shellClassName}>
       <aside className={sidebarClassName}>
         <div className="brand-block premium-brand">
-          <p className="brand-kicker">Execution OS</p>
           <h1>
-            <Sparkles size={15} />
-            <span className="brand-title-text">Operação Premium</span>
+            <span className="brand-logo">O</span>
+            <span className="brand-title-text">Operis</span>
           </h1>
-          <span>Clareza de contexto + ritmo de execução</span>
+          <span className="brand-tagline">Execution OS</span>
         </div>
 
         <nav className="main-nav premium-nav">
           {links.map((link) => {
             const Icon = link.icon;
-            const isRitualLink = link.to === '/ritual';
-            const showRitualBadge = isRitualLink && ritualPendingCount > 0;
-            const resolvedCaption = isRitualLink
-              ? showRitualBadge
-                ? `${ritualPendingCount} pendência(s) • ${ritualPendingLabel ?? 'abrir para resolver'}`
-                : ritualWeekClosed
-                  ? 'Semana fechada'
-                  : ritualReviewWindowOpen
-                    ? 'Semana em dia'
-                    : 'Sem pendências até sexta 20h'
-              : link.caption;
-
             return (
               <NavLink
                 key={link.to}
@@ -1013,14 +999,10 @@ export function Layout() {
               >
                 <div className="premium-nav-icon">
                   <Icon size={16} />
-                  {isRitualLink && showRitualBadge && <span className="premium-nav-dot" />}
                 </div>
                 <div className="premium-nav-copy">
-                  <div className="premium-nav-title-row">
-                    <strong>{link.label}</strong>
-                    {showRitualBadge && <span className="premium-nav-badge">{ritualPendingCount}</span>}
-                  </div>
-                  <small>{resolvedCaption}</small>
+                  <strong>{link.label}</strong>
+                  <small>{link.caption}</small>
                 </div>
               </NavLink>
             );
@@ -1028,9 +1010,15 @@ export function Layout() {
         </nav>
 
         <section className="sidebar-score premium-score-card">
-          <p>Score semanal</p>
-          <strong>{gamification?.scoreSemanal ?? 0}</strong>
-          <span>Streak {gamification?.streak ?? 0} dias</span>
+          <div className="score-row">
+            <Star size={13} className="score-icon" />
+            <span className="score-value">{gamification?.scoreSemanal ?? 0}</span>
+            <span className="score-label">pts</span>
+          </div>
+          <div className="streak-row">
+            <Flame size={12} className="streak-icon" />
+            <span>{gamification?.streak ?? 0} dias</span>
+          </div>
         </section>
       </aside>
 
@@ -1055,70 +1043,73 @@ export function Layout() {
             {sidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
           </button>
 
-          <div className="topbar-title premium-route-title">
-            <p>{activeRoute.label}</p>
-            <h2>{formatToday()}</h2>
-          </div>
-
-          <form className="quick-capture premium-capture" onSubmit={handleQuickCapture}>
-            <input
-              ref={quickCaptureInputRef}
-              value={quickCapture}
-              onChange={(event) => setQuickCapture(event.target.value)}
-              placeholder="Capturar ideia, pendência ou decisão"
-            />
-            <button type="submit">Capturar</button>
-            <button
-              type="button"
-              className="ghost-button command-k-trigger"
-              onClick={openCommandPalette}
-            >
-              <Command size={14} /> Cmd/Ctrl+K
-            </button>
-            <button
-              type="button"
-              className="ghost-button command-k-trigger"
-              onClick={() => setShortcutsOpen(true)}
-            >
-              <CircleHelp size={14} /> Atalhos
-            </button>
-          </form>
-        </header>
-
-        <section className="workspace-strip premium-workspace-strip">
-          <label className="premium-context-picker">
-            <span>Frente ativa</span>
+          <div className="topbar-workspace-selector">
+            <Layers3 size={13} />
             <select value={activeWorkspaceId} onChange={(event) => setActiveWorkspaceId(event.target.value)}>
-              <option value="all">Visão geral</option>
+              <option value="all">Todas as frentes</option>
               {visibleWorkspaces.map((workspace) => (
                 <option key={workspace.id} value={workspace.id}>
                   {workspace.name}
                 </option>
               ))}
             </select>
-          </label>
-
-          <div className="workspace-indicator premium-context-info">
-            <span>Frente:</span>
-            <strong>{activeWorkspace ? activeWorkspace.name : 'Visão Geral'}</strong>
+            <ChevronDown size={12} className="selector-chevron" />
           </div>
 
-          <div className="system-meta-cluster">
-            <span
-              className={
-                apiOnline === null
-                  ? 'system-chip pending'
-                  : apiOnline
-                    ? 'system-chip online'
-                    : 'system-chip offline'
-              }
+          <div className="topbar-capture-wrap">
+            <button
+              type="button"
+              className="ghost-button topbar-capture-toggle"
+              onClick={() => { setCaptureExpanded((v) => !v); if (!captureExpanded) setTimeout(() => quickCaptureInputRef.current?.focus(), 50); }}
+              title="Capturar ideia (C)"
             >
-              <LaptopMinimalCheck size={14} />
-              {apiOnline === null ? 'Verificando API' : apiOnline ? 'API online' : 'API offline'}
-            </span>
-            <span className="system-chip subtle">Streak {gamification?.streak ?? 0}d</span>
+              +
+            </button>
+            <button
+              type="button"
+              className="ghost-button command-k-trigger"
+              onClick={openCommandPalette}
+            >
+              <Command size={14} />
+            </button>
+            <button
+              type="button"
+              className="ghost-button command-k-trigger"
+              onClick={() => setShortcutsOpen(true)}
+            >
+              <CircleHelp size={14} />
+            </button>
           </div>
-        </section>
+
+          <span
+            className={
+              apiOnline === null
+                ? 'system-chip pending'
+                : apiOnline
+                  ? 'system-chip online'
+                  : 'system-chip offline'
+            }
+          >
+            <LaptopMinimalCheck size={12} />
+          </span>
+        </header>
+
+        {captureExpanded && (
+          <div className="topbar-capture-expanded">
+            <form className="quick-capture premium-capture" onSubmit={handleQuickCapture}>
+              <input
+                ref={quickCaptureInputRef}
+                value={quickCapture}
+                onChange={(event) => setQuickCapture(event.target.value)}
+                placeholder="Capturar ideia ou pendência..."
+                onKeyDown={(event) => { if (event.key === 'Escape') setCaptureExpanded(false); }}
+                autoFocus
+              />
+              <button type="submit">Capturar</button>
+              <button type="button" className="ghost-button" onClick={() => setCaptureExpanded(false)}>✕</button>
+            </form>
+          </div>
+        )}
 
         {apiOnline === false && (
           <section className="system-alert">

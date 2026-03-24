@@ -1,7 +1,14 @@
-import { DragEvent, useMemo, useState } from 'react';
+import { DragEvent, useEffect, useMemo, useState } from 'react';
 
 import { DayPlanItem } from '../api';
-import { formatTime } from '../utils/date';
+import { formatTime, todayIsoDate } from '../utils/date';
+
+export type CommitmentBlock = {
+  id: string;
+  title: string;
+  startTime: string; // HH:mm
+  durationMin: number;
+};
 
 export type DragPayload =
   | {
@@ -23,6 +30,7 @@ type SchedulerGridProps = {
   onItemDragStart?: (event: DragEvent<HTMLElement>, payload: DragPayload) => void;
   startHour?: number;
   endHour?: number;
+  commitmentBlocks?: CommitmentBlock[];
 };
 
 const ROW_HEIGHT = 38;
@@ -84,9 +92,24 @@ export function SchedulerGrid({
   onDropPayload,
   onItemDragStart,
   startHour = 6,
-  endHour = 23
+  endHour = 23,
+  commitmentBlocks = []
 }: SchedulerGridProps) {
   const [hoveredSlotKey, setHoveredSlotKey] = useState<string | null>(null);
+  const [nowMinutes, setNowMinutes] = useState<number | null>(null);
+
+  const isToday = date === todayIsoDate();
+
+  useEffect(() => {
+    if (!isToday) { setNowMinutes(null); return; }
+    function update() {
+      const now = new Date();
+      setNowMinutes(now.getHours() * 60 + now.getMinutes());
+    }
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, [isToday]);
 
   const rows = useMemo(() => {
     const data: Array<{ key: string; hour: number; minute: number; label: string }> = [];
@@ -171,6 +194,44 @@ export function SchedulerGrid({
             onDrop={(event) => handleDropRow(event, row.hour, row.minute)}
           />
         ))}
+
+        {nowMinutes !== null && (() => {
+          const offsetMinutes = nowMinutes - startHour * 60;
+          if (offsetMinutes < 0 || offsetMinutes > (endHour - startHour) * 60) return null;
+          const top = (offsetMinutes / 30) * ROW_HEIGHT;
+          return <div className="scheduler-now-indicator" style={{ top }} />;
+        })()}
+
+        {orderedItems.length === 0 && commitmentBlocks.length === 0 && (
+          <div className="scheduler-empty-state">
+            Arraste tarefas do pool ou clique em um horário para agendar
+          </div>
+        )}
+
+        {/* Commitment blocks — read-only, indigo layer */}
+        {commitmentBlocks.map((cb) => {
+          const [h, m] = cb.startTime.split(':').map(Number);
+          const startMinutes = (h - startHour) * 60 + m;
+          const slotStart = startMinutes / 30;
+          const slotSpan = Math.max(1, cb.durationMin / 30);
+
+          if (startMinutes < 0 || startMinutes >= (endHour - startHour) * 60) return null;
+
+          return (
+            <div
+              key={`cb-${cb.id}`}
+              className="scheduler-commitment-item"
+              style={{
+                top: slotStart * ROW_HEIGHT,
+                height: slotSpan * ROW_HEIGHT
+              }}
+              title={`${cb.title} · ${cb.startTime} · ${cb.durationMin}min`}
+            >
+              <strong>{cb.title}</strong>
+              <span>{cb.startTime} · {cb.durationMin}min</span>
+            </div>
+          );
+        })}
 
         {orderedItems.map((item) => {
           const start = new Date(item.startTime);

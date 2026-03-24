@@ -14,6 +14,7 @@ import {
   YAxis
 } from 'recharts';
 
+import { axisProps, cartesianGridProps, chartTheme, tooltipStyle } from '../utils/chart-theme';
 import {
   api,
   InboxItem,
@@ -205,6 +206,7 @@ export function TarefasPage() {
   const [taskView, setTaskView] = useState<TaskView>('open');
   const [taskListMode, setTaskListMode] = useState<TaskListMode>('table');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
+  const [analysisExpanded, setAnalysisExpanded] = useState(false);
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [completionTaskId, setCompletionTaskId] = useState('');
 
@@ -1129,7 +1131,6 @@ export function TarefasPage() {
     return (
       <PremiumPage>
         <PremiumHeader
-          eyebrow="Operação"
           title="Tarefas"
           subtitle="Lista clara, contexto mínimo e execução por foco."
         />
@@ -1146,7 +1147,6 @@ export function TarefasPage() {
     <PremiumPage>
       {!focusMode && (
         <PremiumHeader
-          eyebrow="Operação"
           title="Tarefas"
           subtitle="Lista clara, contexto mínimo e execução por foco."
           actions={
@@ -1202,227 +1202,57 @@ export function TarefasPage() {
             </section>
           ) : (
             <>
-              <section className="premium-metric-grid mini task-analytics-metrics">
-                <MetricCard
-                  label="Taxa concluída"
-                  value={`${taskInsights.completionRate}%`}
-                  tone="accent"
-                  hint={`${taskInsights.completed}/${taskInsights.total}`}
-                />
-                <MetricCard
-                  label="Em fluxo"
-                  value={taskInsights.inFlow}
-                  hint="hoje + andamento"
-                />
-                <MetricCard
-                  label="Aguardando"
-                  value={taskInsights.waiting}
-                  tone={taskInsights.waiting > 0 ? 'warning' : 'default'}
-                  hint="dependência externa"
-                />
-                <MetricCard
-                  label="Com restrições"
-                  value={taskInsights.restricted}
-                  tone={taskInsights.restricted > 0 ? 'warning' : 'default'}
-                  hint={`${taskInsights.openRestrictions} restrições abertas`}
-                />
-                <MetricCard
-                  label="Atrasadas"
-                  value={taskInsights.overdue}
-                  tone={taskInsights.overdue > 0 ? 'warning' : 'default'}
-                  hint={`prioridade média P${taskInsights.avgPriority}`}
-                />
-              </section>
-
-              <PremiumCard
-                title="Central de dependências externas"
-                subtitle={waitingTasks.length === 0 ? 'sem bloqueios de terceiros no momento' : `${waitingTasks.length} tarefa(s) aguardando terceiros`}
-              >
-                {waitingTasks.length === 0 ? (
-                  <EmptyState
-                    title="Nenhuma pendência externa"
-                    description="Quando uma tarefa depender de outra pessoa, ela aparece aqui com ação imediata."
-                  />
-                ) : (
-                  <ul className="premium-list dense">
-                    {waitingTasks.slice(0, 10).map((entry) => {
-                      const dueTone = waitingRadarTone(entry.followupState);
-                      return (
-                        <li key={`waiting-${entry.taskId}`}>
-                          <div>
-                            <strong>{entry.title}</strong>
-                            <small>
-                              {entry.workspaceName} • aguardando {entry.waitingOnPerson} • prazo{' '}
-                              {entry.waitingDueDate ? new Date(entry.waitingDueDate).toLocaleDateString('pt-BR') : 'n/d'}
-                            </small>
-                            <small>
-                              {entry.followupState === 'urgente'
-                                ? `Atrasada há ${Math.max(1, entry.daysWaiting)} dia(s).`
-                                : entry.followupState === 'hoje'
-                                  ? 'Follow-up vence hoje.'
-                                  : `Próximo follow-up em ${new Date(entry.nextFollowupAt).toLocaleDateString('pt-BR')}.`}
-                            </small>
-                          </div>
-                          <div className="inline-actions">
-                            <span className={`status-tag ${dueTone === 'danger' ? 'backlog' : dueTone === 'warning' ? 'andamento' : 'feito'}`}>
-                              {dueTone === 'danger' ? 'urgente' : dueTone === 'warning' ? 'cobrar hoje' : 'agendado'}
-                            </span>
-                            <button type="button" className="ghost-button" onClick={() => openTaskDetails(entry.taskId, 'restrictions')}>
-                              Abrir
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              disabled={busy}
-                              onClick={() => void registerWaitingFollowup(entry)}
-                            >
-                              Registrar cobrança
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              disabled={busy}
-                              onClick={() => void copyWaitingFollowup(entry)}
-                            >
-                              Copiar follow-up
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              disabled={busy}
-                              onClick={() => clearWaitingDependency(entry.taskId)}
-                            >
-                              Marcar resolvida
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </PremiumCard>
-
-              <section className="premium-grid two task-analytics-grid">
-                <PremiumCard title="Ritmo por status" subtitle="distribuição na visão atual">
-                  {taskInsights.statusBreakdown.every((entry) => entry.value === 0) ? (
-                    <EmptyState
-                      title="Sem dados para o gráfico"
-                      description="Crie ou carregue tarefas para ativar a análise de execução."
-                    />
-                  ) : (
-                    <div className="premium-chart-wrap">
-                      <ResponsiveContainer width="100%" height={220}>
-                        <BarChart data={taskInsights.statusBreakdown}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                          <XAxis dataKey="name" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                          <YAxis allowDecimals={false} tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                          <Tooltip cursor={{ fill: 'rgba(31, 94, 255, 0.08)' }} contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }} />
-                          <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="#2563eb" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </PremiumCard>
-
-                <PremiumCard title="Mix de prioridade" subtitle="equilíbrio do backlog">
-                  {taskInsights.priorityBreakdown.every((entry) => entry.value === 0) ? (
-                    <EmptyState
-                      title="Sem distribuição de prioridade"
-                      description="As prioridades aparecem automaticamente conforme você cadastra tarefas."
-                    />
-                  ) : (
-                    <div className="premium-chart-wrap pie">
-                      <ResponsiveContainer width="100%" height={220}>
-                        <PieChart>
-                          <Pie
-                            data={taskInsights.priorityBreakdown}
-                            dataKey="value"
-                            nameKey="name"
-                            innerRadius={48}
-                            outerRadius={82}
-                            paddingAngle={4}
-                          >
-                            {taskInsights.priorityBreakdown.map((entry, index) => (
-                              <Cell
-                                key={entry.name}
-                                fill={['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#1d4ed8'][index] ?? '#1d4ed8'}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </PremiumCard>
-              </section>
-
+              {/* Task list — FIRST */}
               <section className="task-canvas">
                 <article className="surface-card task-master-pane single">
-                  <div className="section-title">
-                    <h4>Tarefas</h4>
-                    <small>{filteredTasks.length} visíveis</small>
-                  </div>
+                  <div className="task-unified-toolbar">
+                    <select
+                      value={taskView}
+                      onChange={(event) => setTaskView(event.target.value as TaskView)}
+                      className="task-view-select"
+                    >
+                      <option value="open">Abertas</option>
+                      <option value="all">Todas</option>
+                      <option value="done">Concluídas</option>
+                      <option value="restricted">Com restrições</option>
+                    </select>
 
-                  <div className="task-filter-stack">
+                    <input
+                      className="task-search-input"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Buscar tarefa..."
+                    />
+
+                    <select
+                      value={horizonFilter}
+                      onChange={(event) => setHorizonFilter(event.target.value as 'all' | TaskHorizon)}
+                    >
+                      <option value="all">Horizonte</option>
+                      <option value="active">Ativo</option>
+                      <option value="future">Futuro</option>
+                    </select>
+
                     <div className="inline-actions task-mode-tabs">
-                      <button
-                        type="button"
-                        className={taskView === 'open' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                        onClick={() => setTaskView('open')}
-                      >
-                        Abertas
-                      </button>
-                      <button
-                        type="button"
-                        className={taskView === 'all' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                        onClick={() => setTaskView('all')}
-                      >
-                        Todas
-                      </button>
-                      <button
-                        type="button"
-                        className={taskView === 'done' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                        onClick={() => setTaskView('done')}
-                      >
-                        Concluídas
-                      </button>
-                      <button
-                        type="button"
-                        className={
-                          taskView === 'restricted' ? 'ghost-button task-filter active' : 'ghost-button task-filter'
-                        }
-                        onClick={() => setTaskView('restricted')}
-                      >
-                        Com restrições
-                      </button>
                       <button
                         type="button"
                         className={taskListMode === 'list' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
                         onClick={() => setTaskListMode('list')}
+                        title="Lista"
                       >
-                        Lista
+                        ≡
                       </button>
                       <button
                         type="button"
                         className={taskListMode === 'table' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
                         onClick={() => setTaskListMode('table')}
+                        title="Tabela"
                       >
-                        Tabela
+                        ⊞
                       </button>
                     </div>
 
-                    <div className="task-list-filters">
-                      <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar tarefa" />
-                      <select
-                        value={horizonFilter}
-                        onChange={(event) => setHorizonFilter(event.target.value as 'all' | TaskHorizon)}
-                      >
-                        <option value="all">Todos horizontes</option>
-                        <option value="active">Ativo</option>
-                        <option value="future">Futuro</option>
-                      </select>
-                    </div>
+                    <small className="task-count-badge">{filteredTasks.length} visíveis</small>
                   </div>
 
                   {filteredTasks.length === 0 ? (
@@ -1479,6 +1309,171 @@ export function TarefasPage() {
                   )}
                 </article>
               </section>
+
+              {/* Análise — colapsável, fechada por padrão */}
+              <div className="task-analysis-toggle">
+                <button
+                  type="button"
+                  className="ghost-button task-filter"
+                  onClick={() => setAnalysisExpanded((v) => !v)}
+                >
+                  {analysisExpanded ? 'Ocultar análise ▲' : 'Ver análise ▼'}
+                </button>
+              </div>
+
+              {analysisExpanded && (
+                <>
+                  <section className="premium-metric-grid mini task-analytics-metrics">
+                    <MetricCard
+                      label="Taxa concluída"
+                      value={`${taskInsights.completionRate}%`}
+                      tone="accent"
+                      hint={`${taskInsights.completed}/${taskInsights.total}`}
+                    />
+                    <MetricCard
+                      label="Em fluxo"
+                      value={taskInsights.inFlow}
+                      hint="hoje + andamento"
+                    />
+                    <MetricCard
+                      label="Aguardando"
+                      value={taskInsights.waiting}
+                      tone={taskInsights.waiting > 0 ? 'warning' : 'default'}
+                      hint="dependência externa"
+                    />
+                    <MetricCard
+                      label="Com restrições"
+                      value={taskInsights.restricted}
+                      tone={taskInsights.restricted > 0 ? 'warning' : 'default'}
+                      hint={`${taskInsights.openRestrictions} restrições abertas`}
+                    />
+                    <MetricCard
+                      label="Atrasadas"
+                      value={taskInsights.overdue}
+                      tone={taskInsights.overdue > 0 ? 'warning' : 'default'}
+                      hint={`prioridade média P${taskInsights.avgPriority}`}
+                    />
+                  </section>
+
+                  {waitingTasks.length > 0 && (
+                    <PremiumCard
+                      title="Dependências externas"
+                      subtitle={`${waitingTasks.length} tarefa(s) aguardando terceiros`}
+                    >
+                      <ul className="premium-list dense">
+                        {waitingTasks.slice(0, 10).map((entry) => {
+                          const dueTone = waitingRadarTone(entry.followupState);
+                          return (
+                            <li key={`waiting-${entry.taskId}`}>
+                              <div>
+                                <strong>{entry.title}</strong>
+                                <small>
+                                  {entry.workspaceName} • aguardando {entry.waitingOnPerson} • prazo{' '}
+                                  {entry.waitingDueDate ? new Date(entry.waitingDueDate).toLocaleDateString('pt-BR') : 'n/d'}
+                                </small>
+                                <small>
+                                  {entry.followupState === 'urgente'
+                                    ? `Atrasada há ${Math.max(1, entry.daysWaiting)} dia(s).`
+                                    : entry.followupState === 'hoje'
+                                      ? 'Follow-up vence hoje.'
+                                      : `Próximo follow-up em ${new Date(entry.nextFollowupAt).toLocaleDateString('pt-BR')}.`}
+                                </small>
+                              </div>
+                              <div className="inline-actions">
+                                <span className={`status-tag ${dueTone === 'danger' ? 'backlog' : dueTone === 'warning' ? 'andamento' : 'feito'}`}>
+                                  {dueTone === 'danger' ? 'urgente' : dueTone === 'warning' ? 'cobrar hoje' : 'agendado'}
+                                </span>
+                                <button type="button" className="ghost-button" onClick={() => openTaskDetails(entry.taskId, 'restrictions')}>
+                                  Abrir
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  disabled={busy}
+                                  onClick={() => void registerWaitingFollowup(entry)}
+                                >
+                                  Registrar cobrança
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  disabled={busy}
+                                  onClick={() => void copyWaitingFollowup(entry)}
+                                >
+                                  Copiar follow-up
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  disabled={busy}
+                                  onClick={() => clearWaitingDependency(entry.taskId)}
+                                >
+                                  Marcar resolvida
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </PremiumCard>
+                  )}
+
+                  <section className="premium-grid two task-analytics-grid">
+                    <PremiumCard title="Ritmo por status" subtitle="distribuição na visão atual">
+                      {taskInsights.statusBreakdown.every((entry) => entry.value === 0) ? (
+                        <EmptyState
+                          title="Sem dados para o gráfico"
+                          description="Crie ou carregue tarefas para ativar a análise de execução."
+                        />
+                      ) : (
+                        <div className="premium-chart-wrap">
+                          <ResponsiveContainer width="100%" height={220}>
+                            <BarChart data={taskInsights.statusBreakdown}>
+                              <CartesianGrid {...cartesianGridProps} />
+                              <XAxis dataKey="name" {...axisProps} />
+                              <YAxis allowDecimals={false} {...axisProps} />
+                              <Tooltip cursor={{ fill: 'rgba(224,124,74,0.06)' }} contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} />
+                              <Bar dataKey="value" radius={[8, 8, 0, 0]} fill={chartTheme.colors.primary} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </PremiumCard>
+
+                    <PremiumCard title="Mix de prioridade" subtitle="equilíbrio do backlog">
+                      {taskInsights.priorityBreakdown.every((entry) => entry.value === 0) ? (
+                        <EmptyState
+                          title="Sem distribuição de prioridade"
+                          description="As prioridades aparecem automaticamente conforme você cadastra tarefas."
+                        />
+                      ) : (
+                        <div className="premium-chart-wrap pie">
+                          <ResponsiveContainer width="100%" height={220}>
+                            <PieChart>
+                              <Pie
+                                data={taskInsights.priorityBreakdown}
+                                dataKey="value"
+                                nameKey="name"
+                                innerRadius={48}
+                                outerRadius={82}
+                                paddingAngle={4}
+                              >
+                                {taskInsights.priorityBreakdown.map((entry, index) => (
+                                  <Cell
+                                    key={entry.name}
+                                    fill={chartTheme.palette[index % chartTheme.palette.length]}
+                                  />
+                                ))}
+                              </Pie>
+                              <Tooltip contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </PremiumCard>
+                  </section>
+                </>
+              )}
             </>
           )}
 

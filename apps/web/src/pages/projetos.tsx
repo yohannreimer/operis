@@ -1,5 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import {
+  PICKER_TYPES,
+  computeAuthorityScore,
+  computeOkrScore,
+  computePipelineForecast,
+  computeRunwayMonths,
+  daysRemaining,
+  getEngine,
+  getEngineVariant,
+  getProjectTypeConfig,
+  methodologyDisplayLabel,
+  methodologyIcon,
+} from '../project-engines';
+import type { WizardField } from '../project-engines';
 import {
   Area,
   AreaChart,
@@ -16,6 +30,7 @@ import {
   YAxis
 } from 'recharts';
 
+import { axisProps, cartesianGridProps, chartTheme, tooltipStyle } from '../utils/chart-theme';
 import {
   api,
   Project,
@@ -28,7 +43,8 @@ import {
   TaskExecutionKind,
   TaskHorizon,
   TaskType,
-  Workspace
+  Workspace,
+  type MethodologyData
 } from '../api';
 import { Modal } from '../components/modal';
 import { TaskCompletionModal } from '../components/task-completion-modal';
@@ -89,7 +105,7 @@ function objective4dxIsValid(value: string) {
   return /de\s+.+\s+para\s+.+\s+em\s+.+/i.test(value.trim());
 }
 
-const PROJECT_METHODOLOGY_META: Record<
+const PROJECT_METHODOLOGY_META: Partial<Record<
   ProjectMethodology,
   {
     label: string;
@@ -102,7 +118,7 @@ const PROJECT_METHODOLOGY_META: Record<
     leadTwoPlaceholder: string;
     lagPlaceholder: string;
   }
-> = {
+>> = {
   fourdx: {
     label: '4DX',
     subtitle: 'Resultado + 2 MDDs + cadência semanal',
@@ -166,7 +182,7 @@ const PROJECT_METHODOLOGY_META: Record<
 };
 
 function methodologyLabel(methodology?: ProjectMethodology | null) {
-  return PROJECT_METHODOLOGY_META[methodology ?? 'fourdx'].label;
+  return methodologyDisplayLabel(methodology);
 }
 
 const PROJECT_CREATE_STEP_LABELS: Array<{ step: ProjectCreateStep; label: string }> = [
@@ -175,13 +191,13 @@ const PROJECT_CREATE_STEP_LABELS: Array<{ step: ProjectCreateStep; label: string
   { step: 3, label: '3. Preview e criação' }
 ];
 
-const PROJECT_METHOD_PANEL_PREVIEW: Record<
+const PROJECT_METHOD_PANEL_PREVIEW: Partial<Record<
   ProjectMethodology,
   {
     chart: string;
     focus: string;
   }
-> = {
+>> = {
   fourdx: {
     chart: 'Projeção linear de lag + compliance semanal de MDD',
     focus: 'disciplina semanal e avanço consistente da meta'
@@ -365,6 +381,105 @@ function formatLastCheckinLabel(iso?: string | null) {
   return new Date(iso).toLocaleDateString('pt-BR');
 }
 
+function getProjectCardMetrics(project: Project, totalTasks: number, lagProgress: number | null): string[] {
+  const engine = getEngine(project.methodology);
+  const variant = getEngineVariant(project.methodology);
+  const md = project.methodologyData;
+  const tasksLabel = `${totalTasks} tarefa${totalTasks !== 1 ? 's' : ''}`;
+
+  if (engine === 'metric') {
+    const lagPct = lagProgress ?? 0;
+    return [`Lag ${lagPct}%`, tasksLabel, formatLastCheckinLabel(project.lastScorecardCheckinAt)];
+  }
+
+  if (engine === 'milestone') {
+    const daysLeft = daysRemaining(project.timeHorizonEnd);
+    const daysLabel = daysLeft === null ? 'sem prazo' : daysLeft >= 0 ? `D-${daysLeft}` : `${Math.abs(daysLeft)}d atraso`;
+    if (variant === 'authority') {
+      const pts = computeAuthorityScore(md?.proofs);
+      return [`${pts} pts autoridade`, tasksLabel, daysLabel];
+    }
+    const milestones = md?.milestones ?? [];
+    const done = milestones.filter((m) => m.done).length;
+    return [`${done}/${milestones.length} marcos`, tasksLabel, daysLabel];
+  }
+
+  if (engine === 'log') {
+    if (variant === 'coaching') {
+      const sessions = md?.sessions ?? [];
+      const nextSession = md?.nextSessionDate
+        ? new Date(md.nextSessionDate).toLocaleDateString('pt-BR')
+        : 'sem próxima sessão';
+      return [`${sessions.length} sessões`, tasksLabel, nextSession];
+    }
+    // discovery (default log variant)
+    const discoveries = md?.discoveries ?? [];
+    const decisionStatus = md?.decision ? 'decidido' : 'em análise';
+    return [`${discoveries.length} descobertas`, tasksLabel, decisionStatus];
+  }
+
+  if (engine === 'pipeline') {
+    const deals = md?.deals ?? [];
+    const stages = md?.stages ?? [];
+    const stagesLabel = `${deals.length} deals / ${stages.length} estágios`;
+    if (variant === 'financial' || variant === 'linear') {
+      const closedStage = stages.find((s) => s.order === Math.max(...stages.map((st) => st.order)));
+      const forecast = computePipelineForecast(deals, closedStage?.id);
+      const forecastLabel = `R$ ${Math.round(forecast).toLocaleString('pt-BR')}`;
+      return [stagesLabel, tasksLabel, forecastLabel];
+    }
+    return [stagesLabel, tasksLabel];
+  }
+
+  if (engine === 'composite') {
+    const okrPct = computeOkrScore(md?.krs);
+    const periodLabel = md?.okrPeriod ?? 'sem período';
+    return [`OKR ${okrPct}%`, tasksLabel, periodLabel];
+  }
+
+  if (engine === 'decision') {
+    const options = md?.options ?? [];
+    const criteria = md?.criteria ?? [];
+    const daysLeft = daysRemaining(md?.decisionDate);
+    const deadlineLabel = daysLeft === null ? 'sem prazo' : daysLeft >= 0 ? `D-${daysLeft}` : 'prazo vencido';
+    return [`${options.length} opções / ${criteria.length} critérios`, tasksLabel, deadlineLabel];
+  }
+
+  if (engine === 'time') {
+    if (variant === 'runway') {
+      const months = computeRunwayMonths(md?.availableCash, md?.burnRateMonthly);
+      const runwayLabel = months !== null ? `${months} meses runway` : 'runway n/d';
+      const burnLabel = md?.burnRateMonthly != null ? `R$ ${Math.round(md.burnRateMonthly).toLocaleString('pt-BR')}/mês` : 'burn n/d';
+      return [runwayLabel, burnLabel, tasksLabel];
+    }
+    // campaign
+    const launchDays = daysRemaining(md?.launchDate);
+    const launchLabel = launchDays !== null ? `D-${launchDays} para lançamento` : (md?.campaignChannel ?? 'campanha');
+    return [launchLabel, tasksLabel];
+  }
+
+  if (engine === 'recurring') {
+    const freq = md?.frequency ?? 'mensal';
+    const cycles = md?.cycles ?? [];
+    const currentCycle = cycles[cycles.length - 1]?.periodLabel ?? 'sem ciclo';
+    return [`Freq: ${freq}`, tasksLabel, currentCycle];
+  }
+
+  if (engine === 'funnel') {
+    const stages = (md?.funilStages ?? []).sort((a, b) => a.order - b.order);
+    const topVal = stages[0]?.value;
+    const bottomVal = stages[stages.length - 1]?.value;
+    const overallConv = topVal && bottomVal && topVal > 0
+      ? `${Math.round((bottomVal / topVal) * 100)}% conv. geral`
+      : `${stages.length} etapas`;
+    return [`${stages.length} etapas`, overallConv, tasksLabel];
+  }
+
+  // fallback
+  const lagPct = lagProgress ?? 0;
+  return [`Lag ${lagPct}%`, tasksLabel, formatLastCheckinLabel(project.lastScorecardCheckinAt)];
+}
+
 function daysUntilDate(iso?: string | null) {
   if (!iso) {
     return null;
@@ -396,7 +511,7 @@ const PROJECT_STATUS_CONFIRMATION: Partial<Record<ProjectStatus, string>> = {
     'Mudar para Encerrado?\n\nUse quando o ciclo do projeto terminou.\n\nIsso NÃO apaga dados.'
 };
 
-const PROJECT_METHODOLOGY_DETAIL_META: Record<
+const PROJECT_METHODOLOGY_DETAIL_META: Partial<Record<
   ProjectMethodology,
   {
     scoreboardTitle: string;
@@ -413,7 +528,7 @@ const PROJECT_METHODOLOGY_DETAIL_META: Record<
     lagProgressLabel: string;
     deadlineLabel: string;
   }
-> = {
+>> = {
   fourdx: {
     scoreboardTitle: 'Placar visível 4DX',
     scoreboardSubtitle: 'resultado final, medidas de direção e cadência semanal',
@@ -491,7 +606,7 @@ const PROJECT_METHODOLOGY_DETAIL_META: Record<
   }
 };
 
-const PROJECT_METHODOLOGY_CREATE_META: Record<
+const PROJECT_METHODOLOGY_CREATE_META: Partial<Record<
   ProjectMethodology,
   {
     objectiveLabel: string;
@@ -517,7 +632,7 @@ const PROJECT_METHODOLOGY_CREATE_META: Record<
     cadenceSuggestion: number;
     cadenceHint: string;
   }
-> = {
+>> = {
   fourdx: {
     objectiveLabel: 'Objetivo 4DX',
     objectiveHint: 'Formato recomendado: de X para Y em Z tempo.',
@@ -676,7 +791,7 @@ function splitActionStatementLines(actionStatement?: string | null) {
 
 function methodologyOperationalPillars(project: Project) {
   const methodology = project.methodology ?? 'fourdx';
-  const createMeta = PROJECT_METHODOLOGY_CREATE_META[methodology];
+  const createMeta = PROJECT_METHODOLOGY_CREATE_META[methodology] ?? PROJECT_METHODOLOGY_CREATE_META['fourdx']!;
   const actionLines = splitActionStatementLines(project.actionStatement);
 
   return [
@@ -771,6 +886,8 @@ export function ProjetosPage() {
   const [newProjectResultTargetValue, setNewProjectResultTargetValue] = useState('');
   const [newProjectCadenceDays, setNewProjectCadenceDays] = useState('7');
   const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>('ativo');
+  // Generic wizard state for engine-specific fields (new methodology types)
+  const [wizardDraft, setWizardDraft] = useState<Record<string, string | string[]>>({});
 
   const [scorecardWeekStart, setScorecardWeekStart] = useState(() => currentWeekStartIso());
   const [projectScorecard, setProjectScorecard] = useState<ProjectScorecard | null>(null);
@@ -778,7 +895,62 @@ export function ProjetosPage() {
   const [newMetricTargetValue, setNewMetricTargetValue] = useState('');
   const [newMetricUnit, setNewMetricUnit] = useState('');
   const [checkinValueByMetric, setCheckinValueByMetric] = useState<Record<string, string>>({});
+  // Engine quick-add inline forms (replaces window.prompt)
+  const [engineQuickAdd, setEngineQuickAdd] = useState<{
+    type: 'milestone' | 'proof' | 'event' | 'deal' | 'cycle' | 'step' | 'session' | 'action' | 'blocker' | 'kr' | null;
+    draft: Record<string, string>;
+  }>({ type: null, draft: {} });
+  const openQuickAdd = (type: typeof engineQuickAdd.type, draft: Record<string, string> = {}) =>
+    setEngineQuickAdd({ type, draft });
+  const closeQuickAdd = () => setEngineQuickAdd({ type: null, draft: {} });
+  const setQuickDraft = (key: string, value: string) =>
+    setEngineQuickAdd(prev => ({ ...prev, draft: { ...prev.draft, [key]: value } }));
   const [checkinNoteByMetric, setCheckinNoteByMetric] = useState<Record<string, string>>({});
+  // Mentoria — controlled session form state
+  const [mentoriaDate, setMentoriaDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [mentoriaLearned, setMentoriaLearned] = useState('');
+  const [mentoriaCommitments, setMentoriaCommitments] = useState<string[]>(['']);
+  // Exploração — controlled discovery form state
+  const [discoveryText, setDiscoveryText] = useState('');
+  const [discoveryType, setDiscoveryType] = useState<'confirms' | 'refutes' | 'inconclusive'>('confirms');
+  const [discoveryDecision, setDiscoveryDecision] = useState<'follow' | 'pivot' | 'discard' | null>(null);
+  // Mentoria — extra form fields and UI state
+  const [mentoriaDuration, setMentoriaDuration] = useState('');
+  const [showAllSessions, setShowAllSessions] = useState(false);
+  // Pipeline (standard) — controlled add deal input
+  const [newDealName, setNewDealName] = useState('');
+  // 4DX — lag metric setup form
+  const [fourdxLagName, setFourdxLagName] = useState('');
+  const [fourdxLagUnit, setFourdxLagUnit] = useState('');
+  const [fourdxLead1, setFourdxLead1] = useState('');
+  const [fourdxLead2, setFourdxLead2] = useState('');
+  const [fourdxSetupUnit, setFourdxSetupUnit] = useState('');
+  // Decisão — inline score editing + controlled weight inputs
+  const [decisionNewOption, setDecisionNewOption] = useState('');
+  const [decisionNewCriteria, setDecisionNewCriteria] = useState('');
+  const [decisionEditScores, setDecisionEditScores] = useState<Record<string, string>>({});
+  const [decisionWeightValues, setDecisionWeightValues] = useState<Record<string, string>>({});
+  // Cenário — scenario selection when adding actions
+  const [scenarioDraftIds, setScenarioDraftIds] = useState<string[]>([]);
+  // OKR — KR update inputs (controlled, keyed by KR id)
+  const [krUpdateValues, setKrUpdateValues] = useState<Record<string, string>>({});
+  const [newKrDesc, setNewKrDesc] = useState('');
+  const [newKrTarget, setNewKrTarget] = useState('');
+  const [newKrUnit, setNewKrUnit] = useState('');
+  // Campanha — controlled task input + result editing
+  const [campaignNewTask, setCampaignNewTask] = useState('');
+  const [campaignResultEdit, setCampaignResultEdit] = useState<string | null>(null);
+  // Captação (financial pipeline) — controlled deal input + amount/prob
+  const [financialNewDealName, setFinancialNewDealName] = useState('');
+  const [financialNewDealAmount, setFinancialNewDealAmount] = useState('');
+  const [financialNewDealProb, setFinancialNewDealProb] = useState('50');
+  // Runway — inline editing of cash and burn rate
+  const [runwayEditCash, setRunwayEditCash] = useState('');
+  const [runwayEditBurn, setRunwayEditBurn] = useState('');
+  const [runwayEditingField, setRunwayEditingField] = useState<'cash' | 'burn' | null>(null);
+  // Funil engine
+  const [funilValueEditing, setFunilValueEditing] = useState<Record<string, string>>({});
+  const [funilNewStageLabel, setFunilNewStageLabel] = useState('');
   const [frameworkLeadOneDone, setFrameworkLeadOneDone] = useState(false);
   const [frameworkLeadTwoDone, setFrameworkLeadTwoDone] = useState(false);
   const [frameworkLagValue, setFrameworkLagValue] = useState('');
@@ -817,8 +989,10 @@ export function ProjetosPage() {
       return true;
     }
   });
+  const [guideManuallyOpen, setGuideManuallyOpen] = useState(false);
 
   const [busy, setBusy] = useState(false);
+  const [projectOverflowOpen, setProjectOverflowOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const completionTask = tasks.find((task) => task.id === completionTaskId) ?? null;
@@ -826,7 +1000,7 @@ export function ProjetosPage() {
   function resetProjectDraft(methodology: ProjectMethodology) {
     setNewProjectTitle('');
     setNewProjectDescription('');
-    setNewProjectType(methodology === 'delivery' || methodology === 'discovery' ? 'construcao' : 'crescimento');
+    setNewProjectType(methodology === 'delivery' || methodology === 'discovery' || methodology === 'entrega' || methodology === 'exploracao' ? 'construcao' : 'crescimento');
     setNewProjectMethodology(methodology);
     setNewProjectObjective('');
     setNewProjectMetric('');
@@ -837,8 +1011,10 @@ export function ProjetosPage() {
     setNewProjectTimeHorizonEnd('');
     setNewProjectResultStartValue('');
     setNewProjectResultTargetValue('');
-    setNewProjectCadenceDays(String(PROJECT_METHODOLOGY_CREATE_META[methodology].cadenceSuggestion));
+    const legacyMeta = PROJECT_METHODOLOGY_CREATE_META[methodology as keyof typeof PROJECT_METHODOLOGY_CREATE_META];
+    setNewProjectCadenceDays(String(legacyMeta?.cadenceSuggestion ?? 7));
     setNewProjectStatus('ativo');
+    setWizardDraft({});
     setProjectCreateStep(2);
   }
 
@@ -955,12 +1131,15 @@ export function ProjetosPage() {
   }
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
-  const selectedProjectMethodology = selectedProject?.methodology ?? 'fourdx';
-  const selectedProjectMethodologyMeta = PROJECT_METHODOLOGY_META[selectedProjectMethodology];
-  const selectedProjectDetailMeta = PROJECT_METHODOLOGY_DETAIL_META[selectedProjectMethodology];
+  const selectedProjectMethodology = (selectedProject?.methodology ?? 'fourdx') as keyof typeof PROJECT_METHODOLOGY_META;
+  const legacyMethodologyKey = (Object.keys(PROJECT_METHODOLOGY_META) as ProjectMethodology[]).includes(selectedProject?.methodology ?? 'fourdx')
+    ? (selectedProject?.methodology ?? 'fourdx') as keyof typeof PROJECT_METHODOLOGY_META
+    : 'fourdx' as const;
+  const selectedProjectMethodologyMeta = PROJECT_METHODOLOGY_META[legacyMethodologyKey] ?? PROJECT_METHODOLOGY_META['fourdx']!;
+  const selectedProjectDetailMeta = PROJECT_METHODOLOGY_DETAIL_META[legacyMethodologyKey] ?? PROJECT_METHODOLOGY_DETAIL_META['fourdx']!;
   const frameworkExtraFields = useMemo(
-    () => frameworkExtraFieldsForMethodology(selectedProjectMethodology),
-    [selectedProjectMethodology]
+    () => frameworkExtraFieldsForMethodology(legacyMethodologyKey),
+    [legacyMethodologyKey]
   );
   const projectTasks = useMemo(
     () => tasks.filter((task) => task.projectId === selectedProjectId),
@@ -1368,6 +1547,116 @@ export function ProjetosPage() {
     });
   }, [projectRanking, projects, tasks]);
 
+  // ── Constants & helpers for new engine wizard ────────────────────────
+  const LEGACY_WIZARD_KEYS: ProjectMethodology[] = ['fourdx', 'delivery', 'launch', 'discovery', 'growth'];
+
+  function buildMethodologyDataFromDraft(draft: Record<string, string | string[]>, typeConfig: ReturnType<typeof getProjectTypeConfig>): import('../api').MethodologyData {
+    if (!typeConfig) return {};
+    const { engine, engineVariant: variant } = typeConfig;
+    const str = (k: string): string => (draft[k] as string) ?? '';
+    const arr = (k: string): string[] => (draft[k] as string[]) ?? [];
+    const num = (k: string): number => Number(draft[k] ?? 0);
+    const uid = () => crypto.randomUUID();
+
+    if (engine === 'milestone' && variant === 'authority') {
+      return { proofs: [] };
+    }
+    if (engine === 'milestone') {
+      return {
+        milestones: arr('milestones').filter(Boolean).map((title, i) => ({
+          id: uid(),
+          title,
+          done: false,
+          critical: false,
+          order: i,
+        })),
+      };
+    }
+    if (engine === 'log' && variant === 'discovery') {
+      return {
+        hypothesis: str('hypothesis'),
+        hypothesisCriteria: str('hypothesisCriteria'),
+        discoveries: [],
+        decision: null,
+      };
+    }
+    if (engine === 'log' && variant === 'coaching') {
+      return { sessions: [] };
+    }
+    if (engine === 'pipeline') {
+      const defaultStages = variant === 'linear'
+        ? ['Ideia', 'Validação', '1° Cliente', 'Escala']
+        : variant === 'financial'
+          ? ['Prospecção', 'Reunião', 'Term Sheet', 'Fechado']
+          : ['Prospecção', 'Qualificação', 'Proposta', 'Fechado'];
+      const stageLabels = arr('stages').filter(Boolean);
+      const stages = (stageLabels.length > 0 ? stageLabels : defaultStages)
+        .map((label, i) => ({ id: uid(), label, order: i }));
+      return {
+        stages,
+        deals: [],
+        totalGoal: str('resultTargetValue') ? num('resultTargetValue') : undefined,
+      };
+    }
+    if (engine === 'composite') {
+      return {
+        okrPeriod: str('okrPeriod'),
+        krs: arr('krs').filter(Boolean).map((description, i) => ({
+          id: uid(),
+          description,
+          currentValue: 0,
+          targetValue: 100,
+          unit: null,
+          confidence: 'media' as const,
+          order: i,
+        })),
+      };
+    }
+    if (engine === 'decision' && variant === 'scenario') {
+      return {
+        scenarios: arr('scenarios').filter(Boolean).map((label) => ({ id: uid(), label })),
+        scenarioActions: [],
+        scenarioDecisionDate: str('timeHorizonEnd') || null,
+      };
+    }
+    if (engine === 'decision') {
+      return {
+        options: arr('options').filter(Boolean).map((label) => ({ id: uid(), label, scores: {} })),
+        criteria: arr('criteria').filter(Boolean).map((label) => ({ id: uid(), label, weight: 1 })),
+        decisionChoice: null,
+      };
+    }
+    if (engine === 'time' && variant === 'campaign') {
+      return {
+        campaignChannel: str('campaignChannel') || null,
+        campaignGoal: str('resultTargetValue') ? num('resultTargetValue') : null,
+        campaignResult: 0,
+        dailyTasks: [],
+        launchDate: str('launchDate') || null,
+      };
+    }
+    if (engine === 'time' && variant === 'runway') {
+      return {
+        availableCash: num('availableCash'),
+        burnRateMonthly: num('burnRateMonthly'),
+        runwayEvents: [],
+      };
+    }
+    if (engine === 'recurring') {
+      return {
+        frequency: (str('frequency') as 'semanal' | 'mensal' | 'trimestral') || 'mensal',
+        cycleTemplate: arr('cycleTemplate').filter(Boolean).map((text, i) => ({ id: uid(), text, order: i })),
+        cycles: [],
+      };
+    }
+    if (engine === 'funnel') {
+      return {
+        funilStages: arr('stages').filter(Boolean).map((label, i) => ({ id: uid(), label, value: null, order: i })),
+      };
+    }
+    return {};
+  }
+
   function validateProjectDraftForWizard() {
     if (!workspaceId || workspaceId === 'all') {
       return 'Selecione uma frente antes de criar projeto.';
@@ -1377,7 +1666,23 @@ export function ProjetosPage() {
       return 'Defina o nome do projeto.';
     }
 
-    const methodologyCreateMeta = PROJECT_METHODOLOGY_CREATE_META[newProjectMethodology];
+    // New engine types — validate from wizardDraft using wizardFields config
+    if (!LEGACY_WIZARD_KEYS.includes(newProjectMethodology)) {
+      const typeConfig = getProjectTypeConfig(newProjectMethodology);
+      if (typeConfig) {
+        for (const field of typeConfig.wizardFields) {
+          if (!field.required) continue;
+          const val = wizardDraft[field.key];
+          const isEmpty = !val || (typeof val === 'string' && !val.trim()) || (Array.isArray(val) && val.filter(Boolean).length === 0);
+          if (isEmpty) {
+            return `Preencha "${field.label}" para continuar.`;
+          }
+        }
+      }
+      return null;
+    }
+
+    const methodologyCreateMeta = PROJECT_METHODOLOGY_CREATE_META[newProjectMethodology] ?? PROJECT_METHODOLOGY_CREATE_META['fourdx']!;
     const objectiveInput = newProjectObjective.trim();
     const leadMeasureOneInput = newProjectLeadMeasure1.trim();
     const leadMeasureTwoInput = newProjectLeadMeasure2.trim();
@@ -1470,8 +1775,54 @@ export function ProjetosPage() {
       return;
     }
 
-    const methodologyMeta = PROJECT_METHODOLOGY_META[newProjectMethodology];
-    const methodologyCreateMeta = PROJECT_METHODOLOGY_CREATE_META[newProjectMethodology];
+    // ── NEW ENGINE TYPES: build from wizardDraft ──────────────────────────
+    if (!LEGACY_WIZARD_KEYS.includes(newProjectMethodology)) {
+      const typeConfig = getProjectTypeConfig(newProjectMethodology);
+      if (!typeConfig) {
+        setError('Tipo de projeto não reconhecido.');
+        return;
+      }
+      const methodologyData = buildMethodologyDataFromDraft(wizardDraft, typeConfig);
+      const objectiveFromDraft = (wizardDraft.objective as string ?? '').trim() || `${typeConfig.label}: objetivo pendente`;
+      const deadlineFromDraft = (wizardDraft.timeHorizonEnd as string) || (wizardDraft.launchDate as string) || null;
+      const targetFromDraft = wizardDraft.resultTargetValue ? Number(wizardDraft.resultTargetValue) : null;
+      const startFromDraft = wizardDraft.resultStartValue ? Number(wizardDraft.resultStartValue) : 0;
+      try {
+        setBusy(true);
+        const selectedMethodology = newProjectMethodology;
+        const extraOne = (wizardDraft.methodologyExtraOne as string)?.trim() || null;
+        const created = await api.createProject({
+          workspaceId,
+          title: newProjectTitle,
+          description: newProjectDescription.trim() || null,
+          type: newProjectType,
+          methodology: newProjectMethodology,
+          objective: objectiveFromDraft,
+          methodologyData,
+          methodologyExtraOne: extraOne,
+          timeHorizonEnd: deadlineFromDraft ? new Date(`${deadlineFromDraft}T23:59:00`).toISOString() : null,
+          resultStartValue: startFromDraft,
+          resultCurrentValue: startFromDraft,
+          resultTargetValue: targetFromDraft,
+          scorecardCadenceDays: 7,
+          status: newProjectStatus,
+        });
+        setSelectedProjectId(created.id);
+        resetProjectDraft(selectedMethodology);
+        setCreateModalOpen(false);
+        await refreshGlobal();
+        await load(workspaceId);
+        return;
+      } catch (requestError) {
+        setError((requestError as Error).message);
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    const methodologyMeta = PROJECT_METHODOLOGY_META[newProjectMethodology] ?? PROJECT_METHODOLOGY_META['fourdx']!;
+    const methodologyCreateMeta = PROJECT_METHODOLOGY_CREATE_META[newProjectMethodology] ?? PROJECT_METHODOLOGY_CREATE_META['fourdx']!;
     const objectiveInput = newProjectObjective.trim();
     const leadMeasureOneInput = newProjectLeadMeasure1.trim();
     const leadMeasureTwoInput = newProjectLeadMeasure2.trim();
@@ -2103,20 +2454,135 @@ export function ProjetosPage() {
     setMethodologyPickerOpen(true);
   }
 
+  // ── Wizard field renderer for new engine types ─────────────────────────
+  function renderWizardField(field: WizardField) {
+    const strVal = (wizardDraft[field.key] as string) ?? '';
+    const arrVal = (wizardDraft[field.key] as string[]) ?? [];
+    const setStr = (v: string) => setWizardDraft(d => ({ ...d, [field.key]: v }));
+    const setArr = (v: string[]) => setWizardDraft(d => ({ ...d, [field.key]: v }));
+
+    if (field.type === 'text' || field.type === 'structured-goal') {
+      return (
+        <label key={field.key}>
+          {field.label}
+          <input
+            value={strVal}
+            onChange={e => setStr(e.target.value)}
+            placeholder={field.placeholder}
+            required={field.required}
+          />
+          {field.hint && <small>{field.hint}</small>}
+        </label>
+      );
+    }
+    if (field.type === 'textarea') {
+      return (
+        <label key={field.key}>
+          {field.label}
+          <textarea
+            value={strVal}
+            onChange={e => setStr(e.target.value)}
+            placeholder={field.placeholder}
+            required={field.required}
+          />
+          {field.hint && <small>{field.hint}</small>}
+        </label>
+      );
+    }
+    if (field.type === 'number') {
+      return (
+        <label key={field.key}>
+          {field.label}
+          <input
+            type="number"
+            value={strVal}
+            onChange={e => setStr(e.target.value)}
+            placeholder={field.placeholder}
+            required={field.required}
+          />
+          {field.hint && <small>{field.hint}</small>}
+        </label>
+      );
+    }
+    if (field.type === 'date') {
+      return (
+        <label key={field.key}>
+          {field.label}
+          <input
+            type="date"
+            value={strVal}
+            onChange={e => setStr(e.target.value)}
+            required={field.required}
+          />
+        </label>
+      );
+    }
+    if (field.type === 'select') {
+      return (
+        <label key={field.key}>
+          {field.label}
+          <select value={strVal} onChange={e => setStr(e.target.value)}>
+            {(field.options ?? []).map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          {field.hint && <small>{field.hint}</small>}
+        </label>
+      );
+    }
+    if (field.type === 'dynamic-list' || field.type === 'dynamic-stages') {
+      const isStage = field.type === 'dynamic-stages';
+      return (
+        <div key={field.key} className="wizard-dynamic-list">
+          <label className="wizard-dynamic-label">{field.label}</label>
+          {arrVal.map((item, i) => (
+            <div key={i} className="wizard-dynamic-item">
+              <input
+                value={item}
+                onChange={e => {
+                  const next = [...arrVal];
+                  next[i] = e.target.value;
+                  setArr(next);
+                }}
+                placeholder={field.placeholder}
+              />
+              <button
+                type="button"
+                className="text-button wizard-dynamic-remove"
+                onClick={() => setArr(arrVal.filter((_, idx) => idx !== i))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="ghost-button wizard-dynamic-add"
+            onClick={() => setArr([...arrVal, ''])}
+          >
+            + {isStage ? 'Estágio' : 'Item'}
+          </button>
+          {field.hint && <small className="wizard-dynamic-hint">{field.hint}</small>}
+        </div>
+      );
+    }
+    return null;
+  }
+
   function renderProjectCreateForm() {
-    const methodologyMeta = PROJECT_METHODOLOGY_META[newProjectMethodology];
-    const createMeta = PROJECT_METHODOLOGY_CREATE_META[newProjectMethodology];
-    const methodPreview = PROJECT_METHOD_PANEL_PREVIEW[newProjectMethodology];
-    const checklistLines = [
-      createMeta.objectiveLabel,
-      createMeta.lagMetricLabel,
-      `${createMeta.leadOneLabel} + ${createMeta.leadTwoLabel}`,
-      ...(createMeta.extraOneRequired ? [createMeta.extraOneLabel] : []),
-      ...(createMeta.extraTwoRequired ? [createMeta.extraTwoLabel] : [])
-    ];
+    const isLegacy = LEGACY_WIZARD_KEYS.includes(newProjectMethodology);
+    const typeConfig = getProjectTypeConfig(newProjectMethodology);
+    const methodologyMeta = PROJECT_METHODOLOGY_META[newProjectMethodology] ?? PROJECT_METHODOLOGY_META['fourdx']!;
+    const createMeta = PROJECT_METHODOLOGY_CREATE_META[newProjectMethodology] ?? PROJECT_METHODOLOGY_CREATE_META['fourdx']!;
+    const methodPreview = PROJECT_METHOD_PANEL_PREVIEW[newProjectMethodology] ?? PROJECT_METHOD_PANEL_PREVIEW['fourdx']!;
+
+    // Header badge for both legacy and new types
+    const typeLabel = typeConfig ? `${typeConfig.icon} ${typeConfig.label}` : methodologyMeta.label;
+    const typeTagline = typeConfig?.tagline ?? methodologyMeta.subtitle;
 
     return (
       <form className="minimal-form" onSubmit={createProject}>
+        {/* Step progress */}
         <div className="project-create-steps">
           {PROJECT_CREATE_STEP_LABELS.map((entry) => (
             <span
@@ -2134,22 +2600,20 @@ export function ProjetosPage() {
           ))}
         </div>
 
+        {/* Current type badge */}
         <div className="project-methodology-current compact">
           <div className="project-methodology-current-head">
-            <strong>{methodologyMeta.label}</strong>
-            <small>{methodologyMeta.subtitle}</small>
+            <strong>{typeLabel}</strong>
+            <small>{typeTagline}</small>
           </div>
           <button type="button" className="ghost-button" onClick={reopenMethodologyPickerFromForm}>
-            Trocar metodologia
+            Trocar tipo
           </button>
         </div>
 
-        <p className="project-create-quick-hint">
-          <strong>Checklist:</strong> {checklistLines.join(' • ')} <span>•</span> {createMeta.cadenceHint}
-        </p>
-
         {projectCreateStep === 2 ? (
           <>
+            {/* ── Common fields (both paths) ── */}
             <select
               value={workspaceId}
               onChange={(event) => {
@@ -2186,144 +2650,144 @@ export function ProjetosPage() {
               </select>
             </div>
 
-            <label>
-              {createMeta.objectiveLabel}
-              <input
-                value={newProjectObjective}
-                onChange={(event) => setNewProjectObjective(event.target.value)}
-                placeholder={methodologyMeta.objectivePlaceholder}
-                required
-              />
-              <small>{createMeta.objectiveHint}</small>
-            </label>
-
-            <label>
-              {createMeta.lagMetricLabel}
-              <input
-                value={newProjectMetric}
-                onChange={(event) => setNewProjectMetric(event.target.value)}
-                placeholder={methodologyMeta.lagPlaceholder}
-                required={createMeta.requireLagMetric}
-              />
-            </label>
-
-            <div className="row-2">
-              <label>
-                {createMeta.leadOneLabel}
-                <input
-                  value={newProjectLeadMeasure1}
-                  onChange={(event) => setNewProjectLeadMeasure1(event.target.value)}
-                  placeholder={methodologyMeta.leadOnePlaceholder}
-                  required={createMeta.requireLeadPair}
+            {/* ── Engine-specific fields ── */}
+            {!isLegacy && typeConfig ? (
+              <>
+                {typeConfig.wizardFields.map(field => renderWizardField(field))}
+                <textarea
+                  value={newProjectDescription}
+                  onChange={(event) => setNewProjectDescription(event.target.value)}
+                  placeholder="Descrição curta (opcional)"
                 />
-              </label>
-              <label>
-                {createMeta.leadTwoLabel}
-                <input
-                  value={newProjectLeadMeasure2}
-                  onChange={(event) => setNewProjectLeadMeasure2(event.target.value)}
-                  placeholder={methodologyMeta.leadTwoPlaceholder}
-                  required={createMeta.requireLeadPair}
-                />
-              </label>
-            </div>
-
-            <p className="premium-empty">{createMeta.leadPairHint}</p>
-
-            <div className="row-2">
-              <label>
-                {createMeta.extraOneLabel}
-                <input
-                  value={newProjectExtraOne}
-                  onChange={(event) => setNewProjectExtraOne(event.target.value)}
-                  placeholder={createMeta.extraOnePlaceholder}
-                  required={createMeta.extraOneRequired}
-                />
-                <small>{createMeta.extraOneHint}</small>
-              </label>
-              <label>
-                {createMeta.extraTwoLabel}
-                <input
-                  value={newProjectExtraTwo}
-                  onChange={(event) => setNewProjectExtraTwo(event.target.value)}
-                  placeholder={createMeta.extraTwoPlaceholder}
-                  required={createMeta.extraTwoRequired}
-                />
-                <small>{createMeta.extraTwoHint}</small>
-              </label>
-            </div>
-
-            <div className="row-2">
-              <label>
-                Cadência de check-in (dias)
-                <input
-                  type="number"
-                  min={1}
-                  max={14}
-                  step={1}
-                  value={newProjectCadenceDays}
-                  onChange={(event) => setNewProjectCadenceDays(event.target.value)}
-                />
-                <small>{createMeta.cadenceHint}</small>
-              </label>
-              <label>
-                Prazo final
-                <input
-                  type="date"
-                  value={newProjectTimeHorizonEnd}
-                  onChange={(event) => setNewProjectTimeHorizonEnd(event.target.value)}
-                  required={createMeta.requireDeadline}
-                />
-              </label>
-            </div>
-
-            <div className="row-2">
-              {createMeta.requireLagStart ? (
+              </>
+            ) : (
+              <>
+                {/* Legacy 4DX-style wizard */}
                 <label>
-                  Valor inicial ({createMeta.lagMetricLabel.toLowerCase()})
+                  {createMeta.objectiveLabel}
                   <input
-                    type="number"
-                    value={newProjectResultStartValue}
-                    onChange={(event) => setNewProjectResultStartValue(event.target.value)}
-                    placeholder="0"
+                    value={newProjectObjective}
+                    onChange={(event) => setNewProjectObjective(event.target.value)}
+                    placeholder={methodologyMeta.objectivePlaceholder}
                     required
                   />
+                  <small>{createMeta.objectiveHint}</small>
                 </label>
-              ) : (
-                <label>
-                  Valor inicial
-                  <input
-                    type="number"
-                    value={newProjectResultStartValue}
-                    onChange={(event) => setNewProjectResultStartValue(event.target.value)}
-                    placeholder="0 (opcional)"
-                  />
-                  <small>
-                    Para {methodologyMeta.label}, o padrão é começar em 0 e evoluir por checkpoints semanais.
-                  </small>
-                </label>
-              )}
-              <label>
-                Meta alvo
-                <input
-                  type="number"
-                  value={newProjectResultTargetValue}
-                  onChange={(event) => setNewProjectResultTargetValue(event.target.value)}
-                  placeholder={createMeta.requireLagTarget ? '10000' : 'opcional'}
-                  required={createMeta.requireLagTarget}
-                />
-              </label>
-            </div>
 
-            <textarea
-              value={newProjectDescription}
-              onChange={(event) => setNewProjectDescription(event.target.value)}
-              placeholder="Descrição curta"
-            />
+                <label>
+                  {createMeta.lagMetricLabel}
+                  <input
+                    value={newProjectMetric}
+                    onChange={(event) => setNewProjectMetric(event.target.value)}
+                    placeholder={methodologyMeta.lagPlaceholder}
+                    required={createMeta.requireLagMetric}
+                  />
+                </label>
+
+                <div className="row-2">
+                  <label>
+                    {createMeta.leadOneLabel}
+                    <input
+                      value={newProjectLeadMeasure1}
+                      onChange={(event) => setNewProjectLeadMeasure1(event.target.value)}
+                      placeholder={methodologyMeta.leadOnePlaceholder}
+                      required={createMeta.requireLeadPair}
+                    />
+                  </label>
+                  <label>
+                    {createMeta.leadTwoLabel}
+                    <input
+                      value={newProjectLeadMeasure2}
+                      onChange={(event) => setNewProjectLeadMeasure2(event.target.value)}
+                      placeholder={methodologyMeta.leadTwoPlaceholder}
+                      required={createMeta.requireLeadPair}
+                    />
+                  </label>
+                </div>
+
+                <p className="premium-empty">{createMeta.leadPairHint}</p>
+
+                <div className="row-2">
+                  <label>
+                    {createMeta.extraOneLabel}
+                    <input
+                      value={newProjectExtraOne}
+                      onChange={(event) => setNewProjectExtraOne(event.target.value)}
+                      placeholder={createMeta.extraOnePlaceholder}
+                      required={createMeta.extraOneRequired}
+                    />
+                    <small>{createMeta.extraOneHint}</small>
+                  </label>
+                  <label>
+                    {createMeta.extraTwoLabel}
+                    <input
+                      value={newProjectExtraTwo}
+                      onChange={(event) => setNewProjectExtraTwo(event.target.value)}
+                      placeholder={createMeta.extraTwoPlaceholder}
+                      required={createMeta.extraTwoRequired}
+                    />
+                    <small>{createMeta.extraTwoHint}</small>
+                  </label>
+                </div>
+
+                <div className="row-2">
+                  <label>
+                    Cadência de check-in (dias)
+                    <input
+                      type="number"
+                      min={1}
+                      max={14}
+                      step={1}
+                      value={newProjectCadenceDays}
+                      onChange={(event) => setNewProjectCadenceDays(event.target.value)}
+                    />
+                    <small>{createMeta.cadenceHint}</small>
+                  </label>
+                  <label>
+                    Prazo final
+                    <input
+                      type="date"
+                      value={newProjectTimeHorizonEnd}
+                      onChange={(event) => setNewProjectTimeHorizonEnd(event.target.value)}
+                      required={createMeta.requireDeadline}
+                    />
+                  </label>
+                </div>
+
+                <div className="row-2">
+                  <label>
+                    Valor inicial ({createMeta.requireLagStart ? createMeta.lagMetricLabel.toLowerCase() : 'opcional'})
+                    <input
+                      type="number"
+                      value={newProjectResultStartValue}
+                      onChange={(event) => setNewProjectResultStartValue(event.target.value)}
+                      placeholder="0"
+                      required={createMeta.requireLagStart}
+                    />
+                  </label>
+                  <label>
+                    Meta alvo
+                    <input
+                      type="number"
+                      value={newProjectResultTargetValue}
+                      onChange={(event) => setNewProjectResultTargetValue(event.target.value)}
+                      placeholder={createMeta.requireLagTarget ? '10000' : 'opcional'}
+                      required={createMeta.requireLagTarget}
+                    />
+                  </label>
+                </div>
+
+                <textarea
+                  value={newProjectDescription}
+                  onChange={(event) => setNewProjectDescription(event.target.value)}
+                  placeholder="Descrição curta"
+                />
+              </>
+            )}
 
             <div className="inline-actions">
               <button type="button" className="ghost-button" onClick={reopenMethodologyPickerFromForm}>
-                Voltar para metodologia
+                Voltar
               </button>
               <button type="submit" disabled={busy}>
                 Continuar para preview
@@ -2331,33 +2795,48 @@ export function ProjetosPage() {
             </div>
           </>
         ) : (
+          /* ── Step 3: Preview ── */
           <PremiumCard
-            title={`Preview do painel ${methodologyMeta.label}`}
-            subtitle="confira o cockpit que será criado ao finalizar"
+            title={`Resumo — ${typeLabel}`}
+            subtitle="Confirme antes de criar"
           >
             <div className="premium-metric-grid mini">
               <div className="premium-metric tone-default">
                 <span>Frente</span>
-                <strong>{workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? 'Não selecionada'}</strong>
-                <small>{newProjectTitle || 'Nome do projeto pendente'}</small>
+                <strong>{workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? '—'}</strong>
+                <small>{newProjectTitle || 'Nome pendente'}</small>
               </div>
               <div className="premium-metric tone-default">
                 <span>Objetivo</span>
-                <strong className="objective-metric-text">{newProjectObjective || 'Objetivo pendente'}</strong>
-                <small>{createMeta.objectiveLabel}</small>
-              </div>
-              <div className="premium-metric tone-default">
-                <span>Rotina semanal</span>
-                <strong>
-                  {newProjectLeadMeasure1 || createMeta.leadOneLabel} + {newProjectLeadMeasure2 || createMeta.leadTwoLabel}
+                <strong className="objective-metric-text">
+                  {(!isLegacy ? (wizardDraft.objective as string) : newProjectObjective) || 'Pendente'}
                 </strong>
-                <small>{createMeta.leadPairHint}</small>
+                <small>{typeTagline}</small>
               </div>
-              <div className="premium-metric tone-default">
-                <span>Mundo interno</span>
-                <strong>{methodPreview.chart}</strong>
-                <small>foco: {methodPreview.focus}</small>
-              </div>
+              {isLegacy && (
+                <>
+                  <div className="premium-metric tone-default">
+                    <span>Ações semanais</span>
+                    <strong>{newProjectLeadMeasure1 || '—'} + {newProjectLeadMeasure2 || '—'}</strong>
+                    <small>{createMeta.leadPairHint}</small>
+                  </div>
+                  <div className="premium-metric tone-default">
+                    <span>Painel</span>
+                    <strong>{methodPreview.chart}</strong>
+                    <small>foco: {methodPreview.focus}</small>
+                  </div>
+                </>
+              )}
+              {!isLegacy && typeConfig && typeConfig.wizardFields.slice(1, 3).map(field => {
+                const val = wizardDraft[field.key];
+                const display = Array.isArray(val) ? `${(val as string[]).filter(Boolean).length} items` : (val as string || '—');
+                return (
+                  <div key={field.key} className="premium-metric tone-default">
+                    <span>{field.label}</span>
+                    <strong>{display}</strong>
+                  </div>
+                );
+              })}
             </div>
             <div className="inline-actions">
               <button type="button" className="ghost-button" onClick={() => setProjectCreateStep(2)}>
@@ -2380,43 +2859,24 @@ export function ProjetosPage() {
         setMethodologyPickerOpen(false);
         setMethodologyGuideOpen(null);
       }}
-      title="Escolher metodologia do projeto"
-      subtitle="Selecione o framework antes de preencher os dados do projeto."
-      size="lg"
+      title="Que tipo de frente é essa?"
+      subtitle="Cada tipo tem uma lógica de acompanhamento diferente"
+      size="xl"
     >
-      <div className="project-methodology-picker-grid">
-        {methodologyKeys.map((methodology) => {
-          const meta = PROJECT_METHODOLOGY_META[methodology];
-          const expanded = methodologyGuideOpen === methodology;
-          return (
-            <article
-              key={methodology}
-              className={
-                newProjectMethodology === methodology
-                  ? 'project-methodology-picker-card active'
-                  : 'project-methodology-picker-card'
-              }
-            >
-              <header>
-                <strong>{meta.label}</strong>
-                <small>{meta.subtitle}</small>
-              </header>
-              {expanded && <p>{meta.deepDive}</p>}
-              <footer className="inline-actions">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => setMethodologyGuideOpen(expanded ? null : methodology)}
-                >
-                  {expanded ? 'Ocultar detalhes' : 'Ler mais'}
-                </button>
-                <button type="button" onClick={() => startCreateProjectWithMethodology(methodology)}>
-                  Usar {meta.label}
-                </button>
-              </footer>
-            </article>
-          );
-        })}
+      <div className="project-picker-grid">
+        {PICKER_TYPES.map((typeConfig) => (
+          <button
+            key={typeConfig.key}
+            type="button"
+            className={`project-type-card${newProjectMethodology === typeConfig.key ? ' selected' : ''}`}
+            onClick={() => startCreateProjectWithMethodology(typeConfig.key)}
+          >
+            <span className="project-type-card-icon">{typeConfig.icon}</span>
+            <strong className="project-type-card-label">{typeConfig.label}</strong>
+            <span className="project-type-card-tagline">{typeConfig.tagline}</span>
+            <span className="project-type-card-example">{typeConfig.example}</span>
+          </button>
+        ))}
       </div>
     </Modal>
   );
@@ -2451,11 +2911,11 @@ export function ProjetosPage() {
           <div className="premium-chart-wrap">
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={lagBurndownSeries}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                  contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                   formatter={(value) => (value == null ? '—' : String(value))}
                   labelFormatter={(label, payload) => {
                     const point = payload?.[0]?.payload as { weekRange?: string } | undefined;
@@ -2467,8 +2927,8 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="remaining"
                   name="Escopo restante"
-                  stroke="#ef4444"
-                  fill="#fecaca"
+                  stroke={chartTheme.colors.danger}
+                  fill="rgba(212,100,100,0.2)"
                   strokeWidth={2}
                   connectNulls
                 />
@@ -2476,7 +2936,7 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="real"
                   name="Escopo entregue"
-                  stroke="#2563eb"
+                  stroke={chartTheme.colors.primary}
                   strokeWidth={2.4}
                   dot={{ r: 2.5 }}
                   connectNulls
@@ -2488,11 +2948,11 @@ export function ProjetosPage() {
           <div className="premium-chart-wrap">
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={lagProjectionData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                  contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                   formatter={(value) => (value == null ? '—' : String(value))}
                 />
                 <Legend />
@@ -2500,8 +2960,8 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="real"
                   name="Resultado real"
-                  stroke="#2563eb"
-                  fill="#dbeafe"
+                  stroke={chartTheme.colors.primary}
+                  fill={chartTheme.colors.primary}
                   strokeWidth={2.2}
                   connectNulls
                 />
@@ -2509,7 +2969,7 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="projected"
                   name="Ritmo esperado"
-                  stroke="#7c3aed"
+                  stroke={chartTheme.colors.warning}
                   strokeWidth={2}
                   strokeDasharray="5 4"
                   dot={false}
@@ -2521,11 +2981,11 @@ export function ProjetosPage() {
           <div className="premium-chart-wrap">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={lagMomentumSeries}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                  contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                   formatter={(value) => (value == null ? '—' : String(value))}
                   labelFormatter={(label, payload) => {
                     const point = payload?.[0]?.payload as { weekStart?: string; value?: number } | undefined;
@@ -2534,8 +2994,8 @@ export function ProjetosPage() {
                       : `Semana ${label}`;
                   }}
                 />
-                <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" />
-                <Bar dataKey="delta" name="Delta semanal" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                <ReferenceLine y={0} stroke={chartTheme.axis.fill} strokeDasharray="4 4" />
+                <Bar dataKey="delta" name="Delta semanal" fill={chartTheme.colors.primary} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -2543,11 +3003,11 @@ export function ProjetosPage() {
           <div className="premium-chart-wrap">
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={lagProjectionData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                  contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                   formatter={(value) => (value == null ? '—' : String(value))}
                 />
                 <Legend />
@@ -2555,8 +3015,8 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="real"
                   name="Hipóteses validadas"
-                  stroke="#16a34a"
-                  fill="#dcfce7"
+                  stroke={chartTheme.colors.success}
+                  fill="rgba(91,185,140,0.2)"
                   strokeWidth={2.2}
                   connectNulls
                 />
@@ -2564,7 +3024,7 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="projected"
                   name="Meta de validação"
-                  stroke="#0f766e"
+                  stroke={chartTheme.colors.success}
                   strokeWidth={2}
                   strokeDasharray="5 4"
                   dot={false}
@@ -2576,11 +3036,11 @@ export function ProjetosPage() {
           <div className="premium-chart-wrap">
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={lagProjectionData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                  contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                   formatter={(value) => (value == null ? '—' : String(value))}
                   labelFormatter={(label, payload) => {
                     const point = payload?.[0]?.payload as { weekRange?: string } | undefined;
@@ -2592,7 +3052,7 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="real"
                   name="Real"
-                  stroke="#2563eb"
+                  stroke={chartTheme.colors.primary}
                   strokeWidth={2.6}
                   dot={{ r: 2.5 }}
                   connectNulls
@@ -2601,7 +3061,7 @@ export function ProjetosPage() {
                   type="monotone"
                   dataKey="projected"
                   name="Projeção"
-                  stroke="#7c3aed"
+                  stroke={chartTheme.colors.warning}
                   strokeWidth={2}
                   strokeDasharray="6 4"
                   dot={false}
@@ -2611,7 +3071,7 @@ export function ProjetosPage() {
                     type="linear"
                     dataKey="target"
                     name="Meta"
-                    stroke="#16a34a"
+                    stroke={chartTheme.colors.success}
                     strokeWidth={1.6}
                     dot={false}
                   />
@@ -2721,11 +3181,11 @@ export function ProjetosPage() {
               <div className="premium-chart-wrap">
                 <ResponsiveContainer width="100%" height={160}>
                   <BarChart data={leadWeeklySeries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                    <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                    <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                    <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                     <Tooltip
-                      contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                      contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                       formatter={(value) => (value == null ? '—' : String(value))}
                       labelFormatter={(label, payload) => {
                         const point = payload?.[0]?.payload as { weekStart?: string } | undefined;
@@ -2735,8 +3195,8 @@ export function ProjetosPage() {
                       }}
                     />
                     <Legend />
-                    <Bar dataKey="done" name="Feito" stackId="a" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="missed" name="Não feito" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="done" name="Feito" stackId="a" fill={chartTheme.colors.primary} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="missed" name="Não feito" stackId="a" fill={chartTheme.colors.warning} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -2744,22 +3204,22 @@ export function ProjetosPage() {
               <div className="premium-chart-wrap">
                 <ResponsiveContainer width="100%" height={160}>
                   <AreaChart data={leadWeeklySeries}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                    <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis domain={[0, 100]} tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                    <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                    <YAxis domain={[0, 100]} tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                     <Tooltip
-                      contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                      contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                       formatter={(value) => [`${value}%`, 'Compliance']}
                     />
                     <Area
                       type="monotone"
                       dataKey="compliance"
                       name="Compliance"
-                      stroke="#2563eb"
-                      fill="#dbeafe"
+                      stroke={chartTheme.colors.primary}
+                      fill={chartTheme.colors.primary}
                       strokeWidth={2.2}
                     />
-                    <ReferenceLine y={80} stroke="#16a34a" strokeDasharray="4 4" />
+                    <ReferenceLine y={80} stroke={chartTheme.colors.success} strokeDasharray="4 4" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -2767,16 +3227,16 @@ export function ProjetosPage() {
               <div className="premium-chart-wrap">
                 <ResponsiveContainer width="100%" height={160}>
                   <LineChart data={leadComplianceHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#dce6f7" />
-                    <XAxis dataKey="week" tick={{ fill: '#60708a', fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                    <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
                     <YAxis
                       domain={[0, 100]}
-                      tick={{ fill: '#60708a', fontSize: 12 }}
+                      tick={axisProps.tick}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip
-                      contentStyle={{ borderRadius: 10, border: '1px solid #d8e0ec' }}
+                      contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
                       formatter={(value) => [`${value}%`, 'Compliance']}
                       labelFormatter={(label, payload) => {
                         const entry = payload?.[0]?.payload as { weekStart?: string } | undefined;
@@ -2789,7 +3249,7 @@ export function ProjetosPage() {
                       type="monotone"
                       dataKey="compliance"
                       name="Compliance"
-                      stroke="#2563eb"
+                      stroke={chartTheme.colors.primary}
                       strokeWidth={2.6}
                       dot={{ r: 2.5 }}
                     />
@@ -3321,6 +3781,3780 @@ export function ProjetosPage() {
     );
   }
 
+  // ── Helper: refresh project from server ───────────────────────────────
+  async function refetchProject() {
+    await load(workspaceId === 'all' ? undefined : workspaceId);
+    if (selectedProjectId) {
+      await loadProjectScorecard(selectedProjectId);
+    }
+  }
+
+  // ── ENGINE ZONE A: header with progress ───────────────────────────────
+  function renderEngineHeader() {
+    if (!selectedProject) return null;
+    const engine = getEngine(selectedProject.methodology);
+    const variant = getEngineVariant(selectedProject.methodology);
+    const md = selectedProject.methodologyData;
+    const days = daysRemaining(selectedProject.timeHorizonEnd);
+
+    // Determine engine class for theming
+    let engineClass = 'engine-metric';
+    if (engine === 'milestone' && variant === 'authority') engineClass = 'engine-milestone-authority';
+    else if (engine === 'milestone') engineClass = 'engine-milestone';
+    else if (engine === 'log' && variant === 'discovery') engineClass = 'engine-log-discovery';
+    else if (engine === 'log' && variant === 'coaching') engineClass = 'engine-log-coaching';
+    else if (engine === 'pipeline' && variant === 'financial') engineClass = 'engine-pipeline-financial';
+    else if (engine === 'pipeline' && variant === 'linear') engineClass = 'engine-pipeline-linear';
+    else if (engine === 'pipeline') engineClass = 'engine-pipeline';
+    else if (engine === 'composite') engineClass = 'engine-composite';
+    else if (engine === 'decision' && variant === 'scenario') engineClass = 'engine-decision-scenario';
+    else if (engine === 'decision') engineClass = 'engine-decision';
+    else if (engine === 'time' && variant === 'campaign') engineClass = 'engine-time-campaign';
+    else if (engine === 'time' && variant === 'runway') engineClass = 'engine-time-runway';
+    else if (engine === 'recurring') engineClass = 'engine-recurring';
+    else if (engine === 'funnel') engineClass = 'engine-funnel';
+
+    return (
+      <div className={`engine-zone-header ${engineClass}`}>
+        <div className="engine-header-top">
+          <span className="engine-type-badge">
+            {methodologyIcon(selectedProject.methodology)} {methodologyDisplayLabel(selectedProject.methodology)}
+          </span>
+          <span className={`engine-status-tag status-tag ${selectedProject.status}`}>{selectedProject.status}</span>
+          {/* 4DX: week badge in header top */}
+          {engine === 'metric' && selectedScorecardWeek && (
+            <span className="header-week-badge">
+              Sem. {selectedScorecardWeek.index}
+            </span>
+          )}
+          {/* Campaign: countdown D-X */}
+          {engine === 'time' && variant === 'campaign' && md?.launchDate && (() => {
+            const d = daysRemaining(md.launchDate);
+            return d != null && d > 0
+              ? <span className="campaign-d-label" style={{ fontSize: '1rem', fontWeight: 800 }}>D-{d}</span>
+              : null;
+          })()}
+        </div>
+
+        {/* ── 4DX: lag metric mini progress + week ── */}
+        {engine === 'metric' && selectedProject.resultTargetValue != null && (selectedProject.resultTargetValue ?? 0) > 0 && (() => {
+          const pct = Math.min(100, Math.round(((selectedProject.resultCurrentValue ?? 0) / (selectedProject.resultTargetValue ?? 1)) * 100));
+          return (
+            <div className="header-scoreboard-row engine-metric">
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  <span>{selectedProject.primaryMetric}: {selectedProject.resultCurrentValue ?? 0} / {selectedProject.resultTargetValue}</span>
+                  <span>meta lag</span>
+                </div>
+                <div className="header-lag-mini-bar">
+                  <div className="header-lag-mini-fill" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+              <span className="header-lag-pct">{pct}%</span>
+            </div>
+          );
+        })()}
+
+        {/* ── Entrega: deadline countdown + completion ring ── */}
+        {engine === 'milestone' && variant !== 'authority' && (() => {
+          const milestones = md?.milestones ?? [];
+          const done = milestones.filter(m => m.done).length;
+          const total = milestones.length;
+          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+          const r = 26; const circ = 2 * Math.PI * r;
+          return (
+            <div className="engine-milestone engine-meta-row" style={{ marginTop: '12px' }}>
+              {days != null && (
+                <div className="header-deadline-big">
+                  <span className="header-deadline-num">{Math.abs(days)}</span>
+                  <span className="header-deadline-unit">{days >= 0 ? 'dias' : 'atrasado'}</span>
+                </div>
+              )}
+              {total > 0 && (
+                <div className="engine-progress-arc-wrap">
+                  <svg className="engine-progress-arc-svg" viewBox="0 0 64 64">
+                    <circle className="engine-progress-arc-bg" cx="32" cy="32" r={r} />
+                    <circle
+                      className="engine-progress-arc-fill"
+                      cx="32" cy="32" r={r}
+                      strokeDasharray={circ}
+                      strokeDashoffset={circ - (circ * pct) / 100}
+                    />
+                  </svg>
+                  <div className="engine-progress-arc-text">{pct}%</div>
+                </div>
+              )}
+              {total > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>{done}/{total} marcos</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>concluídos</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Autoridade: score display ── */}
+        {engine === 'milestone' && variant === 'authority' && (() => {
+          const score = computeAuthorityScore(md?.proofs);
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '12px' }}>
+              <div>
+                <span className="engine-big-number" style={{ fontSize: '2.4rem', color: '#fbbf24' }}>{score}</span>
+                <div className="engine-big-label">pontos de autoridade</div>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.7' }}>
+                <div>Artigo ×1</div>
+                <div>Menção ×1</div>
+                <div>Case ×2</div>
+                <div>Palestra ×3</div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── OKR: score ring ── */}
+        {engine === 'composite' && (() => {
+          const score = computeOkrScore(md?.krs);
+          const r = 26; const circ = 2 * Math.PI * r;
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '12px' }}>
+              <div className="okr-score-ring" style={{ width: 64, height: 64, flexShrink: 0 }}>
+                <svg viewBox="0 0 64 64" style={{ width: 64, height: 64, transform: 'rotate(-90deg)' }}>
+                  <circle className="okr-score-ring-bg" cx="32" cy="32" r={r} strokeWidth="7" fill="none" stroke="var(--bg-3)" />
+                  <circle
+                    className="okr-score-ring-fill"
+                    cx="32" cy="32" r={r}
+                    strokeWidth="7" fill="none" stroke="#e07c4a"
+                    strokeLinecap="round"
+                    strokeDasharray={circ}
+                    strokeDashoffset={circ - (circ * Math.min(score, 100)) / 100}
+                  />
+                </svg>
+                <div className="okr-score-ring-text">
+                  <span className="okr-score-pct">{score}%</span>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)' }}>Score OKR</div>
+                {md?.okrPeriod && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{md.okrPeriod}</div>}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Runway: compact chip in header (hero lives in Zone B) ── */}
+        {engine === 'time' && variant === 'runway' && (() => {
+          const months = computeRunwayMonths(md?.availableCash, md?.burnRateMonthly);
+          const cls = months == null ? 'runway-warn' : months > 3 ? 'runway-safe' : months >= 1 ? 'runway-warn' : 'runway-danger';
+          // Compute esgota date
+          const esgotaLabel = (() => {
+            if (months == null) return 'n/d';
+            const d = new Date();
+            d.setMonth(d.getMonth() + Math.floor(months));
+            return d.toLocaleString('pt-BR', { month: 'short', year: 'numeric' });
+          })();
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '10px', gap: '10px', flexWrap: 'wrap' }}>
+              <span className={`runway-header-chip ${cls}`}>
+                ⏱ {months != null ? `${months.toFixed(1)} meses` : 'n/d'} · esgota {esgotaLabel}
+              </span>
+              {md?.burnRateMonthly != null && (
+                <span className="runway-burn-chip">
+                  Burn {md.burnRateMonthly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/mês
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Campaign: D-X + channel ── */}
+        {engine === 'time' && variant === 'campaign' && (() => {
+          const d = md?.launchDate ? daysRemaining(md.launchDate) : null;
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '12px' }}>
+              {d != null && d > 0 && (
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#f43f5e' }}>D-</span>
+                  <span className="header-campaign-d">{d}</span>
+                  <span className="header-campaign-label" style={{ marginLeft: '4px' }}>para lançamento</span>
+                </div>
+              )}
+              {md?.campaignChannel && (
+                <span className="campaign-channel-tag">{md.campaignChannel}</span>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Processo Recorrente: frequency + cycle progress ── */}
+        {engine === 'recurring' && (() => {
+          const template = (md?.cycleTemplate ?? []) as Array<{ id: string; text: string }>;
+          const cycles = (md?.cycles ?? []) as Array<{ id: string; periodLabel: string; items: Array<{ templateId: string; done: boolean }> }>;
+          const current = cycles[cycles.length - 1];
+          const doneCount = current?.items.filter(i => i.done).length ?? 0;
+          const total = template.length;
+          const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+          const histRate = cycles.length > 0 && total > 0
+            ? Math.round(cycles.reduce((sum, c) => sum + (c.items.filter(i => i.done).length / total), 0) / cycles.length * 100)
+            : null;
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '10px', gap: '8px', flexWrap: 'wrap' }}>
+              <span className="recurring-header-chip">{md?.frequency ?? 'mensal'}</span>
+              {current ? (
+                <>
+                  <span className="recurring-header-chip">Ciclo: {current.periodLabel}</span>
+                  <span className={`recurring-header-chip ${pct === 100 ? 'complete' : pct > 0 ? 'in-progress' : ''}`}>
+                    {doneCount}/{total} passos {pct > 0 ? `· ${pct}%` : ''}
+                  </span>
+                </>
+              ) : (
+                <span className="recurring-header-chip">Sem ciclo ativo</span>
+              )}
+              {histRate != null && cycles.length > 1 && (
+                <span className="recurring-header-chip" style={{ color: 'var(--text-muted)' }}>
+                  {histRate}% histórico · {cycles.length} ciclos
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Funil: stages + overall conversion ── */}
+        {engine === 'funnel' && (() => {
+          const fStages = ((md?.funilStages ?? []) as Array<{ id: string; label: string; value: number | null; order: number }>).sort((a, b) => a.order - b.order);
+          const topVal = fStages[0]?.value;
+          const bottomVal = fStages[fStages.length - 1]?.value;
+          const overallConv = topVal && bottomVal != null && topVal > 0
+            ? Math.round((bottomVal / topVal) * 100)
+            : null;
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '10px', gap: '8px', flexWrap: 'wrap' }}>
+              <span className="decision-header-chip">{fStages.length} etapas</span>
+              {topVal != null && <span className="decision-header-chip">Topo: {topVal.toLocaleString('pt-BR')}</span>}
+              {overallConv !== null && (
+                <span className={`decision-header-chip ${overallConv >= 20 ? 'decided' : 'pending'}`}>
+                  Conv. geral: {overallConv}%
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Decisão: options × criteria + decision status ── */}
+        {engine === 'decision' && variant !== 'scenario' && (() => {
+          const opts = (md?.options ?? []) as Array<{ id: string; label: string }>;
+          const crits = (md?.criteria ?? []) as Array<{ id: string; label: string }>;
+          const choiceId = md?.decisionChoice as string | null | undefined;
+          const chosenLabel = choiceId ? (opts.find(o => o.id === choiceId)?.label ?? 'Decidido') : null;
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '10px', gap: '8px', flexWrap: 'wrap' }}>
+              <span className="decision-header-chip">{opts.length} opções</span>
+              <span className="decision-header-chip">{crits.length} critérios</span>
+              {chosenLabel ? (
+                <span className="decision-header-chip decided">✓ {chosenLabel}</span>
+              ) : (
+                <span className="decision-header-chip pending">Decisão pendente</span>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Cenário: scenario pills + action summary ── */}
+        {engine === 'decision' && variant === 'scenario' && (() => {
+          const scenarios = (md?.scenarios ?? []) as Array<{ id: string; label: string }>;
+          const actions = (md?.scenarioActions ?? []) as Array<{ id: string; scenarioIds: string[]; done: boolean }>;
+          const noRegret = scenarios.length > 0 ? actions.filter(a => a.scenarioIds.length >= scenarios.length).length : 0;
+          return (
+            <div className="engine-meta-row" style={{ marginTop: '10px', gap: '6px', flexWrap: 'wrap' }}>
+              {scenarios.map(s => (
+                <span key={s.id} className="scenario-pill">{s.label}</span>
+              ))}
+              {actions.length > 0 && (
+                <span className="decision-header-chip" style={{ marginLeft: '4px' }}>
+                  {noRegret} no-regret · {actions.length - noRegret} específicas
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Generic: days remaining (shown for engines without special header) ── */}
+        {!['metric', 'milestone', 'composite', 'time'].includes(engine) && days != null && (
+          <div className="engine-meta-row" style={{ marginTop: '8px' }}>
+            <span className={`project-deadline-badge${days < 14 ? ' urgent' : ''}`}>
+              {days > 0 ? `${days} dias restantes` : 'Prazo encerrado'}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── ENGINE ZONE B: action zone ─────────────────────────────────────────
+  function renderEngineActionZone() {
+    if (!selectedProject) return null;
+    const engine = getEngine(selectedProject.methodology);
+    const variant = getEngineVariant(selectedProject.methodology);
+    const md: MethodologyData = (selectedProject.methodologyData as MethodologyData | null) ?? {};
+
+    // ── METRIC engine (4DX) — Scoreboard UI ────────────────────────────
+    if (engine === 'metric') {
+      const alreadyDone = projectScorecard?.framework?.weekly != null;
+      const leadOne = scorecardLeadMetrics[0] ?? null;
+      const leadTwo = scorecardLeadMetrics[1] ?? null;
+      const lagPct = selectedProject.resultTargetValue && (selectedProject.resultTargetValue ?? 0) > 0
+        ? Math.min(100, Math.round(((selectedProject.resultCurrentValue ?? 0) / (selectedProject.resultTargetValue ?? 1)) * 100))
+        : null;
+
+      return (
+        <div className="engine-metric scoreboard-outer">
+          {/* Scoreboard header bar — week selector embedded */}
+          <div className="scoreboard-header-bar">
+            <div className="scoreboard-week-selector">
+              <span className="scoreboard-week-badge">
+                {selectedScorecardWeek ? `Semana ${selectedScorecardWeek.index} · ${selectedScorecardWeek.weekRange}` : 'Esta semana'}
+              </span>
+              {scorecardWeekOptions.length > 0 ? (
+                <select
+                  className="scoreboard-week-select"
+                  value={scorecardWeekStart}
+                  onChange={e => setScorecardWeekStart(e.target.value)}
+                >
+                  {scorecardWeekOptions.map(w => (
+                    <option key={w.weekStart} value={w.weekStart}>
+                      Semana {w.index} · {w.weekRange}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="date"
+                  className="scoreboard-week-date"
+                  value={scorecardWeekStart}
+                  onChange={e => setScorecardWeekStart(e.target.value)}
+                />
+              )}
+            </div>
+            <span className="scoreboard-status">
+              {alreadyDone ? '✓ semana registrada' : '● aguardando check-in'}
+            </span>
+          </div>
+
+          {/* Lead measure toggle buttons — or setup form if no metrics yet */}
+          {leadOne && leadTwo ? (
+            <>
+              <div className="scoreboard-lead-grid">
+                {/* Lead 1 */}
+                <button
+                  type="button"
+                  className={`scoreboard-lead-btn${frameworkLeadOneDone ? ' done' : ''}`}
+                  onClick={() => setFrameworkLeadOneDone(v => !v)}
+                >
+                  <div className="scoreboard-lead-icon" />
+                  <span className="scoreboard-lead-label">{leadOne.name}</span>
+                  <span className="scoreboard-lead-status">
+                    {frameworkLeadOneDone ? 'FEITO' : 'PENDENTE'}
+                  </span>
+                </button>
+                {/* Lead 2 */}
+                <button
+                  type="button"
+                  className={`scoreboard-lead-btn${frameworkLeadTwoDone ? ' done' : ''}`}
+                  onClick={() => setFrameworkLeadTwoDone(v => !v)}
+                >
+                  <div className="scoreboard-lead-icon" />
+                  <span className="scoreboard-lead-label">{leadTwo.name}</span>
+                  <span className="scoreboard-lead-status">
+                    {frameworkLeadTwoDone ? 'FEITO' : 'PENDENTE'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Lag metric progress bar */}
+              {lagPct != null && primaryLagMetric && (
+                <div className="scoreboard-lag-section">
+                  <div className="scoreboard-lag-title">
+                    {primaryLagMetric.name}
+                    <span className="scoreboard-lag-values">
+                      {selectedProject.resultCurrentValue ?? 0} → {selectedProject.resultTargetValue ?? '?'} {selectedProject.primaryMetric ?? ''}
+                    </span>
+                  </div>
+                  <div className="scoreboard-lag-bar-wrap">
+                    <div className="scoreboard-lag-bar">
+                      <div className="scoreboard-lag-bar-fill" style={{ width: `${lagPct}%` }} />
+                    </div>
+                    <span className="scoreboard-lag-pct">{lagPct}%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Inline check-in form — lag value + note + save. Single flow, no duplication */}
+              <div className="scoreboard-checkin-inline">
+                {primaryLagMetric ? (
+                  <div className="scoreboard-inline-lag">
+                    <label className="scoreboard-inline-label">
+                      Valor desta semana — {primaryLagMetric.name}
+                    </label>
+                    <input
+                      type="number"
+                      className="scoreboard-inline-input"
+                      value={frameworkLagValue}
+                      onChange={e => setFrameworkLagValue(e.target.value)}
+                      placeholder={`ex: ${selectedProject.resultCurrentValue ?? 0}`}
+                    />
+                  </div>
+                ) : (
+                  <div className="scoreboard-inline-lag">
+                    <label className="scoreboard-inline-label">Adicionar métrica lag</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        className="scoreboard-setup-input"
+                        style={{ flex: 2 }}
+                        placeholder="Nome da métrica lag (ex: seguidores)"
+                        value={fourdxLagName}
+                        onChange={e => setFourdxLagName(e.target.value)}
+                      />
+                      <input
+                        className="scoreboard-setup-input"
+                        style={{ flex: 1 }}
+                        placeholder="Unidade"
+                        value={fourdxLagUnit}
+                        onChange={e => setFourdxLagUnit(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={busy || !fourdxLagName.trim()}
+                        style={{ padding: '8px 14px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+                        onClick={async () => {
+                          if (!fourdxLagName.trim()) return;
+                          setBusy(true);
+                          try {
+                            await api.createProjectMetric(selectedProject.id, { kind: 'lag', name: fourdxLagName.trim(), unit: fourdxLagUnit.trim() || null });
+                            setFourdxLagName(''); setFourdxLagUnit('');
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }}
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="scoreboard-inline-note">
+                  <label className="scoreboard-inline-label">Nota da semana (opcional)</label>
+                  <textarea
+                    className="scoreboard-inline-textarea"
+                    rows={2}
+                    value={frameworkNote}
+                    onChange={e => setFrameworkNote(e.target.value)}
+                    placeholder="O que funcionou, riscos, decisão para próxima semana..."
+                  />
+                </div>
+                <div className="scoreboard-inline-footer">
+                  <button
+                    type="button"
+                    className="scoreboard-save-btn"
+                    disabled={busy}
+                    onClick={submitFrameworkWeeklyCheckin}
+                  >
+                    {alreadyDone ? 'Atualizar semana' : 'Registrar semana'}
+                  </button>
+                  {alreadyDone && (
+                    <span className="scoreboard-saved-hint">✓ check-in registrado para esta semana</span>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="scoreboard-setup-zone">
+              <div className="scoreboard-setup-title">Configure as ações semanais</div>
+              <p className="scoreboard-setup-hint">Defina as 2 ações que você controla e que movem a métrica principal. Você também pode definir a métrica agora.</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input
+                  className="scoreboard-setup-input"
+                  placeholder="Ação semanal 1 (ex: postar 2 reels por semana)"
+                  value={fourdxLead1}
+                  onChange={e => setFourdxLead1(e.target.value)}
+                />
+                <input
+                  className="scoreboard-setup-input"
+                  placeholder="Ação semanal 2 (ex: analisar métricas toda sexta)"
+                  value={fourdxLead2}
+                  onChange={e => setFourdxLead2(e.target.value)}
+                />
+                <input
+                  className="scoreboard-setup-input"
+                  placeholder="Métrica de resultado (ex: seguidores no Instagram)"
+                  value={fourdxLagName}
+                  onChange={e => setFourdxLagName(e.target.value)}
+                />
+                <input
+                  className="scoreboard-setup-input"
+                  placeholder="Unidade (ex: seguidores, R$, leads)"
+                  value={fourdxSetupUnit}
+                  onChange={e => setFourdxSetupUnit(e.target.value)}
+                />
+                <button
+                  type="button"
+                  disabled={busy || !fourdxLead1.trim() || !fourdxLead2.trim()}
+                  style={{ alignSelf: 'flex-start', padding: '8px 18px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.84rem' }}
+                  onClick={async () => {
+                    if (!fourdxLead1.trim() || !fourdxLead2.trim()) return;
+                    setBusy(true);
+                    try {
+                      const unit = fourdxSetupUnit.trim() || null;
+                      const calls: Promise<unknown>[] = [
+                        api.createProjectMetric(selectedProject.id, { kind: 'lead', name: fourdxLead1.trim(), unit }),
+                        api.createProjectMetric(selectedProject.id, { kind: 'lead', name: fourdxLead2.trim(), unit }),
+                      ];
+                      if (fourdxLagName.trim()) {
+                        calls.push(api.createProjectMetric(selectedProject.id, { kind: 'lag', name: fourdxLagName.trim(), unit }));
+                      }
+                      await Promise.all(calls);
+                      setFourdxLead1(''); setFourdxLead2(''); setFourdxLagName(''); setFourdxSetupUnit('');
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }}
+                >
+                  Salvar configuração 4DX
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── MILESTONE engine (Entrega) — Timeline UI ────────────────────────
+    if (engine === 'milestone' && variant !== 'authority') {
+      const milestones = md.milestones ?? [];
+      const blockers = md.blockers ?? [];
+      const done = milestones.filter(m => m.done).length;
+      const critical = milestones.find(m => !m.done && m.critical);
+      return (
+        <div className="engine-milestone entrega-zone">
+          <div className="entrega-zone-header">
+            <div>
+              <span className="entrega-zone-title">Marcos do projeto</span>
+              {milestones.length > 0 && (
+                <div className="entrega-zone-sub">{done}/{milestones.length} concluídos</div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="entrega-add-btn"
+              onClick={() => openQuickAdd('milestone')}
+            >
+              + Marco
+            </button>
+          </div>
+
+          {critical && (
+            <div style={{ padding: '8px 20px', background: 'rgba(224,80,80,0.08)', borderBottom: '1px solid var(--border)', fontSize: '0.82rem', color: '#e05050', fontWeight: 600 }}>
+              ⚠ Marco crítico pendente: {critical.title}
+            </div>
+          )}
+
+          {/* Inline add milestone form */}
+          {engineQuickAdd.type === 'milestone' && (
+            <div className="quick-add-form">
+              <input
+                autoFocus
+                placeholder="Nome do marco..."
+                value={engineQuickAdd.draft.title ?? ''}
+                onChange={e => setQuickDraft('title', e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter' && engineQuickAdd.draft.title?.trim()) {
+                    setBusy(true);
+                    try {
+                      await api.addMethodologyItem(selectedProject.id, {
+                        arrayKey: 'milestones',
+                        item: { title: engineQuickAdd.draft.title.trim(), done: false, critical: engineQuickAdd.draft.critical === '1', order: milestones.length }
+                      });
+                      closeQuickAdd();
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }
+                  if (e.key === 'Escape') closeQuickAdd();
+                }}
+              />
+              <label className="quick-add-check">
+                <input type="checkbox" checked={engineQuickAdd.draft.critical === '1'} onChange={e => setQuickDraft('critical', e.target.checked ? '1' : '')} />
+                Marco crítico
+              </label>
+              <div className="quick-add-actions">
+                <button type="button" className="ghost-button" onClick={closeQuickAdd}>Cancelar</button>
+                <button
+                  type="button"
+                  disabled={busy || !engineQuickAdd.draft.title?.trim()}
+                  onClick={async () => {
+                    if (!engineQuickAdd.draft.title?.trim()) return;
+                    setBusy(true);
+                    try {
+                      await api.addMethodologyItem(selectedProject.id, {
+                        arrayKey: 'milestones',
+                        item: { title: engineQuickAdd.draft.title.trim(), done: false, critical: engineQuickAdd.draft.critical === '1', order: milestones.length }
+                      });
+                      closeQuickAdd();
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }}
+                >
+                  Adicionar marco
+                </button>
+              </div>
+            </div>
+          )}
+
+          {milestones.length === 0 ? (
+            <div style={{ padding: '20px' }}>
+              <EmptyState title="Nenhum marco definido" description="Clique em + Marco para começar." />
+            </div>
+          ) : (
+            <div className="timeline-track" style={{ position: 'relative' }}>
+              <div className="timeline-track-line" />
+              {milestones.map((milestone) => {
+                const nodeClass = milestone.done ? 'done' : milestone.critical ? 'critical' : '';
+                const itemClass = milestone.done ? 'done' : milestone.critical ? 'critical-pending' : '';
+                return (
+                  <div key={milestone.id} className={`timeline-item ${itemClass}`} style={{ position: 'relative' }}>
+                    <div
+                      className={`timeline-node ${nodeClass}`}
+                      onClick={async () => {
+                        await api.updateMethodologyItem(selectedProject.id, milestone.id, {
+                          arrayKey: 'milestones',
+                          item: { done: !milestone.done, doneAt: !milestone.done ? new Date().toISOString() : null }
+                        });
+                        refetchProject();
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <div className="timeline-content">
+                      <div className="timeline-item-title">{milestone.title}</div>
+                      {milestone.critical && !milestone.done && (
+                        <div className="timeline-critical-badge">crítico</div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="item-delete-btn"
+                      title="Excluir marco"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(`Excluir marco "${milestone.title}"?`)) return;
+                        setBusy(true);
+                        try {
+                          await api.deleteMethodologyItem(selectedProject.id, milestone.id, { arrayKey: 'milestones' });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Padrão de conclusão */}
+          {selectedProject.methodologyExtraOne && (
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-2)' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Padrão de conclusão</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text)' }}>{selectedProject.methodologyExtraOne}</div>
+            </div>
+          )}
+
+          {/* Bloqueios */}
+          <div className="entrega-blockers">
+            <div className="entrega-blockers-header">
+              <div className="entrega-blockers-title">Bloqueios{blockers.length > 0 ? ` (${blockers.filter(b => !b.resolvedAt).length} ativos)` : ''}</div>
+              <button
+                type="button"
+                className="entrega-add-btn"
+                style={{ fontSize: '0.75rem' }}
+                onClick={() => openQuickAdd('blocker')}
+              >+ Bloqueio</button>
+            </div>
+            {engineQuickAdd.type === 'blocker' && (
+              <div className="quick-add-form" style={{ margin: '8px 16px' }}>
+                <input
+                  autoFocus
+                  placeholder="Descreva o bloqueio..."
+                  value={engineQuickAdd.draft.title ?? ''}
+                  onChange={e => setQuickDraft('title', e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter' && engineQuickAdd.draft.title?.trim()) {
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'blockers',
+                          item: { title: engineQuickAdd.draft.title.trim(), resolvedAt: null }
+                        });
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }
+                    if (e.key === 'Escape') closeQuickAdd();
+                  }}
+                />
+                <div className="quick-add-actions">
+                  <button type="button" className="ghost-button" onClick={closeQuickAdd}>Cancelar</button>
+                  <button
+                    type="button"
+                    disabled={busy || !engineQuickAdd.draft.title?.trim()}
+                    onClick={async () => {
+                      if (!engineQuickAdd.draft.title?.trim()) return;
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'blockers',
+                          item: { title: engineQuickAdd.draft.title.trim(), resolvedAt: null }
+                        });
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >Adicionar bloqueio</button>
+                </div>
+              </div>
+            )}
+            {blockers.length === 0 ? (
+              <div style={{ padding: '10px 20px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Nenhum bloqueio registrado.</div>
+            ) : (
+              blockers.map(b => (
+                <div key={b.id} className={`entrega-blocker-item ${b.resolvedAt ? 'resolved' : 'active'}`} style={{ position: 'relative' }}>
+                  <span>{b.resolvedAt ? '✓' : '⚡'} {b.title}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                    {!b.resolvedAt && (
+                      <button
+                        type="button"
+                        className="blocker-resolve-btn"
+                        disabled={busy}
+                        onClick={async () => {
+                          setBusy(true);
+                          try {
+                            await api.updateMethodologyItem(selectedProject.id, b.id, {
+                              arrayKey: 'blockers',
+                              item: { resolvedAt: new Date().toISOString() }
+                            });
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }}
+                      >✓ Resolver</button>
+                    )}
+                    <button
+                      type="button"
+                      className="item-delete-btn"
+                      title="Excluir bloqueio"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(`Excluir bloqueio "${b.title}"?`)) return;
+                        setBusy(true);
+                        try {
+                          await api.deleteMethodologyItem(selectedProject.id, b.id, { arrayKey: 'blockers' });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── MILESTONE (Autoridade) — Proof Gallery ───────────────────────────
+    if (engine === 'milestone' && variant === 'authority') {
+      const proofs = md.proofs ?? [];
+      const score = computeAuthorityScore(proofs);
+      const typeIcon = (t: string) => t === 'palestra' ? '🎤' : t === 'artigo' ? '📝' : t === 'case' ? '📋' : '💬';
+      return (
+        <div className="engine-milestone-authority autoridade-zone">
+          {/* Authority score hero */}
+          <div className="authority-score-display">
+            <span className="authority-score-number">{score}</span>
+            <div className="authority-score-info">
+              <div className="authority-score-label">Score de autoridade</div>
+              <div className="authority-score-breakdown">
+                <span>Artigo ×1</span>
+                <span>Menção ×1</span>
+                <span>Case ×2</span>
+                <span>Palestra ×3</span>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                {proofs.length} prova{proofs.length !== 1 ? 's' : ''} registrada{proofs.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+          </div>
+
+          {proofs.length === 0 ? (
+            <div style={{ padding: '20px' }}>
+              <EmptyState title="Nenhuma prova registrada" description="Registre artigos, palestras, cases e menções." />
+            </div>
+          ) : (
+            <div className="proof-gallery">
+              {proofs.map(proof => (
+                <div key={proof.id} className="proof-card">
+                  <div className="proof-card-type">{typeIcon(proof.type)} {proof.type}</div>
+                  <div className="proof-card-title">{proof.title}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+                    <span className="proof-points-badge">+{proof.points} pts</span>
+                    <button
+                      type="button"
+                      className="text-button"
+                      style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const updated = proofs.filter(p => p.id !== proof.id);
+                          await api.updateProject(selectedProject.id, { methodologyData: { ...md, proofs: updated } });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >Remover</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {engineQuickAdd.type === 'proof' ? (
+            <div className="quick-add-form">
+              <select
+                value={engineQuickAdd.draft.type ?? 'artigo'}
+                onChange={e => setQuickDraft('type', e.target.value)}
+              >
+                <option value="artigo">📝 Artigo (1 pt)</option>
+                <option value="mencao">💬 Menção (1 pt)</option>
+                <option value="podcast">🎙 Podcast (1 pt)</option>
+                <option value="case">📋 Case (2 pts)</option>
+                <option value="palestra">🎤 Palestra (3 pts)</option>
+              </select>
+              <input
+                autoFocus
+                placeholder="Título da prova de autoridade..."
+                value={engineQuickAdd.draft.title ?? ''}
+                onChange={e => setQuickDraft('title', e.target.value)}
+              />
+              <div className="quick-add-actions">
+                <button type="button" className="ghost-button" onClick={closeQuickAdd}>Cancelar</button>
+                <button
+                  type="button"
+                  disabled={busy || !engineQuickAdd.draft.title?.trim()}
+                  onClick={async () => {
+                    const proofType = engineQuickAdd.draft.type ?? 'artigo';
+                    const title = engineQuickAdd.draft.title?.trim();
+                    if (!title) return;
+                    const pointsMap: Record<string, number> = { palestra: 3, case: 2, artigo: 1, mencao: 1, podcast: 1, outro: 1 };
+                    setBusy(true);
+                    try {
+                      await api.addMethodologyItem(selectedProject.id, {
+                        arrayKey: 'proofs',
+                        item: { type: proofType, title, points: pointsMap[proofType] ?? 1, createdAt: new Date().toISOString() }
+                      });
+                      closeQuickAdd();
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }}
+                >
+                  Registrar prova
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="autoridade-add-btn" onClick={() => openQuickAdd('proof', { type: 'artigo' })}>
+              + Adicionar prova de autoridade
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // ── LOG engine (Exploração) — Research Journal ──────────────────────
+    if (engine === 'log' && variant === 'discovery') {
+      const discoveries = md.discoveries ?? [];
+      const hypothesis = md.hypothesis ?? selectedProject.objective;
+      const criteria = md.hypothesisCriteria ?? selectedProject.methodologyExtraOne;
+      const decisionData = md.decision;
+      const badgeLabel = (t: string) => t === 'confirms' ? '✓' : t === 'refutes' ? '✗' : '?';
+      const confirmsCount = discoveries.filter(d => d.type === 'confirms').length;
+      const refutesCount = discoveries.filter(d => d.type === 'refutes').length;
+      return (
+        <div className="engine-log-discovery discovery-zone">
+          {/* ── Hypothesis card ── */}
+          {hypothesis && (
+            <div className="hypothesis-card">
+              <div className="hypothesis-card-header">
+                <div className="hypothesis-card-label">Hipótese</div>
+                {discoveries.length > 0 && (
+                  <div className="discovery-stats">
+                    <span className="discovery-stat confirms">✓ {confirmsCount}</span>
+                    <span className="discovery-stat refutes">✗ {refutesCount}</span>
+                    <span className="discovery-stat total">{discoveries.length} total</span>
+                    <span className={`discovery-decision-badge ${decisionData ? 'decided' : 'pending'}`}>
+                      {decisionData
+                        ? (decisionData.choice === 'follow' ? '→ Seguir' : decisionData.choice === 'pivot' ? '↻ Pivotar' : '✕ Descartar')
+                        : '· em análise'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="hypothesis-card-text">"{hypothesis}"</div>
+              {criteria && <span className="hypothesis-criteria-badge">critério: {criteria}</span>}
+            </div>
+          )}
+
+          {/* ── Evidence input ── */}
+          {!decisionData && (
+            <div className="evidence-input-wrap">
+              <div className="evidence-input-label">O que você aprendeu?</div>
+              <textarea
+                className="evidence-textarea"
+                placeholder="Descreva a descoberta desta semana..."
+                rows={2}
+                value={discoveryText}
+                onChange={e => setDiscoveryText(e.target.value)}
+              />
+              <div className="evidence-type-pills">
+                {(['confirms', 'refutes', 'inconclusive'] as const).map((type) => {
+                  const labels = { confirms: '✓ Confirma', refutes: '✗ Refuta', inconclusive: '? Inconclusivo' };
+                  return (
+                    <label key={type} className={`evidence-type-pill ${type}${discoveryType === type ? ' selected' : ''}`}>
+                      <input type="radio" name="dtype" value={type} checked={discoveryType === type} onChange={() => setDiscoveryType(type)} style={{ display: 'none' }} />
+                      {labels[type]}
+                    </label>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className="evidence-submit-btn"
+                disabled={busy || !discoveryText.trim()}
+                onClick={async () => {
+                  if (!discoveryText.trim()) return;
+                  setBusy(true);
+                  try {
+                    await api.addMethodologyItem(selectedProject.id, {
+                      arrayKey: 'discoveries',
+                      item: { text: discoveryText.trim(), type: discoveryType, week: new Date().toISOString().slice(0, 10) }
+                    });
+                    setDiscoveryText('');
+                    setDiscoveryType('confirms');
+                    await refetchProject();
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Registrar descoberta
+              </button>
+            </div>
+          )}
+
+          {/* ── Evidence feed ── */}
+          {discoveries.length > 0 ? (
+            <div className="evidence-feed">
+              {[...discoveries].reverse().map(d => (
+                <div key={d.id} className={`evidence-item ${d.type}`}>
+                  <span className="evidence-badge">{badgeLabel(d.type)}</span>
+                  <span className="evidence-text">{d.text}</span>
+                  <span className="evidence-date">{d.week}</span>
+                  <button
+                    type="button"
+                    className="item-delete-btn"
+                    title="Excluir descoberta"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (!window.confirm('Excluir esta descoberta?')) return;
+                      setBusy(true);
+                      try {
+                        await api.deleteMethodologyItem(selectedProject.id, d.id, { arrayKey: 'discoveries' });
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+              Nenhuma descoberta registrada ainda. Comece registrando o que aprendeu esta semana.
+            </div>
+          )}
+
+          {/* ── Decision verdict ── */}
+          {!decisionData ? (
+            <div className="verdict-zone">
+              <div className="verdict-zone-title">Veredicto final</div>
+              <div className="verdict-options">
+                {(['Seguir', 'Pivotar', 'Descartar'] as const).map((label, i) => {
+                  const choices = ['follow', 'pivot', 'discard'] as const;
+                  const choice = choices[i];
+                  return (
+                    <label key={label} className={`verdict-option${discoveryDecision === choice ? ' selected' : ''}`}>
+                      <input type="radio" name={`decision-${selectedProject.id}`} value={choice}
+                        checked={discoveryDecision === choice}
+                        onChange={() => setDiscoveryDecision(choice)} style={{ display: 'none' }} />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className="verdict-confirm-btn"
+                disabled={busy || !discoveryDecision}
+                onClick={async () => {
+                  if (!discoveryDecision) return;
+                  setBusy(true);
+                  try {
+                    await api.updateProject(selectedProject.id, {
+                      methodologyData: { ...md, decision: { choice: discoveryDecision, justification: '', decidedAt: new Date().toISOString() } }
+                    });
+                    setDiscoveryDecision(null);
+                    await refetchProject();
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Encerrar com esta decisão
+              </button>
+            </div>
+          ) : (
+            <div className="verdict-recorded">
+              <div className="verdict-recorded-icon">
+                {decisionData.choice === 'follow' ? '→' : decisionData.choice === 'pivot' ? '↻' : '✕'}
+              </div>
+              <div>
+                <div className="verdict-recorded-label">Decisão registrada</div>
+                <div className="verdict-recorded-choice">
+                  {decisionData.choice === 'follow' ? 'Seguir com a hipótese' : decisionData.choice === 'pivot' ? 'Pivotar a abordagem' : 'Descartar esta linha'}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="ghost-button"
+                style={{ fontSize: '0.75rem', marginLeft: 'auto' }}
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api.updateProject(selectedProject.id, {
+                      methodologyData: { ...md, decision: null }
+                    });
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              >Reabrir</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── LOG engine (Mentoria) — Session Journal ──────────────────────────
+    if (engine === 'log' && variant === 'coaching') {
+      const sessions = md.sessions ?? [];
+      const role = md.mentoriaRole ?? 'receiving';
+      const isGiving = role === 'giving';
+      const openCommits = sessions.flatMap(s => s.commitments.filter(c => !c.done));
+      const totalCommits = sessions.flatMap(s => s.commitments).length;
+      const completionRate = totalCommits > 0 ? Math.round(((totalCommits - openCommits.length) / totalCommits) * 100) : 0;
+      const learnedLabel = isGiving ? 'O que discutimos' : 'O que aprendi';
+      const commitsLabel = isGiving ? 'Compromissos do mentorado' : 'Compromissos que assumi';
+      const withLabel = isGiving ? 'Mentorado' : 'Mentor';
+      const visibleSessions = showAllSessions ? [...sessions].reverse() : [...sessions].reverse().slice(0, 3);
+
+      const toggleCommitDone = async (session: NonNullable<typeof md.sessions>[number], commitId: string) => {
+        setBusy(true);
+        try {
+          const updatedCommitments = session.commitments.map(c =>
+            c.id === commitId ? { ...c, done: !c.done, doneAt: !c.done ? new Date().toISOString() : null } : c
+          );
+          await api.updateMethodologyItem(selectedProject.id, session.id, {
+            arrayKey: 'sessions',
+            item: { ...session, commitments: updatedCommitments }
+          });
+          await refetchProject();
+        } finally { setBusy(false); }
+      };
+
+      const deleteCommit = async (session: NonNullable<typeof md.sessions>[number], commitId: string) => {
+        if (!window.confirm('Excluir este compromisso?')) return;
+        setBusy(true);
+        try {
+          const updatedCommitments = session.commitments.filter(c => c.id !== commitId);
+          await api.updateMethodologyItem(selectedProject.id, session.id, {
+            arrayKey: 'sessions',
+            item: { ...session, commitments: updatedCommitments }
+          });
+          await refetchProject();
+        } finally { setBusy(false); }
+      };
+
+      return (
+        <div className="engine-log-coaching mentoria-zone">
+          {/* ── Stats header ── */}
+          <div className="mentoria-stats-bar">
+            <div className="mentoria-stats-left">
+              <span className={`mentoria-role-badge ${role}`}>
+                {isGiving ? '↑ Dando mentoria' : '↓ Recebendo mentoria'}
+              </span>
+              {md.mentoriaWith && (
+                <span className="mentoria-with-chip">{withLabel}: {md.mentoriaWith}</span>
+              )}
+            </div>
+            <div className="mentoria-stats-right">
+              <span className="mentoria-stat">{sessions.length} sessões</span>
+              {openCommits.length > 0 && (
+                <span className="mentoria-stat warn">{openCommits.length} compromisso{openCommits.length !== 1 ? 's' : ''} aberto{openCommits.length !== 1 ? 's' : ''}</span>
+              )}
+              {totalCommits > 0 && openCommits.length === 0 && (
+                <span className="mentoria-stat ok">✓ {completionRate}% concluído</span>
+              )}
+            </div>
+          </div>
+
+          {/* ── Role toggle ── */}
+          <div className="mentoria-role-toggle-row">
+            <button
+              type="button"
+              className={`mentoria-role-btn${!isGiving ? ' active' : ''}`}
+              disabled={busy}
+              onClick={async () => {
+                if (role === 'receiving') return;
+                setBusy(true);
+                try {
+                  await api.updateProject(selectedProject.id, { methodologyData: { ...md, mentoriaRole: 'receiving' } });
+                  await refetchProject();
+                } finally { setBusy(false); }
+              }}
+            >↓ Recebendo</button>
+            <button
+              type="button"
+              className={`mentoria-role-btn${isGiving ? ' active' : ''}`}
+              disabled={busy}
+              onClick={async () => {
+                if (role === 'giving') return;
+                setBusy(true);
+                try {
+                  await api.updateProject(selectedProject.id, { methodologyData: { ...md, mentoriaRole: 'giving' } });
+                  await refetchProject();
+                } finally { setBusy(false); }
+              }}
+            >↑ Dando</button>
+          </div>
+
+          {/* ── Next session ── */}
+          {md.nextSessionDate && (
+            <div className="mentoria-next-session">
+              <span className="mentoria-next-label">Próxima sessão</span>
+              <span className="mentoria-next-date">{md.nextSessionDate}</span>
+              <button
+                type="button"
+                className="ghost-button"
+                style={{ fontSize: '0.72rem', marginLeft: 'auto' }}
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api.updateProject(selectedProject.id, { methodologyData: { ...md, nextSessionDate: null } });
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              >Limpar</button>
+            </div>
+          )}
+
+          {/* ── Sessions list ── */}
+          {sessions.length === 0 ? (
+            <EmptyState
+              title="Nenhuma sessão registrada"
+              description={isGiving ? 'Registre o que discutiu em cada sessão e os compromissos do mentorado.' : 'Registre o que aprendeu em cada sessão e os compromissos que assumiu.'}
+            />
+          ) : (
+            <div className="mentoria-sessions-list">
+              {visibleSessions.map(session => (
+                <div key={session.id} className="session-card">
+                  <div className="session-header">
+                    <span className="session-date">{session.date}</span>
+                    {session.durationMin && <span className="session-duration">{session.durationMin}min</span>}
+                    <button
+                      type="button"
+                      className="item-delete-btn"
+                      title="Excluir sessão"
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!window.confirm(`Excluir sessão de ${session.date}?`)) return;
+                        setBusy(true);
+                        try {
+                          await api.deleteMethodologyItem(selectedProject.id, session.id, { arrayKey: 'sessions' });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="session-learned">{session.learned}</div>
+                  {session.commitments.length > 0 && (
+                    <>
+                      <div className="session-commitments-label">{commitsLabel}</div>
+                      <div className="session-commitments">
+                        {session.commitments.map(c => (
+                          <div key={c.id} className={`commitment-item${c.done ? ' done' : ''}`}>
+                            <button
+                              type="button"
+                              className="commitment-check-btn"
+                              disabled={busy}
+                              title={c.done ? 'Marcar como pendente' : 'Marcar como feito'}
+                              onClick={() => toggleCommitDone(session, c.id)}
+                            >
+                              {c.done ? '✓' : '○'}
+                            </button>
+                            <span className="commitment-text">{c.text}</span>
+                            <button
+                              type="button"
+                              className="commitment-delete-btn"
+                              disabled={busy}
+                              title="Excluir compromisso"
+                              onClick={() => deleteCommit(session, c.id)}
+                            >✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+              {sessions.length > 3 && (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  style={{ width: '100%', padding: '8px', fontSize: '0.78rem', marginTop: '4px' }}
+                  onClick={() => setShowAllSessions(v => !v)}
+                >
+                  {showAllSessions ? '↑ Ver menos' : `↓ Ver todas as ${sessions.length} sessões`}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Add session form ── */}
+          <div className="mentoria-add-form">
+            <div className="mentoria-add-title">+ Nova sessão</div>
+            <div className="mentoria-form-row">
+              <div style={{ flex: 1 }}>
+                <label className="mentoria-add-label">Data</label>
+                <input
+                  type="date"
+                  value={mentoriaDate}
+                  onChange={e => setMentoriaDate(e.target.value)}
+                  className="mentoria-form-input"
+                />
+              </div>
+              <div style={{ width: '100px' }}>
+                <label className="mentoria-add-label">Duração (min)</label>
+                <input
+                  type="number"
+                  placeholder="60"
+                  min="1"
+                  value={mentoriaDuration}
+                  onChange={e => setMentoriaDuration(e.target.value)}
+                  className="mentoria-form-input"
+                />
+              </div>
+            </div>
+            <label className="mentoria-add-label" style={{ marginTop: '10px' }}>{learnedLabel}</label>
+            <textarea
+              className="mentoria-add-textarea"
+              placeholder={isGiving ? 'O que discutiu com o mentorado...' : 'Principais aprendizados da sessão...'}
+              rows={3}
+              value={mentoriaLearned}
+              onChange={e => setMentoriaLearned(e.target.value)}
+            />
+            <label className="mentoria-add-label" style={{ marginTop: '10px' }}>
+              {commitsLabel}
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '6px' }}>↵ adicionar mais</span>
+            </label>
+            {mentoriaCommitments.map((c, i) => (
+              <div key={i} className="mentoria-commit-row">
+                <input
+                  className="mentoria-form-input"
+                  placeholder={`Compromisso ${i + 1}...`}
+                  value={c}
+                  onChange={e => {
+                    const next = [...mentoriaCommitments];
+                    next[i] = e.target.value;
+                    setMentoriaCommitments(next);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); setMentoriaCommitments(prev => [...prev, '']); }
+                  }}
+                />
+                {mentoriaCommitments.length > 1 && (
+                  <button type="button" className="ghost-button" style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                    onClick={() => setMentoriaCommitments(prev => prev.filter((_, idx) => idx !== i))}>✕</button>
+                )}
+              </div>
+            ))}
+            <div className="mentoria-form-footer">
+              <div style={{ flex: 1 }}>
+                <label className="mentoria-add-label">Próxima sessão (opcional)</label>
+                <input
+                  type="date"
+                  className="mentoria-form-input"
+                  onChange={async e => {
+                    if (!e.target.value) return;
+                    setBusy(true);
+                    try {
+                      await api.updateProject(selectedProject.id, { methodologyData: { ...md, nextSessionDate: e.target.value } });
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                className="mentoria-submit-btn"
+                disabled={busy || !mentoriaLearned.trim()}
+                onClick={async () => {
+                  if (!mentoriaLearned.trim()) return;
+                  setBusy(true);
+                  try {
+                    const validCommitments = mentoriaCommitments.filter(c => c.trim());
+                    await api.addMethodologyItem(selectedProject.id, {
+                      arrayKey: 'sessions',
+                      item: {
+                        date: mentoriaDate,
+                        durationMin: mentoriaDuration ? parseInt(mentoriaDuration) : null,
+                        learned: mentoriaLearned.trim(),
+                        commitments: validCommitments.map((text, i) => ({ id: `c${Date.now()}-${i}`, text, done: false }))
+                      }
+                    });
+                    setMentoriaLearned('');
+                    setMentoriaCommitments(['']);
+                    setMentoriaDuration('');
+                    setMentoriaDate(new Date().toISOString().slice(0, 10));
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              >Salvar sessão</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── PIPELINE engine ──────────────────────────────────────────────────
+    if (engine === 'pipeline') {
+      const stages = md.stages ?? [];
+      const deals = md.deals ?? [];
+
+      // Financial pipeline (Captação) — Sales Dashboard with forecast bar
+      if (variant === 'financial') {
+        const totalGoal = selectedProject.resultTargetValue ?? md.totalGoal;
+        const closedStage = stages.reduce((max, s) => s.order > max.order ? s : max, stages[0] ?? { id: '', order: -1 });
+        const committed = deals.filter(d => d.stageId === closedStage.id).reduce((sum, d) => sum + (d.amount ?? 0), 0);
+        const forecast = computePipelineForecast(deals, closedStage.id);
+        const pct = totalGoal && totalGoal > 0 ? Math.min(100, Math.round((committed / totalGoal) * 100)) : 0;
+        return (
+          <div className="engine-pipeline-financial" style={{ background: 'var(--bg-2)', borderRadius: '12px', border: '1px solid rgba(16,185,129,0.2)', padding: '16px' }}>
+            {/* Forecast hero */}
+            {totalGoal && totalGoal > 0 && (
+              <div className="pipeline-forecast-wrap">
+                <div className="pipeline-forecast-total">
+                  {committed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </div>
+                <div className="pipeline-forecast-label-row">
+                  <span style={{ color: '#10b981', fontWeight: 600 }}>fechado · {pct}% da meta</span>
+                  <span>meta: {totalGoal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                </div>
+                <div className="pipeline-forecast-bar">
+                  <div className="pipeline-forecast-fill" style={{ width: `${pct}%` }} />
+                </div>
+                {forecast > committed && (
+                  <div className="pipeline-forecast-label-row" style={{ marginTop: '6px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                      forecast ponderado: {forecast.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {stages.length === 0 ? (
+              <EmptyState title="Configure o pipeline" description="Edite o projeto para adicionar estágios." />
+            ) : (
+              <div className="kanban-wrap">
+                {stages.map(stage => {
+                  const stageDeals = deals.filter(d => d.stageId === stage.id);
+                  const stageIdx = stages.findIndex(s => s.id === stage.id);
+                  const prevStage = stageIdx > 0 ? stages[stageIdx - 1] : null;
+                  const nextStage = stageIdx < stages.length - 1 ? stages[stageIdx + 1] : null;
+                  return (
+                    <div key={stage.id} className="kanban-col">
+                      <div className="kanban-col-header">
+                        <span>{stage.label}</span>
+                        <span className="kanban-col-count">{stageDeals.length}</span>
+                      </div>
+                      <div className="kanban-col-body">
+                        {stageDeals.length === 0 ? (
+                          <div className="kanban-col-empty">sem deals</div>
+                        ) : stageDeals.map(deal => (
+                          <div key={deal.id} className="kanban-deal-card">
+                            <div className="kanban-deal-top">
+                              <span className="kanban-deal-name">{deal.name}</span>
+                              <button
+                                type="button"
+                                className="item-delete-btn"
+                                disabled={busy}
+                                title="Remover deal"
+                                onClick={async () => {
+                                  setBusy(true);
+                                  try {
+                                    await api.deleteMethodologyItem(selectedProject.id, deal.id, { arrayKey: 'deals' });
+                                    await refetchProject();
+                                  } finally { setBusy(false); }
+                                }}
+                              >✕</button>
+                            </div>
+                            {deal.amount != null && (
+                              <div className="kanban-deal-meta">
+                                {deal.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · {deal.probability ?? 50}%
+                              </div>
+                            )}
+                            <div className="kanban-deal-actions">
+                              {prevStage && (
+                                <button
+                                  type="button"
+                                  className="kanban-back-btn"
+                                  disabled={busy}
+                                  onClick={async () => {
+                                    setBusy(true);
+                                    try {
+                                      await api.updateMethodologyItem(selectedProject.id, deal.id, { arrayKey: 'deals', item: { stageId: prevStage.id, stageEnteredAt: new Date().toISOString() } });
+                                      await refetchProject();
+                                    } finally { setBusy(false); }
+                                  }}
+                                >← {prevStage.label}</button>
+                              )}
+                              {nextStage && (
+                                <button
+                                  type="button"
+                                  className="kanban-advance-btn"
+                                  disabled={busy}
+                                  onClick={async () => {
+                                    setBusy(true);
+                                    try {
+                                      await api.updateMethodologyItem(selectedProject.id, deal.id, { arrayKey: 'deals', item: { stageId: nextStage.id, stageEnteredAt: new Date().toISOString() } });
+                                      await refetchProject();
+                                    } finally { setBusy(false); }
+                                  }}
+                                >{nextStage.label} →</button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add deal — controlled inputs */}
+            <div className="kanban-add-row financial-add-row">
+              <input
+                className="kanban-add-input"
+                placeholder="Nome do deal ou investidor..."
+                value={financialNewDealName}
+                onChange={e => setFinancialNewDealName(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter' && financialNewDealName.trim() && stages.length > 0) {
+                    setBusy(true);
+                    try {
+                      const amt = parseFloat(financialNewDealAmount) || null;
+                      const prob = parseInt(financialNewDealProb) || 50;
+                      await api.addMethodologyItem(selectedProject.id, {
+                        arrayKey: 'deals',
+                        item: { name: financialNewDealName.trim(), stageId: stages[0].id, amount: amt, probability: prob, stageEnteredAt: new Date().toISOString() }
+                      });
+                      setFinancialNewDealName(''); setFinancialNewDealAmount(''); setFinancialNewDealProb('50');
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }
+                }}
+              />
+              <input
+                type="number"
+                className="kanban-add-input"
+                style={{ maxWidth: '120px' }}
+                placeholder="Valor (R$)"
+                value={financialNewDealAmount}
+                onChange={e => setFinancialNewDealAmount(e.target.value)}
+              />
+              <select
+                className="kanban-add-input"
+                style={{ maxWidth: '80px' }}
+                value={financialNewDealProb}
+                onChange={e => setFinancialNewDealProb(e.target.value)}
+              >
+                {[10,20,30,40,50,60,70,80,90,100].map(p => (
+                  <option key={p} value={p}>{p}%</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="kanban-add-btn"
+                disabled={busy || !financialNewDealName.trim() || stages.length === 0}
+                onClick={async () => {
+                  if (!financialNewDealName.trim() || stages.length === 0) return;
+                  setBusy(true);
+                  try {
+                    const amt = parseFloat(financialNewDealAmount) || null;
+                    const prob = parseInt(financialNewDealProb) || 50;
+                    await api.addMethodologyItem(selectedProject.id, {
+                      arrayKey: 'deals',
+                      item: { name: financialNewDealName.trim(), stageId: stages[0].id, amount: amt, probability: prob, stageEnteredAt: new Date().toISOString() }
+                    });
+                    setFinancialNewDealName(''); setFinancialNewDealAmount(''); setFinancialNewDealProb('50');
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              >
+                + Deal
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // Linear pipeline (Sistema de Receita) — Horizontal Stepper + Per-stage Criteria
+      if (variant === 'linear') {
+        const systemStages = stages.length > 0 ? stages : [
+          { id: 'ideia', label: 'Ideia', order: 0 },
+          { id: 'validacao', label: 'Validação', order: 1 },
+          { id: 'primeiro_cliente', label: '1° Cliente', order: 2 },
+          { id: 'escala', label: 'Escala', order: 3 },
+        ];
+        const currentDeal = deals[0];
+        const currentStageOrder = currentDeal ? (systemStages.find(s => s.id === currentDeal.stageId)?.order ?? 0) : 0;
+        const currentStage = systemStages.find(s => s.order === currentStageOrder);
+        const nextStage = systemStages.find(s => s.order === currentStageOrder + 1);
+
+        // Per-stage criteria (stageCriteria — separate from decision engine's criteria)
+        const allCriteria = md.stageCriteria ?? [];
+        const stageCriteria = allCriteria.filter(c => c.stageId === currentStage?.id);
+        const doneCriteria = stageCriteria.filter(c => c.done).length;
+
+        // Suggested criteria per stage — keyed by normalized label (lowercase, no accents)
+        const normLabel = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+        const suggestedCriteria: Record<string, string[]> = {
+          'ideia': ['Modelo de receita definido (assinatura, serviço, produto)', 'Cliente-alvo mapeado com clareza', 'Problema central que você resolve articulado em 1 frase', 'Hipótese de preço inicial definida'],
+          'validacao': ['Conversei com ≥ 5 potenciais clientes sobre o problema', 'Alguém demonstrou disposição real de pagar', 'Canal de aquisição identificado', 'Proposta de valor testada e refinada'],
+          '1cliente': ['Primeiro cliente pagante fechado', 'Contrato ou acordo formal assinado', 'Entrega realizada e aprovada', 'Feedback coletado e documentado'],
+          'escala': ['Processo de aquisição replicável documentado', 'Entrega sistematizada sem depender só de mim', 'Meta de crescimento mensal definida', 'Equipe ou ferramentas para suportar crescimento'],
+        };
+        const getSuggestions = (label: string) => suggestedCriteria[normLabel(label)] ?? [];
+
+        // Days in current stage
+        const stageEnteredAt = currentDeal?.stageEnteredAt ? new Date(currentDeal.stageEnteredAt) : null;
+        const daysInStage = stageEnteredAt ? Math.floor((Date.now() - stageEnteredAt.getTime()) / 86400000) : null;
+
+        const stageFocus: Record<string, string> = {
+          'Ideia': 'Defina claramente o modelo de receita e o cliente-alvo. Qual problema você resolve?',
+          'Validação': 'Valide que alguém pagaria pelo que você oferece. Busque conversas, não opiniões.',
+          '1° Cliente': 'Feche o primeiro cliente pagante. Isso prova que o modelo funciona na prática.',
+          'Escala': 'Sistematize aquisição e entrega para crescer sem depender de você.',
+        };
+
+        return (
+          <div className="engine-pipeline-linear">
+            {/* ── Journey stepper ── */}
+            <div className="journey-track">
+              {systemStages.map((stage) => {
+                const stepClass = stage.order < currentStageOrder ? 'done' : stage.order === currentStageOrder ? 'current' : 'pending';
+                return (
+                  <div
+                    key={stage.id}
+                    className={`journey-step ${stepClass}`}
+                    title={stage.order !== currentStageOrder ? `Ir para: ${stage.label}` : 'Etapa atual'}
+                    style={{ cursor: stage.order !== currentStageOrder ? 'pointer' : 'default' }}
+                    onClick={async () => {
+                      if (stage.order === currentStageOrder || busy) return;
+                      setBusy(true);
+                      try {
+                        if (currentDeal) {
+                          await api.updateMethodologyItem(selectedProject.id, currentDeal.id, { arrayKey: 'deals', item: { stageId: stage.id, stageEnteredAt: new Date().toISOString() } });
+                        } else {
+                          await api.addMethodologyItem(selectedProject.id, { arrayKey: 'deals', item: { name: selectedProject.title, stageId: stage.id, stageEnteredAt: new Date().toISOString(), amount: null, probability: 50 } });
+                        }
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >
+                    <div className="journey-step-node">
+                      {stage.order < currentStageOrder ? '✓' : stage.order + 1}
+                    </div>
+                    <div className="journey-step-label">{stage.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Current stage hero ── */}
+            {currentStage && (
+              <div className="journey-stage-hero">
+                <div className="journey-stage-meta">
+                  <span className="journey-stage-name">{currentStage.label}</span>
+                  {daysInStage !== null && (
+                    <span className="journey-stage-days">{daysInStage === 0 ? 'Iniciou hoje' : `${daysInStage} dia${daysInStage !== 1 ? 's' : ''} nesta etapa`}</span>
+                  )}
+                </div>
+                <p className="journey-stage-focus">{stageFocus[currentStage.label] ?? `Complete os critérios de "${currentStage.label}" antes de avançar.`}</p>
+              </div>
+            )}
+
+            {/* ── Criteria for current stage ── */}
+            {currentStage && (
+              <div className="journey-criteria">
+                <div className="journey-criteria-header">
+                  <div className="journey-criteria-title">
+                    Para avançar para <strong>{nextStage?.label ?? 'conclusão'}</strong>
+                    {stageCriteria.length > 0 && (
+                      <span className="journey-criteria-badge">{doneCriteria}/{stageCriteria.length}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="entrega-add-btn"
+                    onClick={() => openQuickAdd('action', { stageId: currentStage.id })}
+                  >+ Critério</button>
+                </div>
+
+                {/* Progress bar */}
+                {stageCriteria.length > 0 && (
+                  <div className="journey-progress-bar">
+                    <div className="journey-progress-fill" style={{ width: `${Math.round((doneCriteria / stageCriteria.length) * 100)}%` }} />
+                  </div>
+                )}
+
+                {/* Inline add form */}
+                {engineQuickAdd.type === 'action' && engineQuickAdd.draft.stageId === currentStage.id && (
+                  <div className="quick-add-form" style={{ margin: '8px 0 0' }}>
+                    <input
+                      autoFocus
+                      placeholder="Descreva o critério..."
+                      value={engineQuickAdd.draft.text ?? ''}
+                      onChange={e => setQuickDraft('text', e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter' && engineQuickAdd.draft.text?.trim()) {
+                          setBusy(true);
+                          try {
+                            await api.addMethodologyItem(selectedProject.id, {
+                              arrayKey: 'stageCriteria',
+                              item: { stageId: currentStage.id, text: engineQuickAdd.draft.text.trim(), done: false }
+                            });
+                            closeQuickAdd();
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }
+                        if (e.key === 'Escape') closeQuickAdd();
+                      }}
+                    />
+                    <div className="quick-add-actions">
+                      <button type="button" className="ghost-button" onClick={closeQuickAdd}>Cancelar</button>
+                      <button
+                        type="button"
+                        disabled={busy || !engineQuickAdd.draft.text?.trim()}
+                        onClick={async () => {
+                          if (!engineQuickAdd.draft.text?.trim()) return;
+                          setBusy(true);
+                          try {
+                            await api.addMethodologyItem(selectedProject.id, {
+                              arrayKey: 'stageCriteria',
+                              item: { stageId: currentStage.id, text: engineQuickAdd.draft.text.trim(), done: false }
+                            });
+                            closeQuickAdd();
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }}
+                      >Adicionar</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Criteria list */}
+                {stageCriteria.length > 0 && (
+                  <ul className="journey-criteria-list">
+                    {stageCriteria.map(criterion => (
+                      <li key={criterion.id} className={`journey-criterion-item ${criterion.done ? 'done' : ''}`}>
+                        <button
+                          type="button"
+                          className="journey-criterion-check"
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true);
+                            try {
+                              await api.updateMethodologyItem(selectedProject.id, criterion.id, {
+                                arrayKey: 'stageCriteria',
+                                item: { done: !criterion.done, doneAt: !criterion.done ? new Date().toISOString() : null }
+                              });
+                              await refetchProject();
+                            } finally { setBusy(false); }
+                          }}
+                        >
+                          {criterion.done ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          ) : null}
+                        </button>
+                        <span className="journey-criterion-text">{criterion.text}</span>
+                        <button
+                          type="button"
+                          className="item-delete-btn"
+                          title="Excluir critério"
+                          disabled={busy}
+                          onClick={async () => {
+                            if (!window.confirm(`Excluir critério "${criterion.text}"?`)) return;
+                            setBusy(true);
+                            try {
+                              await api.deleteMethodologyItem(selectedProject.id, criterion.id, { arrayKey: 'stageCriteria' });
+                              await refetchProject();
+                            } finally { setBusy(false); }
+                          }}
+                        ><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {(() => {
+                  const addedSet = new Set(stageCriteria.map(c => c.text.toLowerCase().trim()));
+                  const remaining = getSuggestions(currentStage.label).filter(s => !addedSet.has(s.toLowerCase().trim()));
+                  if (remaining.length === 0) return null;
+                  return (
+                    <div className="journey-criteria-empty" style={stageCriteria.length > 0 ? { marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' } : {}}>
+                      <p style={{ margin: '0 0 8px 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {stageCriteria.length === 0 ? <>Nenhum critério definido. Sugestões para <em>{currentStage.label}</em>:</> : 'Adicionar sugestão:'}
+                      </p>
+                      <ul>
+                        {remaining.map((s, i) => (
+                          <li key={i}>
+                            <button
+                              type="button"
+                              className="journey-suggestion-btn"
+                              disabled={busy}
+                              onClick={async () => {
+                                setBusy(true);
+                                try {
+                                  await api.addMethodologyItem(selectedProject.id, {
+                                    arrayKey: 'stageCriteria',
+                                    item: { stageId: currentStage.id, text: s, done: false }
+                                  });
+                                  await refetchProject();
+                                } finally { setBusy(false); }
+                              }}
+                            >+ {s}</button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ── Stage advance controls ── */}
+            <div className="journey-footer">
+              {!currentDeal ? (
+                <button
+                  type="button"
+                  className="journey-advance-btn"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await api.addMethodologyItem(selectedProject.id, {
+                        arrayKey: 'deals',
+                        item: { name: selectedProject.title, stageId: systemStages[0].id, stageEnteredAt: new Date().toISOString(), amount: null, probability: 50 }
+                      });
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }}
+                >
+                  Iniciar jornada →
+                </button>
+              ) : currentStageOrder < systemStages.length - 1 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  {stageCriteria.length > 0 && doneCriteria < stageCriteria.length && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {stageCriteria.length - doneCriteria} critério{stageCriteria.length - doneCriteria !== 1 ? 's' : ''} restante{stageCriteria.length - doneCriteria !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="journey-advance-btn"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (!nextStage || !currentDeal) return;
+                      setBusy(true);
+                      try {
+                        await api.updateMethodologyItem(selectedProject.id, currentDeal.id, {
+                          arrayKey: 'deals',
+                          item: { stageId: nextStage.id, stageEnteredAt: new Date().toISOString() }
+                        });
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >
+                    Avançar → {nextStage?.label}
+                  </button>
+                  {currentStageOrder > 0 && (
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={busy}
+                      style={{ fontSize: '0.78rem' }}
+                      onClick={async () => {
+                        const prevStage = systemStages.find(s => s.order === currentStageOrder - 1);
+                        if (!prevStage || !currentDeal) return;
+                        setBusy(true);
+                        try {
+                          await api.updateMethodologyItem(selectedProject.id, currentDeal.id, {
+                            arrayKey: 'deals',
+                            item: { stageId: prevStage.id, stageEnteredAt: new Date().toISOString() }
+                          });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >
+                      ← Voltar
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.88rem' }}>🎉 Jornada concluída!</span>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={busy}
+                    style={{ fontSize: '0.78rem' }}
+                    onClick={async () => {
+                      const prevStage = systemStages.find(s => s.order === currentStageOrder - 1);
+                      if (!prevStage || !currentDeal) return;
+                      setBusy(true);
+                      try {
+                        await api.updateMethodologyItem(selectedProject.id, currentDeal.id, { arrayKey: 'deals', item: { stageId: prevStage.id, stageEnteredAt: new Date().toISOString() } });
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >← Voltar para Escala</button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // Standard pipeline (CRM) — Kanban
+      return (() => {
+        // Stats
+        const lastStage = stages.reduce((max, s) => s.order > max.order ? s : max, stages[0] ?? { id: '', order: -1, label: '' });
+        const closedDeals = deals.filter(d => d.stageId === lastStage.id).length;
+        const convRate = deals.length > 0 ? Math.round((closedDeals / deals.length) * 100) : 0;
+        // Most stuck stage: stage (not last) with most deals & longest avg time
+        const stuckStage = stages.slice(0, -1).map(s => {
+          const sd = deals.filter(d => d.stageId === s.id);
+          const avgDays = sd.length > 0
+            ? Math.round(sd.reduce((sum, d) => sum + (d.stageEnteredAt ? Math.floor((Date.now() - new Date(d.stageEnteredAt).getTime()) / 86400000) : 0), 0) / sd.length)
+            : 0;
+          return { label: s.label, count: sd.length, avgDays };
+        }).filter(s => s.count > 0).sort((a, b) => b.avgDays - a.avgDays)[0];
+
+        return (
+          <div className="engine-pipeline">
+            {/* ── Stats header ── */}
+            <div className="pipeline-stats-row">
+              <span className="pipeline-stat-chip">{deals.length} deal{deals.length !== 1 ? 's' : ''}</span>
+              {deals.length > 0 && (
+                <span className="pipeline-stat-chip">Conversão {convRate}%</span>
+              )}
+              {stuckStage && (
+                <span className="pipeline-stat-chip warn">
+                  Parado em: {stuckStage.label} · {stuckStage.count} deal{stuckStage.count !== 1 ? 's' : ''}, ~{stuckStage.avgDays}d
+                </span>
+              )}
+            </div>
+
+            {/* ── Kanban board ── */}
+            {stages.length === 0 ? (
+              <EmptyState title="Configure os estágios" description="Edite o projeto para adicionar estágios ao pipeline." />
+            ) : (
+              <div className="kanban-wrap">
+                {stages.map(stage => {
+                  const stageDeals = deals.filter(d => d.stageId === stage.id);
+                  const nextStage = stages.find(s => s.order === stage.order + 1);
+                  const prevStage = stages.find(s => s.order === stage.order - 1);
+                  return (
+                    <div key={stage.id} className="kanban-col">
+                      <div className="kanban-col-header">
+                        <span>{stage.label}</span>
+                        <span className="kanban-col-count">{stageDeals.length}</span>
+                      </div>
+                      <div className="kanban-col-body">
+                        {stageDeals.length === 0 && (
+                          <div className="kanban-col-empty">vazio</div>
+                        )}
+                        {stageDeals.map(deal => {
+                          const daysInStage = deal.stageEnteredAt
+                            ? Math.floor((Date.now() - new Date(deal.stageEnteredAt).getTime()) / 86400000)
+                            : null;
+                          return (
+                            <div key={deal.id} className="kanban-deal-card">
+                              <div className="kanban-deal-top">
+                                <div className="kanban-deal-name">{deal.name}</div>
+                                <button
+                                  type="button"
+                                  className="item-delete-btn"
+                                  title="Excluir deal"
+                                  disabled={busy}
+                                  onClick={async () => {
+                                    if (!window.confirm(`Excluir "${deal.name}"?`)) return;
+                                    setBusy(true);
+                                    try {
+                                      await api.deleteMethodologyItem(selectedProject.id, deal.id, { arrayKey: 'deals' });
+                                      await refetchProject();
+                                    } finally { setBusy(false); }
+                                  }}
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+                                  </svg>
+                                </button>
+                              </div>
+                              {deal.amount != null && (
+                                <div className="kanban-deal-meta">{deal.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                              )}
+                              {daysInStage !== null && (
+                                <div className="kanban-deal-days">{daysInStage === 0 ? 'Entrou hoje' : `${daysInStage}d neste estágio`}</div>
+                              )}
+                              <div className="kanban-deal-actions">
+                                {prevStage && (
+                                  <button
+                                    type="button"
+                                    className="kanban-back-btn"
+                                    disabled={busy}
+                                    onClick={async () => {
+                                      setBusy(true);
+                                      try {
+                                        await api.updateMethodologyItem(selectedProject.id, deal.id, { arrayKey: 'deals', item: { stageId: prevStage.id, stageEnteredAt: new Date().toISOString() } });
+                                        await refetchProject();
+                                      } finally { setBusy(false); }
+                                    }}
+                                  >← {prevStage.label}</button>
+                                )}
+                                {nextStage && (
+                                  <button
+                                    type="button"
+                                    className="kanban-advance-btn"
+                                    disabled={busy}
+                                    onClick={async () => {
+                                      setBusy(true);
+                                      try {
+                                        await api.updateMethodologyItem(selectedProject.id, deal.id, { arrayKey: 'deals', item: { stageId: nextStage.id, stageEnteredAt: new Date().toISOString() } });
+                                        await refetchProject();
+                                      } finally { setBusy(false); }
+                                    }}
+                                  >→ {nextStage.label}</button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Add deal ── */}
+            <div className="kanban-add-row">
+              <input
+                className="kanban-add-input"
+                placeholder="Nome do deal..."
+                value={newDealName}
+                onChange={e => setNewDealName(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key !== 'Enter' || !newDealName.trim() || stages.length === 0) return;
+                  setBusy(true);
+                  try {
+                    await api.addMethodologyItem(selectedProject.id, { arrayKey: 'deals', item: { name: newDealName.trim(), stageId: stages[0].id, stageEnteredAt: new Date().toISOString(), amount: null, probability: 50 } });
+                    setNewDealName('');
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              />
+              <button
+                type="button"
+                className="kanban-add-btn"
+                disabled={busy || !newDealName.trim()}
+                onClick={async () => {
+                  if (!newDealName.trim() || stages.length === 0) return;
+                  setBusy(true);
+                  try {
+                    await api.addMethodologyItem(selectedProject.id, { arrayKey: 'deals', item: { name: newDealName.trim(), stageId: stages[0].id, stageEnteredAt: new Date().toISOString(), amount: null, probability: 50 } });
+                    setNewDealName('');
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              >+ Deal</button>
+            </div>
+          </div>
+        );
+      })()
+    }
+
+    // ── COMPOSITE engine (OKR) — Strategic Dashboard ─────────────────────
+    if (engine === 'composite') {
+      const krs = md.krs ?? [];
+      const confidenceLevels = ['alta', 'média', 'baixa'] as const;
+      const confidenceColors: Record<string, string> = { alta: '#4ac478', 'média': '#e07c4a', baixa: '#ef4444' };
+
+      return (
+        <div className="engine-composite okr-zone">
+          {/* KR list */}
+          {krs.length === 0 ? (
+            <div style={{ padding: '16px 0' }}>
+              <EmptyState title="Nenhum KR definido" description="Adicione key results abaixo para rastrear o progresso do objetivo." />
+            </div>
+          ) : (
+            <div className="okr-kr-list">
+              {krs.map(kr => {
+                const pct = kr.targetValue > 0 ? Math.min(100, Math.round((kr.currentValue / kr.targetValue) * 100)) : 0;
+                const confColor = confidenceColors[kr.confidence ?? 'média'] ?? '#e07c4a';
+                return (
+                  <div key={kr.id} className="okr-kr-item">
+                    <div className="okr-kr-header-row">
+                      <span className="okr-kr-desc">{kr.description}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        {/* Confidence toggle */}
+                        <select
+                          className={`okr-confidence-select conf-${(kr.confidence ?? 'media').replace('é', 'e')}`}
+                          value={kr.confidence ?? 'média'}
+                          disabled={busy}
+                          onChange={async e => {
+                            setBusy(true);
+                            try {
+                              await api.updateMethodologyItem(selectedProject.id, kr.id, { arrayKey: 'krs', item: { confidence: e.target.value } });
+                              await refetchProject();
+                            } finally { setBusy(false); }
+                          }}
+                        >
+                          {confidenceLevels.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                        {/* Delete KR */}
+                        <button
+                          type="button"
+                          className="item-delete-btn"
+                          disabled={busy}
+                          title="Remover KR"
+                          onClick={async () => {
+                            setBusy(true);
+                            try {
+                              await api.deleteMethodologyItem(selectedProject.id, kr.id, { arrayKey: 'krs' });
+                              await refetchProject();
+                            } finally { setBusy(false); }
+                          }}
+                        >✕</button>
+                      </div>
+                    </div>
+                    <div className="okr-kr-progress" title={`${pct}%`}>
+                      <div className="okr-kr-progress-fill" style={{ width: `${pct}%`, background: confColor }} />
+                    </div>
+                    <div className="okr-kr-values">
+                      <span>{kr.currentValue} / {kr.targetValue} {kr.unit ?? ''}</span>
+                      <span style={{ fontWeight: 700, color: confColor }}>{pct}%</span>
+                    </div>
+                    {/* Controlled inline update — shows on hover or when typing */}
+                    <div className={`okr-kr-update-row${krUpdateValues[kr.id] ? ' active' : ''}`}>
+                      <input
+                        type="number"
+                        className="okr-kr-update-input"
+                        placeholder={`Novo valor (atual: ${kr.currentValue})`}
+                        value={krUpdateValues[kr.id] ?? ''}
+                        onChange={e => setKrUpdateValues(prev => ({ ...prev, [kr.id]: e.target.value }))}
+                        onKeyDown={async e => {
+                          if (e.key === 'Enter') {
+                            const val = parseFloat(krUpdateValues[kr.id] ?? '');
+                            if (isNaN(val)) return;
+                            setBusy(true);
+                            try {
+                              await api.updateMethodologyItem(selectedProject.id, kr.id, { arrayKey: 'krs', item: { currentValue: val } });
+                              setKrUpdateValues(prev => { const n = { ...prev }; delete n[kr.id]; return n; });
+                              await refetchProject();
+                            } finally { setBusy(false); }
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="okr-kr-update-btn"
+                        disabled={busy || !krUpdateValues[kr.id]?.trim()}
+                        onClick={async () => {
+                          const val = parseFloat(krUpdateValues[kr.id] ?? '');
+                          if (isNaN(val)) return;
+                          setBusy(true);
+                          try {
+                            await api.updateMethodologyItem(selectedProject.id, kr.id, { arrayKey: 'krs', item: { currentValue: val } });
+                            setKrUpdateValues(prev => { const n = { ...prev }; delete n[kr.id]; return n; });
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }}
+                      >
+                        Atualizar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add KR form */}
+          {engineQuickAdd.type === 'kr' ? (
+            <div className="quick-add-form okr-add-form">
+              <input
+                autoFocus
+                placeholder="Descrição do key result (ex: 5.000 seguidores no LinkedIn)"
+                value={newKrDesc}
+                onChange={e => setNewKrDesc(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === 'Escape') { closeQuickAdd(); setNewKrDesc(''); setNewKrTarget(''); setNewKrUnit(''); }
+                }}
+              />
+              <div className="quick-add-row">
+                <input
+                  type="number"
+                  placeholder="Valor atual (ex: 0)"
+                  value={engineQuickAdd.draft.currentValue ?? ''}
+                  onChange={e => setQuickDraft('currentValue', e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <input
+                  type="number"
+                  placeholder="Meta (ex: 5000)"
+                  value={newKrTarget}
+                  onChange={e => setNewKrTarget(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <input
+                  placeholder="Unidade (ex: seguidores)"
+                  value={newKrUnit}
+                  onChange={e => setNewKrUnit(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+              </div>
+              <div className="quick-add-actions">
+                <button type="button" className="ghost-button" onClick={() => { closeQuickAdd(); setNewKrDesc(''); setNewKrTarget(''); setNewKrUnit(''); }}>Cancelar</button>
+                <button
+                  type="button"
+                  disabled={busy || !newKrDesc.trim() || !newKrTarget.trim()}
+                  onClick={async () => {
+                    if (!newKrDesc.trim() || !newKrTarget.trim()) return;
+                    setBusy(true);
+                    try {
+                      await api.addMethodologyItem(selectedProject.id, {
+                        arrayKey: 'krs',
+                        item: {
+                          description: newKrDesc.trim(),
+                          currentValue: parseFloat(engineQuickAdd.draft.currentValue ?? '0') || 0,
+                          targetValue: parseFloat(newKrTarget) || 0,
+                          unit: newKrUnit.trim() || null,
+                          confidence: 'média'
+                        }
+                      });
+                      setNewKrDesc(''); setNewKrTarget(''); setNewKrUnit('');
+                      closeQuickAdd();
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }}
+                >
+                  + Adicionar KR
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="okr-add-kr-btn"
+              onClick={() => openQuickAdd('kr')}
+            >
+              + Key Result
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // ── DECISION engine — Analytical / Scenario ──────────────────────────
+    if (engine === 'decision') {
+      // Scenario variant — Strategic Planner
+      if (variant === 'scenario') {
+        const scenarios = md.scenarios ?? [];
+        const actions = md.scenarioActions ?? [];
+        const noRegretCount = actions.filter(a => a.scenarioIds.length === scenarios.length).length;
+        return (
+          <div className="engine-decision-scenario" style={{ background: 'var(--bg-2)', borderRadius: '12px', border: '1px solid rgba(251,146,60,0.2)', overflow: 'hidden' }}>
+            {/* Scenario pills header */}
+            <div className="scenarios-header">
+              <div className="scenarios-title">Cenários possíveis</div>
+              {scenarios.length === 0 ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>Edite o projeto para adicionar os cenários possíveis.</p>
+              ) : (
+                <div className="scenario-pills">
+                  {scenarios.map(s => (
+                    <span key={s.id} className="scenario-pill">{s.label}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Actions list */}
+            <div style={{ padding: '10px 16px 6px' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+                {noRegretCount} ações no-regret · {actions.length - noRegretCount} específicas
+              </div>
+            </div>
+            <div className="actions-list">
+              {actions.length === 0 ? (
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>Adicione ações e indique para quais cenários elas se aplicam.</p>
+              ) : (
+                actions.map(action => {
+                  const isNoRegret = action.scenarioIds.length >= scenarios.length && scenarios.length > 0;
+                  const tagLabel = isNoRegret
+                    ? 'No-regret'
+                    : scenarios.filter(s => action.scenarioIds.includes(s.id)).map(s => s.label).join(' + ') || 'Nenhum';
+                  return (
+                    <div key={action.id} className="action-item">
+                      <input
+                        type="checkbox"
+                        checked={action.done}
+                        style={{ flexShrink: 0, cursor: 'pointer' }}
+                        onChange={async () => {
+                          if (busy) return;
+                          setBusy(true);
+                          try {
+                            await api.updateMethodologyItem(selectedProject.id, action.id, { arrayKey: 'scenarioActions', item: { done: !action.done } });
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }}
+                      />
+                      <span className="action-item-text" style={{ textDecoration: action.done ? 'line-through' : 'none', opacity: action.done ? 0.5 : 1, flex: 1 }}>{action.text}</span>
+                      <span className={`action-tag ${isNoRegret ? 'no-regret' : 'specific'}`}>{tagLabel}</span>
+                      <button
+                        type="button"
+                        className="item-delete-btn"
+                        disabled={busy}
+                        title="Remover ação"
+                        onClick={async () => {
+                          setBusy(true);
+                          try {
+                            await api.deleteMethodologyItem(selectedProject.id, action.id, { arrayKey: 'scenarioActions' });
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }}
+                      >✕</button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Add action inline form */}
+            {engineQuickAdd.type === 'action' ? (
+              <div className="quick-add-form" style={{ margin: '10px 16px 16px' }}>
+                <input
+                  autoFocus
+                  placeholder="Descreva a ação estratégica..."
+                  value={engineQuickAdd.draft.text ?? ''}
+                  onChange={e => setQuickDraft('text', e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') { closeQuickAdd(); setScenarioDraftIds([]); } }}
+                />
+                {/* Scenario selector — which scenarios does this action apply to? */}
+                {scenarios.length > 0 && (
+                  <div className="scenario-action-selector">
+                    <span className="scenario-action-selector-label">Aplica-se a:</span>
+                    {scenarios.map(s => (
+                      <label key={s.id} className="scenario-action-check">
+                        <input
+                          type="checkbox"
+                          checked={scenarioDraftIds.includes(s.id)}
+                          onChange={() => setScenarioDraftIds(prev =>
+                            prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                          )}
+                        />
+                        {s.label}
+                      </label>
+                    ))}
+                    {scenarioDraftIds.length === scenarios.length && (
+                      <span className="scenario-action-nr-hint">→ No-regret</span>
+                    )}
+                  </div>
+                )}
+                <div className="quick-add-actions">
+                  <button type="button" className="ghost-button" onClick={() => { closeQuickAdd(); setScenarioDraftIds([]); }}>Cancelar</button>
+                  <button
+                    type="button"
+                    disabled={busy || !engineQuickAdd.draft.text?.trim() || scenarioDraftIds.length === 0}
+                    onClick={async () => {
+                      const text = engineQuickAdd.draft.text?.trim();
+                      if (!text || scenarioDraftIds.length === 0) return;
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'scenarioActions',
+                          item: { text, scenarioIds: scenarioDraftIds, done: false }
+                        });
+                        setScenarioDraftIds([]);
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >
+                    + Adicionar ação
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="process-new-cycle-btn"
+                style={{ margin: '10px 16px 16px', background: 'rgba(251,146,60,0.07)', color: 'rgba(251,146,60,0.85)', borderColor: 'rgba(251,146,60,0.22)' }}
+                onClick={() => { openQuickAdd('action'); setScenarioDraftIds(scenarios.map(s => s.id)); }}
+              >
+                + Adicionar ação
+              </button>
+            )}
+          </div>
+        );
+      }
+
+      // Standard decision matrix — Analytical UI
+      const options = md.options ?? [];
+      const criteria = md.criteria ?? [];
+      const decisionChoice = md.decisionChoice;
+
+      // Helper: compute weighted score for each option
+      const weightedScore = (optId: string) =>
+        criteria.reduce((sum, c) => sum + (c.weight ?? 1) * ((options.find(o => o.id === optId)?.scores?.[c.id]) ?? 0), 0);
+      const maxScore = Math.max(...options.map(o => weightedScore(o.id)), 1);
+
+      const saveScore = async (optId: string, critId: string, val: number) => {
+        const updatedOptions = options.map(o =>
+          o.id === optId ? { ...o, scores: { ...(o.scores ?? {}), [critId]: val } } : o
+        );
+        await api.updateProject(selectedProject.id, { methodologyData: { ...md, options: updatedOptions } });
+        await refetchProject();
+      };
+
+      return (
+        <div className="engine-decision decision-zone" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'rgba(167,139,250,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)' }}>Matriz de decisão</span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{options.length} opções · {criteria.length} critérios</span>
+          </div>
+
+          {/* Add option + criteria controls */}
+          <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input
+              style={{ flex: 1, minWidth: '130px', padding: '5px 10px', borderRadius: '6px', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '0.82rem' }}
+              placeholder="+ Nova opção..."
+              value={decisionNewOption}
+              onChange={e => setDecisionNewOption(e.target.value)}
+              onKeyDown={async e => {
+                if (e.key === 'Enter' && decisionNewOption.trim()) {
+                  setBusy(true);
+                  try {
+                    const id = `op${Date.now()}`;
+                    await api.updateProject(selectedProject.id, { methodologyData: { ...md, options: [...options, { id, label: decisionNewOption.trim(), scores: {} }] } });
+                    setDecisionNewOption('');
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }
+              }}
+            />
+            <input
+              style={{ flex: 1, minWidth: '130px', padding: '5px 10px', borderRadius: '6px', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '0.82rem' }}
+              placeholder="+ Novo critério..."
+              value={decisionNewCriteria}
+              onChange={e => setDecisionNewCriteria(e.target.value)}
+              onKeyDown={async e => {
+                if (e.key === 'Enter' && decisionNewCriteria.trim()) {
+                  setBusy(true);
+                  try {
+                    const id = `cr${Date.now()}`;
+                    await api.updateProject(selectedProject.id, { methodologyData: { ...md, criteria: [...criteria, { id, label: decisionNewCriteria.trim(), weight: 1 }] } });
+                    setDecisionNewCriteria('');
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }
+              }}
+            />
+          </div>
+
+          {options.length === 0 || criteria.length === 0 ? (
+            <div style={{ padding: '20px' }}>
+              <EmptyState title="Configure a decisão" description="Adicione opções e critérios acima para construir a matriz." />
+            </div>
+          ) : (
+            <>
+              <div className="decision-table-wrap">
+                <table className="decision-matrix-table">
+                  <thead>
+                    <tr>
+                      <th>Critério</th>
+                      <th>Peso</th>
+                      {options.map(o => (
+                        <th key={o.id} className="decision-opt-th">
+                          <span className="decision-opt-label">{o.label}</span>
+                          <button
+                            type="button"
+                            className="decision-remove-opt-btn"
+                            title="Remover opção"
+                            onClick={async () => {
+                              const updated = options.filter(x => x.id !== o.id);
+                              await api.updateProject(selectedProject.id, { methodologyData: { ...md, options: updated } });
+                              await refetchProject();
+                            }}
+                          >✕</button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {criteria.map(c => (
+                      <tr key={c.id}>
+                        <td className="decision-crit-td">
+                          <span className="decision-crit-label">{c.label}</span>
+                          <button
+                            type="button"
+                            className="decision-remove-crit-btn"
+                            title="Remover critério"
+                            onClick={async () => {
+                              const updated = criteria.filter(x => x.id !== c.id);
+                              await api.updateProject(selectedProject.id, { methodologyData: { ...md, criteria: updated } });
+                              await refetchProject();
+                            }}
+                          >✕</button>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min={1} max={5}
+                            value={decisionWeightValues[c.id] ?? String(c.weight ?? 1)}
+                            style={{ width: '44px', padding: '3px 6px', borderRadius: '4px', background: decisionWeightValues[c.id] != null ? 'rgba(167,139,250,0.1)' : 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '0.82rem', textAlign: 'center' }}
+                            onChange={e => setDecisionWeightValues(prev => ({ ...prev, [c.id]: e.target.value }))}
+                            onBlur={async e => {
+                              const val = parseInt(decisionWeightValues[c.id] ?? String(c.weight ?? 1));
+                              if (!isNaN(val) && val !== c.weight) {
+                                setBusy(true);
+                                try {
+                                  const updated = criteria.map(x => x.id === c.id ? { ...x, weight: val } : x);
+                                  await api.updateProject(selectedProject.id, { methodologyData: { ...md, criteria: updated } });
+                                  setDecisionWeightValues(prev => { const n = { ...prev }; delete n[c.id]; return n; });
+                                  await refetchProject();
+                                } finally { setBusy(false); }
+                              } else {
+                                setDecisionWeightValues(prev => { const n = { ...prev }; delete n[c.id]; return n; });
+                              }
+                            }}
+                          />
+                        </td>
+                        {options.map(o => {
+                          const scoreKey = `${o.id}-${c.id}`;
+                          const currentScore = o.scores?.[c.id] ?? 0;
+                          return (
+                            <td key={o.id}>
+                              <input
+                                type="number"
+                                min={0} max={10}
+                                defaultValue={currentScore}
+                                style={{ width: '48px', padding: '3px 6px', borderRadius: '4px', background: decisionEditScores[scoreKey] != null ? 'rgba(224,124,74,0.1)' : 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '0.84rem', textAlign: 'center' }}
+                                onChange={e => setDecisionEditScores(prev => ({ ...prev, [scoreKey]: e.target.value }))}
+                                onBlur={async e => {
+                                  const val = parseFloat(e.target.value);
+                                  if (!isNaN(val) && val !== currentScore) {
+                                    setBusy(true);
+                                    try {
+                                      await saveScore(o.id, c.id, val);
+                                      setDecisionEditScores(prev => { const next = { ...prev }; delete next[scoreKey]; return next; });
+                                    } finally { setBusy(false); }
+                                  }
+                                }}
+                              />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    {/* Weighted total row */}
+                    <tr className="decision-score-row">
+                      <td colSpan={2} className="decision-score-label">Score ponderado</td>
+                      {options.map(o => {
+                        const score = weightedScore(o.id);
+                        const isBest = score === maxScore && score > 0;
+                        return (
+                          <td key={o.id} className={`decision-score-cell${isBest ? ' best' : ''}`}>
+                            {score}{isBest ? ' ★' : ''}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Record decision */}
+              {decisionChoice ? (
+                <div className="decision-choice-recorded">
+                  Decisão registrada: <strong>{options.find(o => o.id === decisionChoice)?.label ?? decisionChoice}</strong>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    style={{ marginLeft: '12px', fontSize: '0.78rem' }}
+                    onClick={async () => {
+                      await api.updateProject(selectedProject.id, { methodologyData: { ...md, decisionChoice: null } });
+                      await refetchProject();
+                    }}
+                  >Reabrir</button>
+                </div>
+              ) : (
+                <div style={{ padding: '10px 20px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Registrar decisão:</span>
+                  {options.map(o => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className="ghost-button"
+                      disabled={busy}
+                      style={{ fontSize: '0.82rem' }}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await api.updateProject(selectedProject.id, { methodologyData: { ...md, decisionChoice: o.id } });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >Escolher: {o.label}</button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // ── TIME engine (Campanha) — Launch Pad ─────────────────────────────
+    if (engine === 'time' && variant === 'campaign') {
+      const dailyTasks = md.dailyTasks ?? [];
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayTasks = dailyTasks.filter(t => t.date === todayStr);
+      const totalGoal = selectedProject.resultTargetValue ?? md.campaignGoal;
+      const campaignResult = md.campaignResult ?? 0;
+      const resultPct = totalGoal && totalGoal > 0 ? Math.min(100, Math.round((campaignResult / totalGoal) * 100)) : 0;
+      const launchD = md.launchDate ? daysRemaining(md.launchDate) : null;
+
+      return (
+        <div className="engine-time-campaign campaign-zone">
+          {/* Campaign header: D-X + channel */}
+          <div className="campaign-header-bar">
+            {launchD != null && launchD > 0 ? (
+              <div className="campaign-countdown">
+                <span className="campaign-d-label">D</span>
+                <span className="campaign-d-number">-{launchD}</span>
+                <span className="campaign-d-sublabel">para lançamento</span>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)' }}>Campanha em andamento</div>
+            )}
+            {md.campaignChannel && (
+              <span className="campaign-channel-tag">{md.campaignChannel}</span>
+            )}
+          </div>
+
+          <div className="campaign-body">
+            <div className="campaign-section-title">Tarefas de hoje</div>
+
+            {/* Today task list */}
+            {todayTasks.length === 0 ? (
+              <div style={{ padding: '8px 0 12px', color: 'var(--text-muted)', fontSize: '0.84rem' }}>Nenhuma tarefa para hoje. Adicione abaixo.</div>
+            ) : (
+              todayTasks.map(task => (
+                <div
+                  key={task.id}
+                  className={`campaign-task-item${task.done ? ' done' : ''}`}
+                >
+                  <div
+                    className="campaign-task-cb"
+                    style={{ cursor: 'pointer' }}
+                    onClick={async () => {
+                      if (busy) return;
+                      setBusy(true);
+                      try {
+                        await api.updateMethodologyItem(selectedProject.id, task.id, { arrayKey: 'dailyTasks', item: { done: !task.done } });
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  />
+                  <span
+                    className="campaign-task-text"
+                    style={{ cursor: 'pointer', flex: 1 }}
+                    onClick={async () => {
+                      if (busy) return;
+                      setBusy(true);
+                      try {
+                        await api.updateMethodologyItem(selectedProject.id, task.id, { arrayKey: 'dailyTasks', item: { done: !task.done } });
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >{task.text}</span>
+                  <button
+                    type="button"
+                    className="item-delete-btn"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        await api.deleteMethodologyItem(selectedProject.id, task.id, { arrayKey: 'dailyTasks' });
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >✕</button>
+                </div>
+              ))
+            )}
+
+            {/* Add task — controlled input */}
+            <div className="campaign-add-row">
+              <input
+                className="campaign-add-input"
+                placeholder="Adicionar tarefa para hoje..."
+                value={campaignNewTask}
+                onChange={e => setCampaignNewTask(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter' && campaignNewTask.trim()) {
+                    setBusy(true);
+                    try {
+                      await api.addMethodologyItem(selectedProject.id, {
+                        arrayKey: 'dailyTasks',
+                        item: { text: campaignNewTask.trim(), date: todayStr, done: false }
+                      });
+                      setCampaignNewTask('');
+                      await refetchProject();
+                    } finally { setBusy(false); }
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="campaign-add-btn"
+                disabled={busy || !campaignNewTask.trim()}
+                onClick={async () => {
+                  if (!campaignNewTask.trim()) return;
+                  setBusy(true);
+                  try {
+                    await api.addMethodologyItem(selectedProject.id, {
+                      arrayKey: 'dailyTasks',
+                      item: { text: campaignNewTask.trim(), date: todayStr, done: false }
+                    });
+                    setCampaignNewTask('');
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              >
+                + Adicionar
+              </button>
+            </div>
+
+            {/* Result vs goal */}
+            {totalGoal && totalGoal > 0 && (
+              <div className="campaign-result-section">
+                <div className="campaign-section-title">Resultado vs meta</div>
+                <div className="campaign-result-bar">
+                  <div className="campaign-result-fill" style={{ width: `${resultPct}%` }} />
+                </div>
+                <div className="campaign-result-labels">
+                  {campaignResultEdit !== null ? (
+                    <input
+                      type="number"
+                      autoFocus
+                      className="campaign-result-input"
+                      value={campaignResultEdit}
+                      onChange={e => setCampaignResultEdit(e.target.value)}
+                      onBlur={async () => {
+                        const val = parseFloat(campaignResultEdit ?? '0');
+                        if (!isNaN(val)) {
+                          setBusy(true);
+                          try {
+                            await api.updateProject(selectedProject.id, { methodologyData: { ...md, campaignResult: val } });
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }
+                        setCampaignResultEdit(null);
+                      }}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        if (e.key === 'Escape') setCampaignResultEdit(null);
+                      }}
+                      style={{ width: '120px', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg)', border: '1px solid var(--primary)', color: 'var(--text)', fontSize: '0.82rem' }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="campaign-result-value-btn"
+                      title="Clique para editar resultado"
+                      onClick={() => setCampaignResultEdit(String(campaignResult))}
+                    >
+                      {campaignResult.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ✏
+                    </button>
+                  )}
+                  <span>{resultPct}% · meta: {totalGoal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── TIME engine (Runway) — Financial Dashboard ───────────────────────
+    if (engine === 'time' && variant === 'runway') {
+      const events = md.runwayEvents ?? [];
+      const months = computeRunwayMonths(md.availableCash, md.burnRateMonthly);
+      const runwayCls = months == null ? '' : months > 3 ? 'runway-safe' : months >= 1 ? 'runway-warn' : 'runway-danger';
+
+      // Confirmed events only affect the "with events" calculation
+      const confirmedEvents = events.filter(ev => ev.confirmed);
+      const confirmedCashDelta = confirmedEvents.reduce((sum, ev) => sum + ev.amount, 0);
+      const totalCashWithConfirmed = (md.availableCash ?? 0) + confirmedCashDelta;
+      const monthsWithConfirmed = computeRunwayMonths(totalCashWithConfirmed, md.burnRateMonthly);
+
+      // Helpers for displaying event impact in months
+      const eventImpactMonths = (amount: number) =>
+        md.burnRateMonthly && md.burnRateMonthly > 0
+          ? (amount / md.burnRateMonthly).toFixed(1)
+          : null;
+
+      // Projected exhaust date
+      const exhaustDate = (m: number | null) => {
+        if (m == null) return null;
+        const d = new Date();
+        d.setMonth(d.getMonth() + Math.floor(m));
+        return d.toLocaleString('pt-BR', { month: 'short', year: 'numeric' });
+      };
+
+      const saveRunwayField = async (field: 'availableCash' | 'burnRateMonthly', value: number) => {
+        setBusy(true);
+        try {
+          await api.updateProject(selectedProject.id, { methodologyData: { ...md, [field]: value } });
+          await refetchProject();
+        } finally { setBusy(false); }
+      };
+
+      return (
+        <div className="engine-time-runway runway-zone">
+          {/* ── HERO: big number + editable fields ── */}
+          <div className="runway-hero-section">
+            <div className="runway-hero">
+              <span className={`runway-big ${runwayCls}`}>
+                {months != null ? months.toFixed(1) : '—'}
+              </span>
+              <div className="runway-hero-info">
+                <div className="runway-unit">meses de runway</div>
+                <div className="runway-exhaust">
+                  esgota {exhaustDate(months) ?? 'n/d'}
+                </div>
+              </div>
+            </div>
+
+            <div className="runway-fields">
+              {/* Caixa disponível — editable inline */}
+              <div className="runway-field-row">
+                <span className="runway-field-label">Caixa atual</span>
+                {runwayEditingField === 'cash' ? (
+                  <div className="runway-field-edit">
+                    <input
+                      type="number"
+                      autoFocus
+                      className="runway-field-input"
+                      value={runwayEditCash}
+                      onChange={e => setRunwayEditCash(e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter') {
+                          const val = parseFloat(runwayEditCash);
+                          if (!isNaN(val)) await saveRunwayField('availableCash', val);
+                          setRunwayEditingField(null);
+                        }
+                        if (e.key === 'Escape') setRunwayEditingField(null);
+                      }}
+                      onBlur={async () => {
+                        const val = parseFloat(runwayEditCash);
+                        if (!isNaN(val)) await saveRunwayField('availableCash', val);
+                        setRunwayEditingField(null);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="runway-field-value"
+                    onClick={() => { setRunwayEditCash(String(md.availableCash ?? '')); setRunwayEditingField('cash'); }}
+                  >
+                    {md.availableCash != null
+                      ? md.availableCash.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      : 'definir'} ✏
+                  </button>
+                )}
+              </div>
+
+              {/* Burn rate — editable inline */}
+              <div className="runway-field-row">
+                <span className="runway-field-label">Burn/mês</span>
+                {runwayEditingField === 'burn' ? (
+                  <div className="runway-field-edit">
+                    <input
+                      type="number"
+                      autoFocus
+                      className="runway-field-input"
+                      value={runwayEditBurn}
+                      onChange={e => setRunwayEditBurn(e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter') {
+                          const val = parseFloat(runwayEditBurn);
+                          if (!isNaN(val)) await saveRunwayField('burnRateMonthly', val);
+                          setRunwayEditingField(null);
+                        }
+                        if (e.key === 'Escape') setRunwayEditingField(null);
+                      }}
+                      onBlur={async () => {
+                        const val = parseFloat(runwayEditBurn);
+                        if (!isNaN(val)) await saveRunwayField('burnRateMonthly', val);
+                        setRunwayEditingField(null);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="runway-field-value"
+                    onClick={() => { setRunwayEditBurn(String(md.burnRateMonthly ?? '')); setRunwayEditingField('burn'); }}
+                  >
+                    {md.burnRateMonthly != null
+                      ? md.burnRateMonthly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      : 'definir'} ✏
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── COM EVENTOS CONFIRMADOS ── */}
+          {confirmedEvents.length > 0 && monthsWithConfirmed != null && months != null && (
+            <div className="runway-with-events">
+              <span className="runway-with-events-label">Com eventos confirmados</span>
+              <span className={`runway-with-events-value ${monthsWithConfirmed > months ? 'runway-safe' : 'runway-danger'}`}>
+                {monthsWithConfirmed.toFixed(1)} meses · esgota {exhaustDate(monthsWithConfirmed)}
+              </span>
+              <span className="runway-with-events-delta">
+                {monthsWithConfirmed > months
+                  ? `+${(monthsWithConfirmed - months).toFixed(1)} meses`
+                  : `${(monthsWithConfirmed - months).toFixed(1)} meses`}
+              </span>
+            </div>
+          )}
+
+          {/* ── EVENTOS DE CAIXA ── */}
+          <div className="runway-events-list">
+            <div className="runway-events-header">
+              <div className="runway-events-title">Eventos de caixa</div>
+              {engineQuickAdd.type !== 'event' && (
+                <button
+                  type="button"
+                  className="runway-add-event-btn"
+                  onClick={() => openQuickAdd('event', { date: new Date().toISOString().slice(0, 10) })}
+                >
+                  + Evento
+                </button>
+              )}
+            </div>
+
+            {events.length === 0 && engineQuickAdd.type !== 'event' ? (
+              <div className="runway-events-empty">
+                Nenhum evento. Adicione entradas (investimentos, consultorias) e saídas (despesas extras) para ver o impacto no runway.
+              </div>
+            ) : (
+              events.map(ev => {
+                const impact = eventImpactMonths(ev.amount);
+                return (
+                  <div key={ev.id} className={`runway-event-item ${ev.amount >= 0 ? 'income' : 'expense'}`}>
+                    <div className="runway-event-dot" />
+                    <span className="runway-event-label">{ev.label}</span>
+                    <span className="runway-event-amount">
+                      {ev.amount >= 0 ? '+' : ''}{ev.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </span>
+                    {impact && (
+                      <span className={`runway-event-impact ${ev.amount >= 0 ? 'positive' : 'negative'}`}>
+                        {ev.amount >= 0 ? '+' : ''}{impact}m
+                      </span>
+                    )}
+                    <span className="runway-event-date">
+                      {new Date(ev.date + 'T12:00:00').toLocaleString('pt-BR', { month: 'short', year: '2-digit' })}
+                    </span>
+                    {/* Confirmed toggle */}
+                    <button
+                      type="button"
+                      className={`runway-confirm-btn ${ev.confirmed ? 'confirmed' : 'pending'}`}
+                      disabled={busy}
+                      title={ev.confirmed ? 'Confirmado — clique para marcar como pendente' : 'Pendente — clique para confirmar'}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await api.updateMethodologyItem(selectedProject.id, ev.id, { arrayKey: 'runwayEvents', item: { confirmed: !ev.confirmed } });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >
+                      {ev.confirmed ? '✓' : '?'}
+                    </button>
+                    <button
+                      type="button"
+                      className="item-delete-btn"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await api.deleteMethodologyItem(selectedProject.id, ev.id, { arrayKey: 'runwayEvents' });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >✕</button>
+                  </div>
+                );
+              })
+            )}
+
+            {/* Add event inline form */}
+            {engineQuickAdd.type === 'event' && (
+              <div className="quick-add-form" style={{ marginTop: '12px' }}>
+                <input
+                  autoFocus
+                  placeholder="Descrição (ex: Investimento Série A, Folha de pagamento)"
+                  value={engineQuickAdd.draft.label ?? ''}
+                  onChange={e => setQuickDraft('label', e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Escape') closeQuickAdd(); }}
+                />
+                <div className="quick-add-row">
+                  <input
+                    type="number"
+                    placeholder="Valor em R$ (negativo = saída)"
+                    value={engineQuickAdd.draft.amount ?? ''}
+                    onChange={e => setQuickDraft('amount', e.target.value)}
+                    style={{ flex: 2 }}
+                  />
+                  <input
+                    type="date"
+                    value={engineQuickAdd.draft.date ?? new Date().toISOString().slice(0, 10)}
+                    onChange={e => setQuickDraft('date', e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                </div>
+                <label className="quick-add-check">
+                  <input
+                    type="checkbox"
+                    checked={engineQuickAdd.draft.confirmed === '1'}
+                    onChange={e => setQuickDraft('confirmed', e.target.checked ? '1' : '')}
+                  />
+                  Confirmado (afeta o cálculo de runway)
+                </label>
+                <div className="quick-add-actions">
+                  <button type="button" className="ghost-button" onClick={closeQuickAdd}>Cancelar</button>
+                  <button
+                    type="button"
+                    disabled={busy || !engineQuickAdd.draft.label?.trim() || !engineQuickAdd.draft.amount}
+                    onClick={async () => {
+                      const amount = parseFloat(engineQuickAdd.draft.amount ?? '');
+                      if (!engineQuickAdd.draft.label?.trim() || isNaN(amount)) return;
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'runwayEvents',
+                          item: {
+                            label: engineQuickAdd.draft.label.trim(),
+                            amount,
+                            date: engineQuickAdd.draft.date ?? new Date().toISOString().slice(0, 10),
+                            confirmed: engineQuickAdd.draft.confirmed === '1'
+                          }
+                        });
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >
+                    Registrar evento
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── RECURRING engine — Routine Tracker ────────────────────────────────
+    if (engine === 'recurring') {
+      const template = md.cycleTemplate ?? [];
+      const cycles = md.cycles ?? [];
+      const currentCycle = cycles[cycles.length - 1];
+      const pastCycles = cycles.slice(0, -1);
+      const doneCount = currentCycle?.items.filter(i => i.done).length ?? 0;
+      const total = template.length;
+      const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+
+      // Auto-suggest period label based on frequency
+      const suggestPeriodLabel = () => {
+        const freq = md.frequency ?? 'mensal';
+        const now = new Date();
+        if (freq === 'semanal') {
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+          const weekNum = Math.ceil(((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+          return `Semana ${weekNum} · ${now.toLocaleString('pt-BR', { month: 'short', year: '2-digit' })}`;
+        }
+        if (freq === 'mensal') return now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+        if (freq === 'trimestral') return `Q${Math.ceil((now.getMonth() + 1) / 3)} ${now.getFullYear()}`;
+        return `Ciclo ${cycles.length + 1}`;
+      };
+
+      return (
+        <div className="engine-recurring process-zone">
+          {/* Process zone header */}
+          <div className="process-zone-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="process-frequency-badge">{md.frequency ?? 'mensal'}</span>
+              <span className="process-cycle-label">
+                {currentCycle ? currentCycle.periodLabel : 'Sem ciclo ativo'}
+              </span>
+            </div>
+            {currentCycle && total > 0 && (
+              <span className="process-progress-chip">
+                {doneCount}/{total} · {pct}%
+              </span>
+            )}
+          </div>
+
+          {/* Progress bar for current cycle */}
+          {currentCycle && total > 0 && (
+            <div className="process-cycle-bar">
+              <div className="process-cycle-bar-fill" style={{ width: `${pct}%`, background: pct === 100 ? 'var(--success, #5bb98c)' : 'var(--primary)' }} />
+            </div>
+          )}
+
+          {/* Process steps */}
+          {template.length === 0 ? (
+            <div style={{ padding: '20px' }}>
+              <EmptyState title="Template vazio" description="Adicione passos abaixo para construir o checklist do processo." />
+            </div>
+          ) : (
+            <div className="process-steps-list">
+              {template.map(step => {
+                const item = currentCycle?.items.find(i => i.templateId === step.id);
+                const isDone = item?.done ?? false;
+                return (
+                  <div key={step.id} className={`process-step${isDone ? ' done' : ''}`}>
+                    <div
+                      className="process-step-check"
+                      style={{ cursor: currentCycle ? 'pointer' : 'default' }}
+                      onClick={async () => {
+                        if (!currentCycle || busy) return;
+                        setBusy(true);
+                        try {
+                          const existingItem = currentCycle.items.find(i => i.templateId === step.id);
+                          const updatedItems = existingItem
+                            ? currentCycle.items.map(i => i.templateId === step.id ? { ...i, done: !existingItem.done } : i)
+                            : [...currentCycle.items, { templateId: step.id, done: true }];
+                          await api.updateMethodologyItem(selectedProject.id, currentCycle.id, {
+                            arrayKey: 'cycles',
+                            item: { items: updatedItems }
+                          });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    />
+                    <span
+                      className="process-step-text"
+                      style={{ cursor: currentCycle ? 'pointer' : 'default' }}
+                      onClick={async () => {
+                        if (!currentCycle || busy) return;
+                        setBusy(true);
+                        try {
+                          const existingItem = currentCycle.items.find(i => i.templateId === step.id);
+                          const updatedItems = existingItem
+                            ? currentCycle.items.map(i => i.templateId === step.id ? { ...i, done: !existingItem.done } : i)
+                            : [...currentCycle.items, { templateId: step.id, done: true }];
+                          await api.updateMethodologyItem(selectedProject.id, currentCycle.id, {
+                            arrayKey: 'cycles',
+                            item: { items: updatedItems }
+                          });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >{step.text}</span>
+                    {/* Delete step from template */}
+                    <button
+                      type="button"
+                      className="item-delete-btn"
+                      disabled={busy}
+                      title="Remover passo"
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await api.deleteMethodologyItem(selectedProject.id, step.id, { arrayKey: 'cycleTemplate' });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >✕</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Add step to template */}
+          <div style={{ padding: '0 20px 4px' }}>
+            {engineQuickAdd.type === 'step' ? (
+              <div className="quick-add-form" style={{ marginTop: '4px' }}>
+                <input
+                  autoFocus
+                  placeholder="Descreva o passo do processo..."
+                  value={engineQuickAdd.draft.text ?? ''}
+                  onChange={e => setQuickDraft('text', e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter' && engineQuickAdd.draft.text?.trim()) {
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'cycleTemplate',
+                          item: { text: engineQuickAdd.draft.text.trim(), order: template.length }
+                        });
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }
+                    if (e.key === 'Escape') closeQuickAdd();
+                  }}
+                />
+                <div className="quick-add-actions">
+                  <button type="button" className="ghost-button" onClick={closeQuickAdd}>Cancelar</button>
+                  <button
+                    type="button"
+                    disabled={busy || !engineQuickAdd.draft.text?.trim()}
+                    onClick={async () => {
+                      if (!engineQuickAdd.draft.text?.trim()) return;
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'cycleTemplate',
+                          item: { text: engineQuickAdd.draft.text.trim(), order: template.length }
+                        });
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >
+                    + Adicionar passo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="process-add-step-btn"
+                disabled={busy}
+                onClick={() => openQuickAdd('step')}
+              >
+                + Passo no template
+              </button>
+            )}
+          </div>
+
+          {/* Past cycles strip */}
+          {pastCycles.length > 0 && (
+            <div className="process-past-cycles">
+              <div className="process-past-cycles-label">Ciclos anteriores</div>
+              <div className="process-past-cycles-strip">
+                {pastCycles.slice(-6).reverse().map(c => {
+                  const done = c.items.filter(i => i.done).length;
+                  const cyclePct = total > 0 ? Math.round((done / total) * 100) : 0;
+                  const isComplete = cyclePct === 100;
+                  return (
+                    <div key={c.id} className={`process-past-chip ${isComplete ? 'complete' : 'partial'}`} title={`${c.periodLabel}: ${done}/${total}`}>
+                      <span className="process-past-chip-icon">{isComplete ? '✓' : '◑'}</span>
+                      <span className="process-past-chip-label">{c.periodLabel}</span>
+                      <span className="process-past-chip-pct">{cyclePct}%</span>
+                      <button
+                        type="button"
+                        className="process-past-chip-delete"
+                        title="Excluir ciclo"
+                        onClick={async e => {
+                          e.stopPropagation();
+                          setBusy(true);
+                          try {
+                            await api.deleteMethodologyItem(selectedProject.id, c.id, { arrayKey: 'cycles' });
+                            await refetchProject();
+                          } finally { setBusy(false); }
+                        }}
+                      >✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* New cycle button */}
+          <div style={{ padding: '0 20px 16px' }}>
+            {engineQuickAdd.type === 'cycle' ? (
+              <div className="quick-add-form" style={{ marginTop: '8px' }}>
+                <input
+                  autoFocus
+                  placeholder="Período (ex: Abril 2026...)"
+                  value={engineQuickAdd.draft.label ?? ''}
+                  onChange={e => setQuickDraft('label', e.target.value)}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter' && engineQuickAdd.draft.label?.trim()) {
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'cycles',
+                          item: { periodLabel: engineQuickAdd.draft.label.trim(), startDate: new Date().toISOString().slice(0, 10), items: template.map(step => ({ templateId: step.id, done: false })) }
+                        });
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }
+                    if (e.key === 'Escape') closeQuickAdd();
+                  }}
+                />
+                <div className="quick-add-actions">
+                  <button type="button" className="ghost-button" onClick={closeQuickAdd}>Cancelar</button>
+                  <button
+                    type="button"
+                    disabled={busy || !engineQuickAdd.draft.label?.trim()}
+                    onClick={async () => {
+                      if (!engineQuickAdd.draft.label?.trim()) return;
+                      setBusy(true);
+                      try {
+                        await api.addMethodologyItem(selectedProject.id, {
+                          arrayKey: 'cycles',
+                          item: { periodLabel: engineQuickAdd.draft.label.trim(), startDate: new Date().toISOString().slice(0, 10), items: template.map(step => ({ templateId: step.id, done: false })) }
+                        });
+                        closeQuickAdd();
+                        await refetchProject();
+                      } finally { setBusy(false); }
+                    }}
+                  >
+                    Iniciar ciclo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="process-new-cycle-btn"
+                disabled={busy}
+                onClick={() => {
+                  const label = suggestPeriodLabel();
+                  setEngineQuickAdd({ type: 'cycle', draft: { label } });
+                }}
+              >
+                + Iniciar novo ciclo
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── FUNIL engine ─────────────────────────────────────────────────────
+    if (engine === 'funnel') {
+      const fStages = ((md?.funilStages ?? []) as Array<{ id: string; label: string; value: number | null; order: number }>)
+        .sort((a, b) => a.order - b.order);
+      const maxVal = Math.max(...fStages.map(s => s.value ?? 0), 1);
+
+      return (
+        <div className="funnel-zone">
+          <div className="funnel-zone-title">Etapas do funil</div>
+
+          {fStages.length === 0 && (
+            <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '0.84rem', textAlign: 'center' }}>
+              Nenhuma etapa definida. Adicione abaixo.
+            </div>
+          )}
+
+          {fStages.map((stage, i) => {
+            const prev = i > 0 ? fStages[i - 1] : null;
+            const conv = prev && (prev.value ?? 0) > 0 && stage.value != null
+              ? Math.round((stage.value / (prev.value!)) * 100)
+              : null;
+            const barWidth = stage.value != null && stage.value > 0 ? Math.round((stage.value / maxVal) * 100) : 0;
+            const convClass = conv === null ? '' : conv >= 50 ? 'good' : conv >= 25 ? 'ok' : 'bad';
+
+            return (
+              <div key={stage.id}>
+                {/* Conversion connector between stages */}
+                {i > 0 && (
+                  <div className="funnel-conv-row">
+                    {conv !== null ? (
+                      <span className={`funnel-conv-badge ${convClass}`}>{conv}% conversão</span>
+                    ) : (
+                      <span className="funnel-conv-empty">↓</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Stage row */}
+                <div className="funnel-stage-row">
+                  <div className="funnel-stage-label-wrap">
+                    <span className="funnel-stage-name">{stage.label}</span>
+                    <button
+                      type="button"
+                      className="funnel-stage-delete"
+                      title="Remover etapa"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await api.deleteMethodologyItem(selectedProject.id, stage.id, { arrayKey: 'funilStages' });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >✕</button>
+                  </div>
+
+                  <div className="funnel-bar-wrap">
+                    <div
+                      className="funnel-bar-fill"
+                      style={{
+                        width: `${barWidth}%`,
+                        background: i === 0 ? '#6366f1' : `rgba(99,102,241,${Math.max(0.3, 1 - i * 0.15)})`
+                      }}
+                    />
+                  </div>
+
+                  {funilValueEditing[stage.id] !== undefined ? (
+                    <input
+                      type="number"
+                      autoFocus
+                      className="funnel-value-input"
+                      value={funilValueEditing[stage.id]}
+                      onChange={e => setFunilValueEditing(prev => ({ ...prev, [stage.id]: e.target.value }))}
+                      onBlur={async () => {
+                        const val = parseFloat(funilValueEditing[stage.id] ?? '');
+                        setBusy(true);
+                        try {
+                          await api.updateMethodologyItem(selectedProject.id, stage.id, {
+                            arrayKey: 'funilStages',
+                            item: { value: isNaN(val) ? null : val }
+                          });
+                          await refetchProject();
+                        } finally {
+                          setBusy(false);
+                          setFunilValueEditing(prev => { const n = { ...prev }; delete n[stage.id]; return n; });
+                        }
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        if (e.key === 'Escape') setFunilValueEditing(prev => { const n = { ...prev }; delete n[stage.id]; return n; });
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className={`funnel-value-btn${stage.value == null ? ' empty' : ''}`}
+                      title="Clique para editar o valor"
+                      onClick={() => setFunilValueEditing(prev => ({ ...prev, [stage.id]: String(stage.value ?? '') }))}
+                    >
+                      {stage.value != null
+                        ? stage.value.toLocaleString('pt-BR')
+                        : <span>—</span>}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Add stage */}
+          <div className="funnel-add-row">
+            <input
+              className="funnel-add-input"
+              placeholder="+ Nova etapa (ex: Visualizações, Leads, Vendas)"
+              value={funilNewStageLabel}
+              onChange={e => setFunilNewStageLabel(e.target.value)}
+              onKeyDown={async e => {
+                if (e.key === 'Enter' && funilNewStageLabel.trim()) {
+                  setBusy(true);
+                  try {
+                    await api.addMethodologyItem(selectedProject.id, {
+                      arrayKey: 'funilStages',
+                      item: { label: funilNewStageLabel.trim(), value: null, order: fStages.length }
+                    });
+                    setFunilNewStageLabel('');
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }
+              }}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  // ── ENGINE ZONE C: history + tasks ────────────────────────────────────
+  function renderEngineHistoryZone() {
+    if (!selectedProject) return null;
+    const engine = getEngine(selectedProject.methodology);
+
+    return (
+      <>
+        {/* Metric engine: charts-only history (no duplicate inputs) */}
+        {engine === 'metric' && (
+          <section className="premium-grid two">
+            {/* Lag projection chart */}
+            <PremiumCard
+              title="Evolução da métrica"
+              subtitle={primaryLagMetric ? `${primaryLagMetric.name} · real vs projeção` : 'Adicione uma métrica de resultado para habilitar o gráfico'}
+            >
+              {!primaryLagMetric ? (
+                <EmptyState
+                  title="Sem métrica de resultado"
+                  description="Configure a métrica lag acima para ver o gráfico de evolução."
+                />
+              ) : lagProjectionData.length === 0 ? (
+                <EmptyState
+                  title="Sem dados ainda"
+                  description="Registre o check-in da semana acima para começar o histórico."
+                />
+              ) : (
+                <div className="premium-chart-wrap">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <LineChart data={lagProjectionData}>
+                      <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                      <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <YAxis tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <Tooltip
+                        contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
+                        formatter={(value) => (value == null ? '—' : String(value))}
+                        labelFormatter={(label, payload) => {
+                          const point = payload?.[0]?.payload as { weekRange?: string } | undefined;
+                          return point?.weekRange ? `Semana ${label} · ${point.weekRange}` : `Semana ${label}`;
+                        }}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="real"
+                        name="Real"
+                        stroke={chartTheme.colors.primary}
+                        strokeWidth={2.6}
+                        dot={{ r: 2.5 }}
+                        connectNulls
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="projected"
+                        name="Projeção"
+                        stroke={chartTheme.colors.warning}
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        dot={false}
+                      />
+                      {typeof lagProjectionData[0]?.target === 'number' && (
+                        <Line
+                          type="linear"
+                          dataKey="target"
+                          name="Meta"
+                          stroke={chartTheme.colors.success}
+                          strokeWidth={1.6}
+                          dot={false}
+                        />
+                      )}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </PremiumCard>
+
+            {/* Lead compliance chart */}
+            <PremiumCard
+              title="Ritmo das ações semanais"
+              subtitle="% de semanas com ambas as ações concluídas"
+            >
+              {scorecardLeadMetrics.length === 0 ? (
+                <EmptyState
+                  title="Sem ações configuradas"
+                  description="Configure as ações semanais acima para ver o histórico de compliance."
+                />
+              ) : leadComplianceHistory.length > 1 ? (
+                <div className="premium-chart-wrap">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <LineChart data={leadComplianceHistory}>
+                      <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                      <XAxis dataKey="week" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                      <YAxis
+                        domain={[0, 100]}
+                        tick={axisProps.tick}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle.contentStyle} labelStyle={tooltipStyle.labelStyle}
+                        formatter={(value) => [`${value}%`, 'Compliance']}
+                        labelFormatter={(label, payload) => {
+                          const entry = payload?.[0]?.payload as { weekStart?: string } | undefined;
+                          return entry?.weekStart
+                            ? `Semana ${label} · ${formatIsoDate(entry.weekStart)}`
+                            : `Semana ${label}`;
+                        }}
+                      />
+                      <ReferenceLine y={80} stroke={chartTheme.colors.success} strokeDasharray="4 4" label={{ value: '80%', fill: chartTheme.colors.success, fontSize: 11 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="compliance"
+                        name="Compliance"
+                        stroke={chartTheme.colors.primary}
+                        strokeWidth={2.6}
+                        dot={{ r: 2.5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState
+                  title="Sem histórico ainda"
+                  description="Registre check-ins em semanas consecutivas para ver o gráfico de ritmo."
+                />
+              )}
+            </PremiumCard>
+          </section>
+        )}
+
+        {/* Runway engine: cash projection chart */}
+        {engine === 'time' && getEngineVariant(selectedProject.methodology) === 'runway' && (() => {
+          const mdRunway = (selectedProject.methodologyData as MethodologyData | null) ?? {};
+          const cash = mdRunway.availableCash ?? 0;
+          const burn = mdRunway.burnRateMonthly ?? 0;
+          const events = mdRunway.runwayEvents ?? [];
+          if (burn <= 0) return null;
+
+          // Build monthly projection for up to 18 months
+          const buildSeries = (initialCash: number, evts: typeof events) => {
+            const series: { month: string; balance: number }[] = [];
+            let balance = initialCash;
+            const today = new Date();
+            for (let i = 0; i <= 18; i++) {
+              const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+              const monthKey = d.toISOString().slice(0, 7);
+              const monthLabel = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+              const monthEvents = evts.filter(ev => ev.date.startsWith(monthKey));
+              const monthDelta = monthEvents.reduce((sum, ev) => sum + ev.amount, 0);
+              if (i > 0) balance = balance - burn + monthDelta;
+              series.push({ month: monthLabel, balance: Math.max(0, Math.round(balance)) });
+              if (balance <= 0) break;
+            }
+            return series;
+          };
+
+          const baseSeries = buildSeries(cash, []);
+          const confirmedSeries = buildSeries(cash, events.filter(ev => ev.confirmed));
+          const allEventsSeries = events.length > 0 ? buildSeries(cash, events) : null;
+
+          // Merge by month label for recharts
+          const allMonths = Array.from(new Set([...baseSeries, ...confirmedSeries].map(p => p.month)));
+          const chartData = allMonths.map(month => ({
+            month,
+            base: baseSeries.find(p => p.month === month)?.balance ?? null,
+            confirmado: confirmedSeries.find(p => p.month === month)?.balance ?? null,
+            todos: allEventsSeries?.find(p => p.month === month)?.balance ?? null,
+          }));
+
+          const hasConfirmed = events.some(ev => ev.confirmed);
+          const hasPending = events.some(ev => !ev.confirmed);
+
+          return (
+            <PremiumCard
+              title="Projeção de caixa"
+              subtitle="Saldo projetado mês a mês com e sem eventos"
+            >
+              <div className="premium-chart-wrap">
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart data={chartData}>
+                    <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} />
+                    <XAxis dataKey="month" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                    <YAxis
+                      tick={axisProps.tick}
+                      axisLine={axisProps.axisLine}
+                      tickLine={axisProps.tickLine}
+                      tickFormatter={v => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle.contentStyle}
+                      labelStyle={tooltipStyle.labelStyle}
+                      formatter={(value: number | undefined) => [
+                        value != null ? value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—',
+                        ''
+                      ]}
+                    />
+                    <Legend />
+                    <ReferenceLine y={0} stroke={chartTheme.colors.danger} strokeWidth={1.5} strokeDasharray="4 4" />
+                    <Area
+                      type="monotone"
+                      dataKey="base"
+                      name="Sem eventos"
+                      stroke={chartTheme.colors.warning}
+                      fill="rgba(245,158,11,0.08)"
+                      strokeWidth={2}
+                      strokeDasharray="6 3"
+                      dot={false}
+                      connectNulls
+                    />
+                    {hasConfirmed && (
+                      <Area
+                        type="monotone"
+                        dataKey="confirmado"
+                        name="Com confirmados"
+                        stroke={chartTheme.colors.primary}
+                        fill="rgba(224,124,74,0.12)"
+                        strokeWidth={2.4}
+                        dot={{ r: 2.5 }}
+                        connectNulls
+                      />
+                    )}
+                    {hasPending && allEventsSeries && (
+                      <Area
+                        type="monotone"
+                        dataKey="todos"
+                        name="Com todos"
+                        stroke={chartTheme.colors.success}
+                        fill="rgba(74,196,120,0.07)"
+                        strokeWidth={1.8}
+                        strokeDasharray="4 3"
+                        dot={false}
+                        connectNulls
+                      />
+                    )}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </PremiumCard>
+          );
+        })()}
+
+        {/* Funil engine: conversion analysis table */}
+        {engine === 'funnel' && (() => {
+          const mdF = (selectedProject.methodologyData as MethodologyData | null) ?? {};
+          const fStages = ((mdF.funilStages ?? []) as Array<{ id: string; label: string; value: number | null; order: number }>)
+            .sort((a, b) => a.order - b.order);
+          if (fStages.length < 2 || fStages.every(s => s.value == null)) return null;
+          const topVal = fStages[0]?.value ?? 0;
+          return (
+            <PremiumCard title="Análise de conversão" subtitle="Taxa etapa a etapa e % do topo do funil">
+              <table className="funnel-conv-table">
+                <thead>
+                  <tr>
+                    <th>Etapa</th>
+                    <th>Valor</th>
+                    <th>% do topo</th>
+                    <th>Conv. da etapa anterior</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fStages.map((stage, i) => {
+                    const prev = i > 0 ? fStages[i - 1] : null;
+                    const pctTop = topVal > 0 && stage.value != null ? Math.round((stage.value / topVal) * 100) : null;
+                    const conv = prev && (prev.value ?? 0) > 0 && stage.value != null
+                      ? Math.round((stage.value / (prev.value!)) * 100)
+                      : null;
+                    const convClass = conv === null ? '' : conv >= 50 ? 'good' : conv >= 25 ? 'ok' : 'bad';
+                    return (
+                      <tr key={stage.id}>
+                        <td style={{ fontWeight: 600 }}>{stage.label}</td>
+                        <td>{stage.value != null ? stage.value.toLocaleString('pt-BR') : '—'}</td>
+                        <td>{pctTop != null ? `${pctTop}%` : '—'}</td>
+                        <td>
+                          {i === 0 ? <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            : conv != null ? <span className={`funnel-conv-badge ${convClass}`}>{conv}%</span>
+                            : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </PremiumCard>
+          );
+        })()}
+
+        {/* Recurring engine: completion rate per cycle chart */}
+        {engine === 'recurring' && (() => {
+          const mdRec = (selectedProject.methodologyData as MethodologyData | null) ?? {};
+          const template = (mdRec.cycleTemplate ?? []) as Array<{ id: string }>;
+          const cycles = (mdRec.cycles ?? []) as Array<{ id: string; periodLabel: string; items: Array<{ templateId: string; done: boolean }> }>;
+          if (cycles.length < 2 || template.length === 0) return null;
+          const chartData = cycles.map(c => ({
+            label: c.periodLabel.length > 12 ? c.periodLabel.slice(0, 11) + '…' : c.periodLabel,
+            conclusao: template.length > 0 ? Math.round((c.items.filter(i => i.done).length / template.length) * 100) : 0,
+          }));
+          return (
+            <PremiumCard title="Histórico de ciclos" subtitle="% de conclusão por ciclo">
+              <div className="premium-chart-wrap">
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={chartData} barCategoryGap="25%">
+                    <CartesianGrid stroke={cartesianGridProps.stroke} strokeDasharray={cartesianGridProps.strokeDasharray} vertical={false} />
+                    <XAxis dataKey="label" tick={axisProps.tick} axisLine={axisProps.axisLine} tickLine={axisProps.tickLine} />
+                    <YAxis domain={[0, 100]} tick={axisProps.tick} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+                    <Tooltip
+                      contentStyle={tooltipStyle.contentStyle}
+                      labelStyle={tooltipStyle.labelStyle}
+                      formatter={(v) => [`${v}%`, 'Conclusão']}
+                    />
+                    <ReferenceLine y={100} stroke={chartTheme.colors.success} strokeWidth={1} strokeDasharray="4 3" />
+                    <Bar dataKey="conclusao" name="Conclusão" fill={chartTheme.colors.primary} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </PremiumCard>
+          );
+        })()}
+
+
+      </>
+    );
+  }
+
   function renderMethodologyFrameworkPanel() {
     if (!projectScorecard) {
       return null;
@@ -3388,7 +7622,7 @@ export function ProjetosPage() {
     const leadOneMetric = scorecardLeadMetrics[0] ?? null;
     const leadTwoMetric = scorecardLeadMetrics[1] ?? null;
     const lagMetric = primaryLagMetric;
-    const currentMeta = PROJECT_METHODOLOGY_CREATE_META[selectedProjectMethodology];
+    const currentMeta = PROJECT_METHODOLOGY_CREATE_META[selectedProjectMethodology] ?? PROJECT_METHODOLOGY_CREATE_META['fourdx']!;
     const weekLabel = selectedScorecardWeek
       ? `Semana ${selectedScorecardWeek.index} • ${selectedScorecardWeek.weekRange}`
       : `Semana de ${formatIsoDate(scorecardWeekStart)}`;
@@ -3544,6 +7778,40 @@ export function ProjetosPage() {
               </small>
             </div>
           </>
+        ) : scorecardLeadMetrics.length >= 2 && !primaryLagMetric ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+              Falta definir a métrica lag (o resultado que você quer mover). Adicione agora:
+            </p>
+            <input
+              className="scoreboard-setup-input"
+              placeholder={`Nome da métrica lag (ex: ${selectedProject?.primaryMetric || 'seguidores, receita, leads'})`}
+              value={fourdxLagName}
+              onChange={e => setFourdxLagName(e.target.value)}
+            />
+            <input
+              className="scoreboard-setup-input"
+              placeholder="Unidade (ex: seguidores, R$, leads)"
+              value={fourdxLagUnit}
+              onChange={e => setFourdxLagUnit(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={busy || !fourdxLagName.trim()}
+              style={{ alignSelf: 'flex-start', padding: '8px 18px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.84rem' }}
+              onClick={async () => {
+                if (!fourdxLagName.trim() || !selectedProject) return;
+                setBusy(true);
+                try {
+                  await api.createProjectMetric(selectedProject.id, { kind: 'lag', name: fourdxLagName.trim(), unit: fourdxLagUnit.trim() || null });
+                  setFourdxLagName(''); setFourdxLagUnit('');
+                  await refetchProject();
+                } finally { setBusy(false); }
+              }}
+            >
+              Adicionar métrica lag
+            </button>
+          </div>
         ) : (
           <EmptyState
             title="Scorecard incompleto para check-in guiado"
@@ -3558,11 +7826,9 @@ export function ProjetosPage() {
     return (
       <PremiumPage>
         <PremiumHeader
-          eyebrow="Entregas"
           title="Projetos"
-          subtitle="Estruture metas por projeto e execute por tarefas vinculadas."
         />
-        <PremiumCard title="Projetos da frente">
+        <PremiumCard title="Projetos">
           <SkeletonBlock height={36} />
         </PremiumCard>
         <PremiumCard title="Tarefas do projeto">
@@ -3573,77 +7839,93 @@ export function ProjetosPage() {
   }
 
   if (isProjectRoute) {
+    const statusColorMap: Record<string, string> = {
+      ativo: 'st-ativo',
+      latente: 'st-latente',
+      encerrado: 'st-encerrado',
+      fantasma: 'st-fantasma',
+    };
+    const currentStatusClass = statusColorMap[selectedProject?.status ?? 'ativo'] ?? 'st-ativo';
+
     return (
       <PremiumPage>
-        <PremiumHeader
-          eyebrow="Projeto"
-          title={selectedProject?.title ?? 'Projeto não encontrado'}
-          subtitle={
-            selectedProject
-              ? `${selectedProject.workspace?.name ?? 'Sem frente'} • ${methodologyLabel(selectedProject.methodology)} • ${selectedProject.type ?? 'operacao'} • ${selectedProject.status ?? 'ativo'}`
-              : 'Volte para a lista e selecione um projeto válido.'
-          }
-          actions={
-            <div className="project-header-actions">
-              <div className="inline-actions">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => navigate('/projetos')}
-                >
-                  Voltar para projetos
-                </button>
-                {selectedProject && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreateEntity('task');
-                      setWorkspaceId(selectedProject.workspaceId);
-                      setCreateTaskProjectId(selectedProject.id);
-                      setCreateModalOpen(true);
-                    }}
-                  >
-                    Nova tarefa
-                  </button>
-                )}
-              </div>
+        {/* Compact project detail header */}
+        <div className="project-detail-header">
+          <button
+            type="button"
+            className="project-back-crumb"
+            onClick={() => navigate('/projetos')}
+          >
+            ← Projetos
+          </button>
+          <div className="project-detail-header-main">
+            <div className="project-detail-header-left">
+              <h1 className="project-detail-h1">{selectedProject?.title ?? 'Projeto não encontrado'}</h1>
               {selectedProject && (
-                <div className="inline-actions project-status-actions">
-                  <button
-                    type="button"
-                    className={selectedProject.status === 'ativo' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                    disabled={busy}
-                    title={PROJECT_STATUS_HINTS.ativo}
-                    onClick={() => setProjectStatus('ativo')}
-                  >
-                    Ativo
-                  </button>
-                  <button
-                    type="button"
-                    className={selectedProject.status === 'latente' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                    disabled={busy}
-                    title={PROJECT_STATUS_HINTS.latente}
-                    onClick={() => setProjectStatus('latente')}
-                  >
-                    Latente
-                  </button>
-                  <button
-                    type="button"
-                    className={selectedProject.status === 'encerrado' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                    disabled={busy}
-                    title={PROJECT_STATUS_HINTS.encerrado}
-                    onClick={() => setProjectStatus('encerrado')}
-                  >
-                    Encerrado
-                  </button>
-                  <button type="button" className="danger-button" disabled={busy} onClick={deleteSelectedProject}>
-                    Excluir projeto
-                  </button>
-                </div>
+                <span className="project-detail-subtitle">
+                  {selectedProject.workspace?.name ?? 'Sem frente'} · {methodologyLabel(selectedProject.methodology)}
+                </span>
               )}
             </div>
-          }
-        />
+            {selectedProject && (
+              <div className="project-detail-header-actions">
+                <button
+                  type="button"
+                  className="project-new-task-btn"
+                  onClick={() => {
+                    setCreateEntity('task');
+                    setWorkspaceId(selectedProject.workspaceId);
+                    setCreateTaskProjectId(selectedProject.id);
+                    setCreateModalOpen(true);
+                  }}
+                >
+                  + Tarefa
+                </button>
+
+                <select
+                  className={`project-status-badge-select ${currentStatusClass}`}
+                  value={selectedProject.status ?? 'ativo'}
+                  disabled={busy}
+                  onChange={e => setProjectStatus(e.target.value as ProjectStatus)}
+                  title={PROJECT_STATUS_HINTS[selectedProject.status as ProjectStatus] ?? ''}
+                >
+                  <option value="ativo">Ativo</option>
+                  <option value="latente">Latente</option>
+                  <option value="encerrado">Encerrado</option>
+                </select>
+
+                <div className="project-overflow-wrap">
+                  <button
+                    type="button"
+                    className="project-overflow-trigger"
+                    onClick={() => setProjectOverflowOpen(o => !o)}
+                    title="Mais opções"
+                  >
+                    •••
+                  </button>
+                  {projectOverflowOpen && (
+                    <>
+                      <div
+                        className="project-overflow-backdrop"
+                        onClick={() => setProjectOverflowOpen(false)}
+                      />
+                      <div className="project-overflow-menu">
+                        <button
+                          type="button"
+                          className="project-overflow-item danger"
+                          disabled={busy}
+                          onClick={() => { setProjectOverflowOpen(false); deleteSelectedProject(); }}
+                        >
+                          Excluir projeto
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {selectedProject?.status === 'fantasma' && (
           <PremiumCard
@@ -3675,129 +7957,9 @@ export function ProjetosPage() {
           </PremiumCard>
         ) : (
           <>
-            {showProjectGuide && (
-              <PremiumCard
-                title="Como usar este projeto em 90 segundos"
-                subtitle={`${methodologyLabel(selectedProject.methodology)} • guia rápido para começar sem fricção`}
-                actions={
-                  <button type="button" className="ghost-button" onClick={dismissProjectGuide}>
-                    Entendi
-                  </button>
-                }
-              >
-                <div className="premium-metric-grid mini">
-                  <div className="premium-metric tone-default">
-                    <span>1. Objetivo</span>
-                    <strong>{PROJECT_METHODOLOGY_CREATE_META[selectedProjectMethodology].objectiveLabel}</strong>
-                    <small>Defina uma frase clara com resultado e prazo.</small>
-                  </div>
-                  <div className="premium-metric tone-default">
-                    <span>2. Rotina semanal</span>
-                    <strong>
-                      {PROJECT_METHODOLOGY_CREATE_META[selectedProjectMethodology].leadOneLabel} +{' '}
-                      {PROJECT_METHODOLOGY_CREATE_META[selectedProjectMethodology].leadTwoLabel}
-                    </strong>
-                    <small>Faça check-in semanal de feito/não feito.</small>
-                  </div>
-                  <div className="premium-metric tone-default">
-                    <span>3. Resultado</span>
-                    <strong>{PROJECT_METHODOLOGY_CREATE_META[selectedProjectMethodology].lagMetricLabel}</strong>
-                    <small>Atualize um valor por semana para o gráfico evoluir.</small>
-                  </div>
-                </div>
-              </PremiumCard>
-            )}
-
-            {renderMethodologyFrameworkPanel()}
-
-            {renderMethodologyCockpit()}
-
-            <PremiumCard
-              title={`Plano operacional ${methodologyLabel(selectedProject.methodology)}`}
-              subtitle="direcionadores executivos ativos neste projeto"
-            >
-              <ul className="project-action-pillars">
-                {methodologyOperationalPillars(selectedProject).map((pillar) => (
-                  <li key={`${pillar.label}:${pillar.value}`}>
-                    <span>{pillar.label}</span>
-                    <strong>{pillar.value}</strong>
-                  </li>
-                ))}
-              </ul>
-            </PremiumCard>
-
-            <PremiumCard
-              title={selectedProjectDetailMeta.scoreboardTitle}
-              subtitle={selectedProjectDetailMeta.scoreboardSubtitle}
-              actions={
-                <div className="inline-actions">
-                  <label>
-                    Semana
-                    {scorecardWeekOptions.length > 0 ? (
-                      <select
-                        value={scorecardWeekStart}
-                        onChange={(event) => setScorecardWeekStart(event.target.value)}
-                      >
-                        {scorecardWeekOptions.map((week) => (
-                          <option key={week.weekStart} value={week.weekStart}>
-                            Semana {week.index} • {week.weekRange}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="date"
-                        value={scorecardWeekStart}
-                        onChange={(event) => setScorecardWeekStart(event.target.value)}
-                      />
-                    )}
-                  </label>
-                </div>
-              }
-            >
-              {renderMethodologyScoreboardSummary()}
-            </PremiumCard>
-
-            {renderFrameworkWeeklyCheckinCard()}
-
-            {renderMethodologyExecutionPanels()}
-
-            <PremiumCard title="Tarefas vinculadas ao projeto" subtitle={`${projectTasks.length} tarefas`}>
-              {projectTasks.length === 0 ? (
-                <EmptyState
-                  title="Projeto sem tarefas"
-                  description="Adicione tarefas para transformar estratégia em execução."
-                />
-              ) : (
-                <ul className="premium-list dense">
-                  {projectTasks.map((task) => (
-                    <li key={task.id}>
-                      <div>
-                        <strong>{task.title}</strong>
-                        <small>
-                          tipo {String(task.taskType ?? 'b').toUpperCase()} • prioridade P{task.priority} • status {task.status}
-                        </small>
-                      </div>
-                      <div className="inline-actions">
-                        <span className={`status-tag ${task.status}`}>{task.status}</span>
-                        {task.status !== 'feito' && (
-                          <button
-                            type="button"
-                            className="ghost-button"
-                            onClick={() => requestTaskCompletion(task.id)}
-                          >
-                            Concluir
-                          </button>
-                        )}
-                        <button type="button" className="text-button" onClick={() => deleteProjectTask(task.id)}>
-                          Excluir
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </PremiumCard>
+            {renderEngineHeader()}
+            {renderEngineActionZone()}
+            {renderEngineHistoryZone()}
           </>
         )}
 
@@ -3935,11 +8097,15 @@ export function ProjetosPage() {
   return (
     <PremiumPage>
       <PremiumHeader
-        eyebrow="Entregas"
         title="Projetos"
-        subtitle="Estruture metas por projeto e execute por tarefas vinculadas."
+        subtitle={`${projects.length} projeto${projects.length !== 1 ? 's' : ''} · ${tasks.filter((task) => task.status !== 'feito').length} tarefa${tasks.filter((task) => task.status !== 'feito').length !== 1 ? 's' : ''} aberta${tasks.filter((task) => task.status !== 'feito').length !== 1 ? 's' : ''}`}
         actions={
           <div className="inline-actions">
+            {projects.length > 0 && (
+              <button type="button" className="ghost-button" title="Guia de metodologias" onClick={() => setGuideManuallyOpen((v) => !v)}>
+                ?
+              </button>
+            )}
             <button type="button" className="ghost-button" onClick={() => openCreateModal('task')}>
               Nova tarefa
             </button>
@@ -3950,12 +8116,12 @@ export function ProjetosPage() {
         }
       />
 
-      {showProjectsOverviewGuide && (
+      {(projects.length === 0 || guideManuallyOpen) && (
         <PremiumCard
           title="Como escolher a metodologia certa (rápido)"
           subtitle="use este atalho mental antes de criar um projeto"
           actions={
-            <button type="button" className="ghost-button" onClick={dismissProjectsOverviewGuide}>
+            <button type="button" className="ghost-button" onClick={() => { setGuideManuallyOpen(false); if (projects.length === 0) dismissProjectsOverviewGuide(); }}>
               Ocultar guia
             </button>
           }
@@ -3990,74 +8156,13 @@ export function ProjetosPage() {
 
       {error && <p className="surface-error">{error}</p>}
 
-      <PremiumCard
-        title="Panorama da frente"
-        subtitle={workspaceId === 'all' ? 'Visão geral' : workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? 'Sem frente'}
-      >
-        <div className="premium-metric-grid mini">
-          <div className="premium-metric tone-default">
-            <span>Projetos</span>
-            <strong>{projects.length}</strong>
-          </div>
-          <div className="premium-metric tone-default">
-            <span>Tarefas vinculadas</span>
-            <strong>{tasks.filter((task) => Boolean(task.projectId)).length}</strong>
-          </div>
-          <div className="premium-metric tone-default">
-            <span>Tarefas abertas</span>
-            <strong>{tasks.filter((task) => task.status !== 'feito').length}</strong>
-          </div>
-          <div className="premium-metric tone-default">
-            <span>Concluídas</span>
-            <strong>{tasks.filter((task) => task.status === 'feito').length}</strong>
-          </div>
-        </div>
-      </PremiumCard>
+      {strategicActiveLoad > 5 && (
+        <p className="surface-error">
+          Risco de fragmentação: {strategicActiveLoad} projetos ativos com cadência atrasada.
+        </p>
+      )}
 
-      <PremiumCard
-        title="Ranking estratégico de projetos"
-        subtitle="tração por metodologia (lead + métrica histórica)"
-      >
-        {strategicActiveLoad > 5 && (
-          <p className="surface-error">
-            Risco de fragmentação: {strategicActiveLoad} projetos ativos com cadência de metodologia atrasada.
-          </p>
-        )}
-
-        {projectRanking.length === 0 ? (
-          <EmptyState
-            title="Sem projetos para ranquear"
-            description="Crie projetos com metodologia e métricas para visualizar tração estratégica."
-          />
-        ) : (
-          <ul className="premium-list dense">
-            {projectRanking.slice(0, 8).map((entry, index) => (
-              <li key={entry.project.id}>
-                <div>
-                  <strong>
-                    {index + 1}. {entry.project.title}
-                  </strong>
-                  <small>
-                    {methodologyLabel(entry.project.methodology)} • score {entry.strategicScore} • lag{' '}
-                    {entry.lagProgress ?? 'n/d'}% • {entry.summary.lineTwo.toLowerCase()} • {entry.summary.lineOne.toLowerCase()} • último check-in{' '}
-                    {formatLastCheckinLabel(entry.project.lastScorecardCheckinAt)} • status{' '}
-                    {entry.project.status ?? 'ativo'}
-                  </small>
-                </div>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => openProjectDetail(entry.project.id)}
-                >
-                  Abrir
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </PremiumCard>
-
-      <PremiumCard title="Projetos da frente">
+      <PremiumCard title="Projetos">
         {projectSelectionCards.length === 0 ? (
           <EmptyState
             title="Sem projetos nesta frente"
@@ -4067,6 +8172,9 @@ export function ProjetosPage() {
           <div className="project-selector-grid">
             {projectSelectionCards.map((entry) => {
               const isActive = selectedProjectId === entry.project.id;
+              const lagPct = entry.lagProgress ?? 0;
+              const lagTone = lagPct > 50 ? 'danger' : lagPct > 20 ? 'warning' : 'ok';
+              const cardMetrics = getProjectCardMetrics(entry.project, entry.totalTasks, entry.lagProgress);
 
               return (
                 <article
@@ -4082,31 +8190,30 @@ export function ProjetosPage() {
                     }}
                   >
                     <div className="project-selector-head">
+                      <div className="project-selector-title-row">
+                        <span className="project-selector-methodology">{methodologyLabel(entry.project.methodology)}</span>
+                        <span className={`status-tag ${entry.project.status ?? 'ativo'}`}>
+                          {entry.project.status ?? 'ativo'}
+                        </span>
+                      </div>
                       <strong>{entry.project.title}</strong>
-                      <span className={`status-tag ${entry.project.status ?? 'backlog'}`}>
-                        {entry.project.status ?? 'ativo'}
-                      </span>
                     </div>
-                    <small>
-                      {methodologyLabel(entry.project.methodology)} • {entry.project.type ?? 'operacao'} • score{' '}
-                      {entry.strategicScore}
-                    </small>
+                    <div className={`project-lag-bar-track lag-${lagTone}`}>
+                      <div style={{ width: `${Math.min(100, lagPct)}%` }} />
+                    </div>
                     <div className="project-selector-metrics">
-                      <span>{entry.totalTasks} tarefas</span>
-                      <span>{entry.summary.lineOne}</span>
-                      <span>{entry.summary.lineTwo}</span>
+                      {cardMetrics.map((metric, idx) => (
+                        <span key={idx}>{metric}</span>
+                      ))}
                     </div>
                   </button>
                   <div className="project-selector-actions">
-                    <small className="project-selector-footnote">
-                      Último check-in: {formatLastCheckinLabel(entry.project.lastScorecardCheckinAt)}
-                    </small>
                     <button
                       type="button"
                       className="ghost-button"
                       onClick={() => openProjectDetail(entry.project.id)}
                     >
-                      Abrir página do projeto
+                      Abrir →
                     </button>
                   </div>
                 </article>
@@ -4154,12 +8261,12 @@ export function ProjetosPage() {
                 <small>{selectedProject.primaryMetric ?? 'Defina um alvo mensurável.'}</small>
               </div>
               <div className="premium-metric tone-default">
-                <span>{PROJECT_METHODOLOGY_META[selectedProject.methodology ?? 'fourdx'].leadLabel}</span>
+                <span>{(PROJECT_METHODOLOGY_META[selectedProject.methodology ?? 'fourdx'] ?? PROJECT_METHODOLOGY_META['fourdx']!).leadLabel}</span>
                 <strong>{scorecardLeadMetrics.length}/2 registradas</strong>
                 <small>
                   {scorecardLeadMetrics.length
                     ? scorecardLeadMetrics.map((metric) => metric.name).join(' • ')
-                    : `Defina duas medidas de ${PROJECT_METHODOLOGY_META[selectedProject.methodology ?? 'fourdx'].leadLabel.toLowerCase()}.`}
+                    : `Defina duas medidas de ${(PROJECT_METHODOLOGY_META[selectedProject.methodology ?? 'fourdx'] ?? PROJECT_METHODOLOGY_META['fourdx']!).leadLabel.toLowerCase()}.`}
                 </small>
               </div>
               <div className="premium-metric tone-default">

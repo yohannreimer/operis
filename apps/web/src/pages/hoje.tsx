@@ -1,7 +1,9 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { Lock, LockOpen } from 'lucide-react';
 
 import {
   api,
+  Commitment,
   DayPlan,
   DayPlanItem,
   DeepWorkSession,
@@ -17,10 +19,10 @@ import {
 } from '../api';
 import { Modal } from '../components/modal';
 import { TaskCompletionModal } from '../components/task-completion-modal';
-import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock, TabSwitch } from '../components/premium-ui';
-import { DragPayload, SchedulerGrid } from '../components/scheduler-grid';
+import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock } from '../components/premium-ui';
+import { CommitmentBlock, DragPayload, SchedulerGrid } from '../components/scheduler-grid';
 import { useShellContext } from '../components/shell-context';
-import { todayIsoDate } from '../utils/date';
+import { todayIsoDate, localDateKey } from '../utils/date';
 import { workspaceQuery } from '../utils/workspace';
 
 function toDragText(payload: DragPayload) {
@@ -90,6 +92,12 @@ function readStrictModePreference() {
   }
 }
 
+function addDays(isoDate: string, days: number) {
+  const d = new Date(`${isoDate}T12:00:00`); // local noon — safe across DST
+  d.setDate(d.getDate() + days);
+  return localDateKey(d);
+}
+
 type CapacitySuggestion = {
   taskId: string;
   title: string;
@@ -105,7 +113,6 @@ type CapacityInsight = {
   suggestions: CapacitySuggestion[];
 };
 
-type HojeSection = 'foco' | 'agenda';
 const TASK_TYPE_PRIORITY_SUGGESTION: Record<TaskType, number> = {
   a: 5,
   b: 3,
@@ -159,12 +166,13 @@ function suggestedPriorityFromTaskType(type: TaskType) {
 }
 
 export function HojePage() {
-  const date = useMemo(() => todayIsoDate(), []);
+  const [date, setDate] = useState(() => todayIsoDate());
   const { activeWorkspaceId, workspaces } = useShellContext();
   const workspaceId = workspaceQuery(activeWorkspaceId);
 
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [todayCommitments, setTodayCommitments] = useState<Commitment[]>([]);
   const [briefing, setBriefing] = useState<ExecutionBriefing | null>(null);
   const [deepWorkSummary, setDeepWorkSummary] = useState<DeepWorkSummary | null>(null);
   const [activeDeepWork, setActiveDeepWork] = useState<DeepWorkSession | null>(null);
@@ -191,7 +199,6 @@ export function HojePage() {
   const [newTaskPriority, setNewTaskPriority] = useState(5);
   const [newTaskHorizon, setNewTaskHorizon] = useState<TaskHorizon>('active');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
-  const [hojeSection, setHojeSection] = useState<HojeSection>('foco');
   const [top3DraftIds, setTop3DraftIds] = useState<string[]>([]);
   const [top3Note, setTop3Note] = useState('');
 
@@ -199,6 +206,7 @@ export function HojePage() {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isToday = date === todayIsoDate();
 
   const workspaceName =
     activeWorkspaceId === 'all'
@@ -218,7 +226,7 @@ export function HojePage() {
   async function load() {
     try {
       setError(null);
-      const [nextDayPlan, taskList, nextBriefing, nextDeepSummary, nextActiveDeepWork, nextEvolution] = await Promise.all([
+      const [nextDayPlan, taskList, nextBriefing, nextDeepSummary, nextActiveDeepWork, nextEvolution, commitmentList] = await Promise.all([
         api.getDayPlan(date),
         api.getTasks(workspaceId ? { workspaceId } : undefined),
         api.getExecutionBriefing(date, {
@@ -234,7 +242,8 @@ export function HojePage() {
         api.getExecutionEvolution({
           workspaceId,
           windowDays: 30
-        })
+        }),
+        api.getCommitments({ date, status: 'ativo' })
       ]);
 
       setDayPlan(nextDayPlan);
@@ -243,6 +252,7 @@ export function HojePage() {
       setDeepWorkSummary(nextDeepSummary);
       setActiveDeepWork(nextActiveDeepWork);
       setEvolution(nextEvolution);
+      setTodayCommitments(commitmentList);
     } catch (requestError) {
       setError((requestError as Error).message);
     } finally {
@@ -251,8 +261,9 @@ export function HojePage() {
   }
 
   useEffect(() => {
+    setReady(false);
     load();
-  }, [activeWorkspaceId, strictMode]);
+  }, [activeWorkspaceId, strictMode, date]);
 
   useEffect(() => {
     try {
@@ -312,9 +323,6 @@ export function HojePage() {
     return task.createdAt.slice(0, 10) === date;
   }).length;
   const newTaskLimitReached = createdTodayCount >= maxNewTasksPerDay;
-  const explainablePressureRules = (evolution?.explainableRules ?? [])
-    .filter((rule) => rule.status !== 'ok')
-    .slice(0, 3);
   const topFocusCandidates = useMemo(
     () =>
       openTasks
@@ -422,6 +430,25 @@ export function HojePage() {
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const completionTask = tasks.find((task) => task.id === completionTaskId) ?? null;
 
+  // Commitment blocks for the scheduler overlay (only timed + duration ones)
+  const schedulerCommitmentBlocks = useMemo((): CommitmentBlock[] =>
+    todayCommitments
+      .filter(c => c.startTime && c.durationMin)
+      .map(c => ({
+        id: c.id,
+        title: c.title,
+        startTime: c.startTime!,
+        durationMin: c.durationMin!
+      })),
+    [todayCommitments]
+  );
+
+  // Total minutes locked by active commitments today (used in capacity bar)
+  const commitmentMinutes = useMemo(
+    () => todayCommitments.reduce((sum, c) => sum + (c.durationMin ?? 0), 0),
+    [todayCommitments]
+  );
+
   const plannedTaskBlocks = useMemo(
     () =>
       items
@@ -454,7 +481,7 @@ export function HojePage() {
       return null;
     }
 
-    const deltaMinutes = briefing.capacity.availableMinutes - briefing.capacity.plannedTaskMinutes;
+    const deltaMinutes = briefing.capacity.availableMinutes - (briefing.capacity.plannedTaskMinutes + commitmentMinutes);
 
     if (deltaMinutes < 0) {
       const targetMinutes = Math.abs(deltaMinutes);
@@ -548,7 +575,7 @@ export function HojePage() {
       targetMinutes: 0,
       suggestions: []
     };
-  }, [briefing, plannedTaskBlocks, taskPool]);
+  }, [briefing, plannedTaskBlocks, taskPool, commitmentMinutes]);
 
   const selectedItem = items.find((item) => item.id === selectedItemId) ?? null;
 
@@ -971,16 +998,28 @@ export function HojePage() {
     }
   }
 
+  // Total planned = tasks scheduled in day plan + active commitment blocks
+  const totalPlannedMinutes = briefing
+    ? briefing.capacity.plannedTaskMinutes + commitmentMinutes
+    : 0;
+
+  const capacityPct = briefing
+    ? Math.min(100, Math.round((totalPlannedMinutes / Math.max(1, briefing.capacity.availableMinutes)) * 100))
+    : 0;
+
   if (!ready) {
     return (
       <PremiumPage>
         <PremiumHeader
-          eyebrow="Operação do dia"
-          title="Hoje"
+          title={isToday ? 'Hoje' : formattedAgendaDate}
           subtitle={`Contexto: ${workspaceName}`}
         />
+        <div className="premium-card hoje-hero">
+          <SkeletonBlock height={6} />
+          <SkeletonBlock height={32} />
+        </div>
         <section className="premium-grid two-wide">
-          <PremiumCard title={`Agenda ${formattedAgendaDate}`}>
+          <PremiumCard title="Agenda">
             <SkeletonBlock lines={10} />
           </PremiumCard>
           <PremiumCard title="Pool de execução">
@@ -994,8 +1033,7 @@ export function HojePage() {
   return (
     <PremiumPage>
       <PremiumHeader
-        eyebrow="Operação do dia"
-        title="Hoje"
+        title={isToday ? 'Hoje' : formattedAgendaDate}
         subtitle={`Contexto: ${workspaceName}`}
         actions={
           <div className="inline-actions">
@@ -1003,8 +1041,9 @@ export function HojePage() {
               type="button"
               className={strictMode ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
               onClick={() => setStrictMode((current) => !current)}
+              title={strictMode ? 'Modo estrito ativo: bloqueia B/C enquanto há prioridades pendentes' : 'Modo estrito desativado: liberdade total de execução'}
             >
-              Modo rígido {strictMode ? 'ON' : 'OFF'}
+              {strictMode ? <Lock size={14} /> : <LockOpen size={14} />}
             </button>
             <button
               type="button"
@@ -1012,361 +1051,228 @@ export function HojePage() {
               disabled={newTaskLimitReached}
               onClick={() => setCreateTaskOpen(true)}
             >
-              Nova tarefa ({createdTodayCount}/{maxNewTasksPerDay})
+              + Tarefa
+              {createdTodayCount >= maxNewTasksPerDay - 1 && (
+                <span className="hoje-task-limit-badge">{createdTodayCount}/{maxNewTasksPerDay}</span>
+              )}
             </button>
           </div>
         }
       />
 
-      {error && <p className="surface-error">{error}</p>}
-      <PremiumCard title="Visão do dia">
-        <TabSwitch
-          value={hojeSection}
-          onChange={setHojeSection}
-          options={[
-            { value: 'foco', label: 'Foco e Deep Work' },
-            { value: 'agenda', label: 'Agenda + Pool' }
-          ]}
+      {/* Date navigation — topo */}
+      <nav className="hoje-date-nav">
+        <button type="button" className="ghost-button" onClick={() => setDate(addDays(date, -1))}>
+          ← Ontem
+        </button>
+        <button
+          type="button"
+          className={isToday ? 'ghost-button task-filter active' : 'ghost-button'}
+          onClick={() => setDate(todayIsoDate())}
+        >
+          Hoje
+        </button>
+        <button type="button" className="ghost-button" onClick={() => setDate(addDays(date, 1))}>
+          Amanhã →
+        </button>
+        <input
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+          className="hoje-date-input"
         />
-      </PremiumCard>
+      </nav>
 
-      {hojeSection === 'foco' && (
-        <section className="premium-grid two">
-          <PremiumCard title={`Top ${focusLimit} do dia`} subtitle="foco dominante com menor ruído">
-            {evolution && (
-              <p className="premium-empty">
-                Nível {evolution.stage.label} • regra {evolution.systemMode.enforcement} • criação {createdTodayCount}/{maxNewTasksPerDay}
+      {error && <p className="surface-error">{error}</p>}
+
+      {/* Hero: capacity + top3 + alerts + active deep work */}
+      <div className="premium-card hoje-hero">
+        {/* Capacity bar */}
+        {briefing && (
+          <div className="hoje-hero-capacity">
+            <div className="hoje-hero-capacity-head">
+              <span>Capacidade do dia</span>
+              {totalPlannedMinutes > 0 ? (
+                <strong>
+                  {Math.floor(totalPlannedMinutes / 60)}h{totalPlannedMinutes % 60 > 0 ? ` ${totalPlannedMinutes % 60}min` : ''} de {Math.floor(briefing.capacity.availableMinutes / 60)}h disponíveis
+                  {commitmentMinutes > 0 && briefing.capacity.plannedTaskMinutes > 0 && (
+                    <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '0.75rem', marginLeft: 6 }}>
+                      ({Math.floor(briefing.capacity.plannedTaskMinutes / 60)}h tarefas + {commitmentMinutes >= 60 ? `${Math.floor(commitmentMinutes / 60)}h` : `${commitmentMinutes}min`} compromissos)
+                    </span>
+                  )}
+                  {commitmentMinutes > 0 && briefing.capacity.plannedTaskMinutes === 0 && (
+                    <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: '0.75rem', marginLeft: 6 }}>
+                      (só compromissos)
+                    </span>
+                  )}
+                </strong>
+              ) : (
+                <span className="hoje-capacity-empty">Nenhuma tarefa agendada ainda</span>
+              )}
+            </div>
+            {totalPlannedMinutes > 0 && (
+              <div className="score-hero-bar-track">
+                <div className="score-hero-bar-fill" style={{ width: `${capacityPct}%` }} />
+              </div>
+            )}
+            {(briefing.capacity.isUnrealistic || totalPlannedMinutes > briefing.capacity.availableMinutes) && (
+              <p className="surface-error" style={{ marginTop: 6, fontSize: '0.8rem' }}>
+                Excedeu capacidade em {totalPlannedMinutes - briefing.capacity.availableMinutes} min.
               </p>
             )}
-            {briefing && (
-              <div className="capacity-insight-panel">
-                <div className="capacity-insight-head">
-                  <strong>
-                    {briefing.top3Meta.locked ? `Top ${focusLimit} confirmado` : `Top ${focusLimit} em edição`}
-                  </strong>
-                  <small>
-                    {briefing.top3Meta.locked
-                      ? briefing.top3Meta.committedAt
-                        ? `confirmado em ${new Date(briefing.top3Meta.committedAt).toLocaleTimeString('pt-BR', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}`
-                        : 'confirmado manualmente'
-                      : 'selecione as tarefas A de maior impacto e confirme'}
-                  </small>
-                </div>
-                {briefing.top3Meta.locked ? (
-                  <div className="inline-actions">
-                    <span className="status-tag feito">Compromisso travado</span>
-                    <button type="button" className="ghost-button" disabled={busy} onClick={unlockTop3}>
-                      Destravar para trocar
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="inline-actions task-mode-tabs">
-                      {topFocusCandidates.slice(0, 8).map((task) => (
-                        <button
-                          key={`top3-candidate-${task.id}`}
-                          type="button"
-                          className={top3DraftIds.includes(task.id) ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                          disabled={busy || (!top3DraftIds.includes(task.id) && top3DraftIds.length >= Math.max(1, focusLimit))}
-                          onClick={() => toggleTop3Draft(task.id)}
-                          title={task.title}
-                        >
-                          {task.title}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      value={top3Note}
-                      onChange={(event) => setTop3Note(event.target.value)}
-                      placeholder="Nota opcional do compromisso de hoje"
-                      maxLength={180}
-                    />
-                    <div className="inline-actions">
-                      <button type="button" disabled={busy || top3DraftIds.length === 0} onClick={commitTop3Draft}>
-                        Confirmar Top {top3DraftIds.length}
-                      </button>
-                    </div>
-                  </>
-                )}
-                {briefing.top3Meta.locked && briefing.top3Meta.guidedSwapNeeded && (
-                  <div className="capacity-insight-panel">
-                    <div className="capacity-insight-head">
-                      <strong>Troca guiada recomendada</strong>
-                      <small>{briefing.top3Meta.swapReason ?? 'Compromisso ficou desatualizado.'}</small>
-                    </div>
-                    <p className="capacity-insight-copy">
-                      {briefing.top3Meta.missingSlots > 0
-                        ? `${briefing.top3Meta.missingSlots} vaga(s) do Top ${focusLimit} sem tarefa elegível confirmada.`
-                        : `${briefing.top3Meta.droppedTaskIds.length} tarefa(s) do compromisso original saiu(ram) de elegibilidade.`}
-                    </p>
-                    <div className="inline-actions">
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        disabled={busy || briefing.top3Meta.swapTaskIds.length === 0}
-                        onClick={applyGuidedTop3Swap}
-                      >
-                        Aplicar troca guiada
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {focusAlerts.length > 0 && (
-              <ul className="premium-list dense compact-alert-list">
-                {focusAlerts.map((alert, index) => (
-                  <li key={`${index}-${alert}`}>
-                    <div>
-                      <small>{alert}</small>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {explainablePressureRules.length > 0 && (
-              <details className="evolution-inline-details">
-                <summary>Regras acionadas ({explainablePressureRules.length})</summary>
-                <ul className="evolution-rule-list">
-                  {explainablePressureRules.map((rule) => (
-                    <li key={rule.id} className={`evolution-rule-item status-${rule.status}`}>
-                      <div className="evolution-rule-head">
-                        <strong>{rule.title}</strong>
-                        <span className="priority-chip">
-                          Peso {rule.weight} • Impacto {rule.impact}
-                        </span>
-                      </div>
-                      <small>
-                        Atual {rule.current}
-                        {rule.unit} • Meta {rule.operator === 'gte' ? '>=' : '<='} {rule.target}
-                        {rule.unit}
-                      </small>
-                      <small>Ação: {rule.recommendation}</small>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {!topFocusTasks.length ? (
-              <EmptyState
-                title="Sem foco automático"
-                description="Crie tarefas do tipo A para o sistema montar o foco executivo."
-              />
-            ) : (
-              <ul className="premium-list dense">
-                {topFocusTasks.map((task, index) => (
-                  <li key={task.id}>
-                    <div>
-                      <strong>
-                        {index + 1}. {task.title}
-                      </strong>
-                      <small>
-                        {task.workspace?.name ?? 'Sem frente'} • {task.project?.title ?? 'Sem projeto'}
-                      </small>
-                    </div>
-                    <div className="inline-actions">
-                      <span className={`priority-chip priority-${task.priority}`}>P{task.priority}</span>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        disabled={busy}
-                        onClick={() => startDeepWork(task.id)}
-                      >
-                        Deep Work
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </PremiumCard>
+          </div>
+        )}
 
-          <PremiumCard title="Capacidade + Deep Work" subtitle="minutos planejados vs minutos livres reais do dia">
-            {briefing ? (
-              <div className="premium-thermo">
-                <div className="premium-thermo-head">
-                  <span>Capacidade planejada</span>
-                  <strong>
-                    {briefing.capacity.plannedTaskMinutes} / {briefing.capacity.availableMinutes} min
-                  </strong>
-                </div>
-                <small className="premium-empty">planejado em tarefas / capacidade livre calculada para hoje</small>
-                <div className="meter-track">
-                  <div
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round((briefing.capacity.plannedTaskMinutes / Math.max(1, briefing.capacity.availableMinutes)) * 100)
-                      )}%`
-                    }}
-                  />
-                </div>
-                {briefing.capacity.isUnrealistic && (
-                  <p className="surface-error">
-                    Planejamento irreal: excedeu capacidade do dia em {briefing.capacity.overloadMinutes} min.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <SkeletonBlock lines={3} />
-            )}
-
-            {capacityInsight && (
-              <div className="capacity-insight-panel">
-                <div className="capacity-insight-head">
-                  <strong>Rearranjo sugerido</strong>
-                  <small>
-                    {capacityInsight.deltaMinutes < 0
-                      ? `Excesso de ${Math.abs(capacityInsight.deltaMinutes)} min`
-                      : capacityInsight.deltaMinutes > 0
-                        ? `Folga de ${capacityInsight.deltaMinutes} min`
-                        : 'Plano equilibrado'}
-                  </small>
-                </div>
-
-                {capacityInsight.mode === 'balanced' ? (
-                  <p className="premium-empty">Capacidade e plano estão coerentes. Mantenha o foco do Top 3.</p>
-                ) : (
-                  <>
-                    <p className="capacity-insight-copy">
-                      {capacityInsight.mode === 'overload'
-                        ? 'Sugestão automática para reduzir pressão e evitar planejamento irreal.'
-                        : 'Sugestão automática para preencher capacidade livre com tarefas de maior impacto.'}
-                    </p>
-                    <ul className="capacity-suggestion-list">
-                      {capacityInsight.suggestions.map((suggestion) => (
-                        <li key={`${suggestion.taskId}-${suggestion.itemId ?? 'pool'}`}>
-                          <span>{suggestion.title}</span>
-                          <small>{suggestion.minutes} min • {suggestion.reason}</small>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      type="button"
-                      className="ghost-button capacity-apply-action"
-                      disabled={busy || capacityInsight.suggestions.length === 0}
-                      onClick={applyCapacitySuggestion}
+        {/* Top 3 inline */}
+        <div className="hoje-hero-top3">
+          {briefing && !briefing.top3Meta.locked && (
+            <div className="hoje-top3-edit">
+              <small>Escolha até {focusLimit} prioridades do dia</small>
+              <div className="hoje-top3-candidates">
+                {topFocusCandidates.slice(0, 8).map((task) => {
+                  const selected = top3DraftIds.includes(task.id);
+                  return (
+                    <label
+                      key={task.id}
+                      className={`hoje-top3-checkbox-item ${selected ? 'selected' : ''}`}
                     >
-                      {capacityInsight.mode === 'overload'
-                        ? 'Aplicar corte automático no plano'
-                        : 'Puxar sugestões para hoje'}
-                    </button>
-                  </>
-                )}
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={busy || (!selected && top3DraftIds.length >= Math.max(1, focusLimit))}
+                        onChange={() => toggleTop3Draft(task.id)}
+                      />
+                      <span>{task.title}</span>
+                    </label>
+                  );
+                })}
               </div>
-            )}
-
-            <ul className="premium-kv-list compact">
-              <li>
-                <span>Deep Work hoje</span>
-                <strong>{deepWorkSummary?.totalMinutes ?? 0} min</strong>
-              </li>
-              <li>
-                <span>Sessões concluídas</span>
-                <strong>{deepWorkSummary?.completedCount ?? 0}</strong>
-              </li>
-              <li>
-                <span>Interrupções</span>
-                <strong>{deepWorkSummary?.totalInterruptions ?? 0}</strong>
-              </li>
-            </ul>
-
-            {activeDeepWork ? (
-              <div className="deep-work-live">
-                <div className="deep-work-live-head">
-                  <span className="status-tag andamento">Em Deep Work: {activeDeepWork.task?.title}</span>
-                  <strong>{formatDuration(deepWorkElapsedSeconds)}</strong>
-                </div>
-                <div className="meter-track">
-                  <div style={{ width: `${deepWorkProgressPercent}%` }} />
-                </div>
-                <small>
-                  {deepWorkElapsedSeconds >= deepWorkTargetSeconds
-                    ? `Meta de foco (${activeDeepWork.targetMinutes} min) atingida.`
-                    : `Meta de foco: ${activeDeepWork.targetMinutes} min (referência).`}
-                </small>
-                {deepWorkElapsedSeconds < deepWorkTargetSeconds && (
-                  <small>Se a tarefa terminar antes, você pode concluir agora sem problema.</small>
-                )}
+              {top3DraftIds.length > 0 && (
                 <div className="inline-actions">
-                  <button
-                    type="button"
-                    className="success-button"
-                    disabled={busy}
-                    onClick={() => requestTaskCompletion(activeDeepWork.taskId)}
-                  >
-                    Concluir tarefa + encerrar
-                  </button>
-                  <button type="button" className="warning-button" disabled={busy} onClick={registerDeepWorkInterruption}>
-                    Interrupção
-                  </button>
-                  <button type="button" className="ghost-button" disabled={busy} onClick={() => stopDeepWork(false)}>
-                    Encerrar
-                  </button>
-                  <button type="button" className="text-button" disabled={busy} onClick={() => stopDeepWork(true)}>
-                    Quebrar foco
+                  <button type="button" disabled={busy} onClick={commitTop3Draft}>
+                    Confirmar plano
                   </button>
                 </div>
-              </div>
-            ) : (
-              <p className="premium-empty">Nenhuma sessão ativa no momento.</p>
-            )}
-          </PremiumCard>
-        </section>
-      )}
+              )}
+            </div>
+          )}
+          {topFocusTasks.length > 0 && (
+            <ul className="hoje-top3-list">
+              {topFocusTasks.map((task, index) => (
+                <li key={task.id} className={`hoje-top3-item ${task.status === 'feito' ? 'done' : ''}`}>
+                  <span className="hoje-top3-dot">{task.status === 'feito' ? '✓' : index + 1}</span>
+                  <span className="hoje-top3-label">{task.title}</span>
+                  {task.status !== 'feito' && (
+                    <div className="inline-actions hoje-top3-actions">
+                      <button type="button" className="ghost-button" disabled={busy} onClick={() => startDeepWork(task.id)}>
+                        Iniciar
+                      </button>
+                      <button type="button" className="ghost-button" disabled={busy} onClick={() => requestTaskCompletion(task.id)}>
+                        Concluir
+                      </button>
+                    </div>
+                  )}
+                  {briefing?.top3Meta.locked && index === 0 && (
+                    <button type="button" className="hoje-top3-adjust-link" disabled={busy} onClick={unlockTop3}>
+                      Ajustar
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!topFocusTasks.length && briefing?.top3Meta.locked && (
+            <p className="premium-empty">Sem prioridades configuradas. <button type="button" className="text-button" onClick={unlockTop3}>Configurar</button></p>
+          )}
+        </div>
 
-      {hojeSection === 'agenda' && (
-        <section className="premium-grid two-wide">
-          <PremiumCard
-            title={`Agenda ${formattedAgendaDate}`}
-            subtitle="arraste tarefas para blocos de tempo"
-            className="scheduler-card"
-          >
-            <SchedulerGrid
-              date={date}
-              items={items}
-              selectedItemId={selectedItemId}
-              onSelectItem={setSelectedItemId}
-              onItemDoubleClick={openBlockEditor}
-              onDropPayload={onDropPayload}
-              onItemDragStart={handleItemDragStart}
-            />
-          </PremiumCard>
+        {/* Max 2 focus alerts */}
+        {focusAlerts.slice(0, 2).map((alert, index) => (
+          <p key={`${index}-${alert}`} className="hoje-hero-alert">{alert}</p>
+        ))}
+
+        {/* Active deep work banner */}
+        {activeDeepWork && (
+          <div className="hoje-deep-work-banner">
+            <div className="hoje-deep-work-banner-head">
+              <span className="status-tag andamento">Deep Work ativo</span>
+              <span className="hoje-deep-work-task">{activeDeepWork.task?.title}</span>
+              <strong className="hoje-deep-work-timer">{formatDuration(deepWorkElapsedSeconds)}</strong>
+            </div>
+            <div className="score-hero-bar-track">
+              <div className="score-hero-bar-fill" style={{ width: `${deepWorkProgressPercent}%`, background: 'linear-gradient(90deg, #5bb98c, #5bb98c)' }} />
+            </div>
+            <div className="inline-actions" style={{ marginTop: 8 }}>
+              <button type="button" className="success-button" disabled={busy} onClick={() => requestTaskCompletion(activeDeepWork.taskId)}>
+                Concluir + encerrar
+              </button>
+              <button type="button" className="warning-button" disabled={busy} onClick={registerDeepWorkInterruption}>
+                Interrupção
+              </button>
+              <button type="button" className="ghost-button" disabled={busy} onClick={() => stopDeepWork(false)}>
+                Encerrar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main: Timeline + Pool */}
+      <section className="premium-grid two-wide">
+        <PremiumCard
+          title="Agenda"
+          subtitle={`${formattedAgendaDate} · arraste tarefas para blocos de tempo`}
+          className="scheduler-card"
+        >
+          <SchedulerGrid
+            date={date}
+            items={items}
+            selectedItemId={selectedItemId}
+            onSelectItem={setSelectedItemId}
+            onItemDoubleClick={openBlockEditor}
+            onDropPayload={onDropPayload}
+            onItemDragStart={handleItemDragStart}
+            startHour={7}
+            endHour={20}
+            commitmentBlocks={schedulerCommitmentBlocks}
+          />
+        </PremiumCard>
+
+        <div className="hoje-right-col">
+          {/* Commitments strip */}
+          {todayCommitments.length > 0 && (
+            <div className="hoje-commitments-strip">
+              {todayCommitments.map(c => (
+                <div key={c.id} className="hoje-commitment-chip">
+                  <span className="hoje-commitment-chip-dot" />
+                  <span className="hoje-commitment-chip-title">{c.title}</span>
+                  {c.startTime && <span className="hoje-commitment-chip-time">{c.startTime}</span>}
+                </div>
+              ))}
+            </div>
+          )}
 
           <PremiumCard title="Pool de execução" subtitle={`${taskPool.length} tarefas disponíveis`}>
             <div className="task-list-filters pool-filter-row">
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar tarefa" />
-              <select
-                value={horizonFilter}
-                onChange={(event) => setHorizonFilter(event.target.value as 'all' | TaskHorizon)}
-              >
+              <select value={horizonFilter} onChange={(event) => setHorizonFilter(event.target.value as 'all' | TaskHorizon)}>
                 <option value="all">Todos horizontes</option>
                 <option value="active">Ativo</option>
                 <option value="future">Futuro</option>
               </select>
-              <select
-                value={priorityFilter}
-                onChange={(event) => setPriorityFilter(event.target.value as 'all' | '4' | '5')}
-              >
+              <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as 'all' | '4' | '5')}>
                 <option value="all">Todas prioridades</option>
-                <option value="4">Prioridade 4+</option>
-                <option value="5">Prioridade 5</option>
+                <option value="4">P4+</option>
+                <option value="5">P5</option>
               </select>
             </div>
 
             {taskPool.length === 0 ? (
               <EmptyState
-                title="Pool vazio para os filtros atuais"
+                title="Pool vazio"
                 description="Remova filtros ou crie uma tarefa para abastecer sua execução de hoje."
                 actionLabel="Limpar filtros"
-                onAction={() => {
-                  setSearch('');
-                  setHorizonFilter('all');
-                  setPriorityFilter('all');
-                }}
+                onAction={() => { setSearch(''); setHorizonFilter('all'); setPriorityFilter('all'); }}
               />
             ) : (
               <ul className="premium-list dense draggable-list">
@@ -1375,8 +1281,8 @@ export function HojePage() {
                     <div>
                       <strong>{task.title}</strong>
                       <small>
-                        tipo {(task.taskType ?? 'b').toUpperCase()} • prioridade {task.priority} •{' '}
-                        {horizonLabel(task.horizon)}
+                        <span className="hoje-pool-type-badge">{(task.taskType ?? 'b').toUpperCase()}</span>
+                        {task.estimatedMinutes ? ` · ${task.estimatedMinutes}min` : ''}
                       </small>
                     </div>
                     <button
@@ -1392,34 +1298,57 @@ export function HojePage() {
               </ul>
             )}
 
-            <hr className="surface-divider" />
+            {capacityInsight && capacityInsight.mode !== 'balanced' && (
+              <div className="hoje-capacity-callout">
+                <div className="hoje-capacity-callout-head">
+                  <span>
+                    {capacityInsight.mode === 'overload'
+                      ? `Sobrecarregado em ${Math.abs(capacityInsight.deltaMinutes)} min`
+                      : `${capacityInsight.deltaMinutes} min de folga disponível`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={busy || capacityInsight.suggestions.length === 0}
+                  onClick={applyCapacitySuggestion}
+                >
+                  {capacityInsight.mode === 'overload' ? 'Cortar plano' : 'Puxar sugestões'}
+                </button>
+              </div>
+            )}
 
-            <div className="section-title">
-              <h4>Concluídas hoje</h4>
-              <small>{doneTasks.length}</small>
+            <div className="hoje-pool-stats">
+              <span>Deep Work {deepWorkSummary?.totalMinutes ?? 0}min</span>
+              <span>·</span>
+              <span>{deepWorkSummary?.completedCount ?? 0} sessões</span>
+              <span>·</span>
+              <span>{deepWorkSummary?.totalInterruptions ?? 0} interrupções</span>
             </div>
 
-            {doneTasks.length === 0 ? (
-              <EmptyState
-                title="Ainda sem concluídas hoje"
-                description="Conclua itens no pool para alimentar seu ritmo diário e score."
-              />
-            ) : (
-              <ul className="premium-list dense">
-                {doneTasks.map((task) => (
-                  <li key={task.id}>
-                    <div>
-                      <strong>{task.title}</strong>
-                      <small>prioridade {task.priority}</small>
-                    </div>
-                    <span className="status-tag feito">feito</span>
-                  </li>
-                ))}
-              </ul>
+            {doneTasks.length > 0 && (
+              <>
+                <hr className="surface-divider" />
+                <div className="section-title">
+                  <h4>Concluídas hoje</h4>
+                  <small>{doneTasks.length}</small>
+                </div>
+                <ul className="premium-list dense">
+                  {doneTasks.map((task) => (
+                    <li key={task.id}>
+                      <div>
+                        <strong>{task.title}</strong>
+                        <small>P{task.priority}</small>
+                      </div>
+                      <span className="status-tag feito">feito</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </PremiumCard>
-        </section>
-      )}
+        </div>
+      </section>
 
       <Modal open={createTaskOpen} onClose={() => setCreateTaskOpen(false)} title="Nova tarefa" subtitle="Criar no contexto atual">
         <form onSubmit={createTask} className="modal-form">

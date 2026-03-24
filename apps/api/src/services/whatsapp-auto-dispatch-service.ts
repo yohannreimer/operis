@@ -5,12 +5,17 @@ import { queueNames } from '@execution-os/shared';
 import { env } from '../config.js';
 import { publishEvent } from '../infra/rabbit.js';
 import { WhatsappCommandService } from './whatsapp-command-service.js';
+import { WhatsappBriefingService, DayHumor } from './whatsapp-briefing-service.js';
+import { WhatsappProactivityEngine } from './whatsapp-proactivity-engine.js';
+import { PrismaClient } from '@prisma/client';
+import { HabitService } from './habit-service.js';
 
 type LocalClock = {
   dateKey: string;
   hour: number;
   minute: number;
   totalMinutes: number;
+  dayOfWeek: number;
 };
 
 function parseTimeToken(value: string, fallbackHour: number, fallbackMinute: number) {
@@ -47,11 +52,15 @@ function formatNowToClock(now: Date, timezone: string): LocalClock {
   const hour = Number(byType.get('hour') ?? '0');
   const minute = Number(byType.get('minute') ?? '0');
 
+  // dayOfWeek from the actual date in timezone
+  const dateInTz = new Date(`${year}-${month}-${day}T12:00:00.000Z`);
+
   return {
     dateKey: `${year}-${month}-${day}`,
     hour,
     minute,
-    totalMinutes: hour * 60 + minute
+    totalMinutes: hour * 60 + minute,
+    dayOfWeek: dateInTz.getDay()
   };
 }
 
@@ -65,10 +74,34 @@ export class WhatsappAutoDispatchService {
   private readonly upcomingEveryMinutes = Math.max(5, Math.min(120, env.WHATSAPP_UPCOMING_EVERY_MINUTES));
   private readonly upcomingWithinMinutes = Math.max(5, Math.min(120, env.WHATSAPP_UPCOMING_WITHIN_MINUTES));
 
+  // Humor do dia declarado pelo usuário no briefing
+  private currentHumor: DayHumor | null = null;
+  private humorDateKey = '';
+
+  private readonly briefingService: WhatsappBriefingService;
+  private readonly proactivityEngine: WhatsappProactivityEngine;
+
   constructor(
     private readonly logger: FastifyBaseLogger,
-    private readonly commandService: WhatsappCommandService
-  ) {}
+    private readonly commandService: WhatsappCommandService,
+    private readonly prisma: PrismaClient
+  ) {
+    this.briefingService = new WhatsappBriefingService(prisma);
+    this.proactivityEngine = new WhatsappProactivityEngine(prisma);
+  }
+
+  /**
+   * Called from conversation service when user replies to humor question.
+   */
+  setHumor(humor: DayHumor, dateKey: string) {
+    this.currentHumor = humor;
+    this.humorDateKey = dateKey;
+    this.logger.info({ humor, dateKey }, 'Humor do usuário atualizado.');
+  }
+
+  private getHumorForDate(dateKey: string): DayHumor | null {
+    return this.humorDateKey === dateKey ? this.currentHumor : null;
+  }
 
   start() {
     if (!env.WHATSAPP_AUTO_DISPATCH_ENABLED) {
@@ -108,10 +141,7 @@ export class WhatsappAutoDispatchService {
   private activeWindowMinutes() {
     const start = this.activeWindowStart.hour * 60 + this.activeWindowStart.minute;
     const end = this.activeWindowEnd.hour * 60 + this.activeWindowEnd.minute;
-    return {
-      start,
-      end
-    };
+    return { start, end };
   }
 
   private isInsideActiveWindow(clock: LocalClock) {
@@ -153,74 +183,92 @@ export class WhatsappAutoDispatchService {
       const morningMinutes = this.morningTime.hour * 60 + this.morningTime.minute;
       const morningKey = `morning:${clock.dateKey}`;
 
+      // ── Morning briefing ───────────────────────────────────────────────────
       if (clock.totalMinutes >= morningMinutes && !this.wasSent(morningKey)) {
         const messages: string[] = [];
-        const morning = await this.commandService.buildMorningBriefing({
-          date: clock.dateKey
-        });
-        messages.push(morning);
 
+        // Try intelligent briefing first, fallback to legacy
+        try {
+          const humor = this.getHumorForDate(clock.dateKey);
+          const intelligentBriefing = await this.briefingService.buildIntelligentBriefing(
+            clock.dateKey,
+            humor ?? undefined
+          );
+          messages.push(intelligentBriefing);
+        } catch {
+          // Fallback to legacy briefing
+          const morning = await this.commandService.buildMorningBriefing({
+            date: clock.dateKey
+          });
+          messages.push(morning);
+        }
+
+        // Add due/followup digests
         const dueDigest = await this.commandService.buildDueReminderDigest({
           date: clock.dateKey
         });
-        if (dueDigest) {
-          messages.push(dueDigest);
-        }
+        if (dueDigest) messages.push(dueDigest);
 
         const followupDigest = await this.commandService.buildWaitingFollowupDigest({
           date: clock.dateKey
         });
-        if (followupDigest) {
-          messages.push(followupDigest);
-        }
+        if (followupDigest) messages.push(followupDigest);
 
         for (const message of messages) {
           await this.enqueueMessage(message);
         }
 
         this.rememberSent(morningKey);
-        this.logger.info(
-          {
-            date: clock.dateKey,
-            sent: messages.length
-          },
-          'WhatsApp auto-dispatch manhã enviado.'
-        );
+        this.logger.info({ date: clock.dateKey, sent: messages.length }, 'WhatsApp briefing matinal enviado.');
       }
 
       if (!this.isInsideActiveWindow(clock)) {
         return;
       }
 
+      // ── Upcoming block digest (existing behavior) ──────────────────────────
       const upcomingBucket = Math.floor(clock.totalMinutes / this.upcomingEveryMinutes);
       const upcomingKey = `upcoming:${clock.dateKey}:${upcomingBucket}`;
-      if (this.wasSent(upcomingKey)) {
-        return;
+      if (!this.wasSent(upcomingKey)) {
+        const upcomingDigest = await this.commandService.buildUpcomingBlockDigest({
+          date: clock.dateKey,
+          withinMinutes: this.upcomingWithinMinutes
+        });
+
+        if (upcomingDigest) {
+          await this.enqueueMessage(upcomingDigest);
+          this.logger.info({ date: clock.dateKey, bucket: upcomingBucket }, 'WhatsApp upcoming block enviado.');
+        }
+
+        this.rememberSent(upcomingKey);
       }
 
-      const upcomingDigest = await this.commandService.buildUpcomingBlockDigest({
-        date: clock.dateKey,
-        withinMinutes: this.upcomingWithinMinutes
-      });
+      // ── Job noturno 23h — XP de vícios (dias limpos) ──────────────────────
+      const viceXpKey = `vice_xp:${clock.dateKey}`;
+      if (clock.hour === 23 && !this.wasSent(viceXpKey)) {
+        try {
+          const habitService = new HabitService(this.prisma);
+          await habitService.processViceCleanDayXP(clock.dateKey);
+          this.rememberSent(viceXpKey);
+          this.logger.info({ date: clock.dateKey }, 'XP de vícios (dias limpos) processado.');
+        } catch (err) {
+          this.logger.warn({ err }, 'Falha ao processar XP de vícios.');
+        }
+      }
 
-      if (upcomingDigest) {
-        await this.enqueueMessage(upcomingDigest);
+      // ── Proactivity engine ─────────────────────────────────────────────────
+      const humor = this.getHumorForDate(clock.dateKey);
+      const proactiveMessage = await this.proactivityEngine.evaluate(clock, humor);
+
+      if (proactiveMessage) {
+        await this.enqueueMessage(proactiveMessage.message);
         this.logger.info(
-          {
-            date: clock.dateKey,
-            bucket: upcomingBucket
-          },
-          'WhatsApp auto-dispatch de janela ativa enviado.'
+          { triggerId: proactiveMessage.triggerId, date: clock.dateKey },
+          'WhatsApp proactive trigger disparado.'
         );
       }
-      this.rememberSent(upcomingKey);
     } catch (error) {
-      this.logger.error(
-        {
-          error
-        },
-        'Falha no tick de auto-dispatch WhatsApp.'
-      );
+      this.logger.error({ error }, 'Falha no tick de auto-dispatch WhatsApp.');
     }
   }
 }

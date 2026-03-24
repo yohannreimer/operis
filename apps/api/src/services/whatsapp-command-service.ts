@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, RecurrenceDay } from '@prisma/client';
 
 import { DayPlanService } from './day-plan-service.js';
 import { DeepWorkService } from './deep-work-service.js';
@@ -167,6 +167,65 @@ export class WhatsappCommandService {
     return Array.from(new Set(resolvedIds));
   }
 
+  // ─── Commitments ────────────────────────────────────────────────────────────
+
+  private dayOfWeekPt(date: Date): RecurrenceDay {
+    const days: RecurrenceDay[] = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+    return days[date.getDay()];
+  }
+
+  private dateKeyToDateTime(dateKey: string): Date {
+    return new Date(`${dateKey}T00:00:00.000Z`);
+  }
+
+  async buildCommitmentsForDate(dateKey: string): Promise<string> {
+    const date = dateAtLocalMidnightFromKey(dateKey);
+    if (!date) return ''; // invalid date
+
+    const dowPt = this.dayOfWeekPt(date);
+    const filterDate = this.dateKeyToDateTime(dateKey);
+
+    // Get fixo commitments that recur on this weekday
+    const fixos = await this.prisma.commitment.findMany({
+      where: {
+        type: 'fixo',
+        status: 'ativo',
+        recurrenceDays: { has: dowPt }
+      },
+      orderBy: { startTime: 'asc' }
+    });
+
+    // Get variavel commitments for this specific date
+    const variavels = await this.prisma.commitment.findMany({
+      where: {
+        type: 'variavel',
+        status: 'ativo',
+        date: filterDate
+      },
+      orderBy: { startTime: 'asc' }
+    });
+
+    // Collect exception IDs (cancelled this day)
+    const allIds = [...fixos.map(c => c.id), ...variavels.map(c => c.id)];
+    if (!allIds.length) return '';
+
+    const exceptions = await this.prisma.commitmentException.findMany({
+      where: { commitmentId: { in: allIds }, date: filterDate }
+    });
+    const cancelledIds = new Set(exceptions.filter(e => e.action === 'cancelled').map(e => e.commitmentId));
+
+    const active = [...fixos, ...variavels].filter(c => !cancelledIds.has(c.id));
+    if (!active.length) return '';
+
+    const lines = active.map(c => {
+      const time = c.startTime ? ` às ${c.startTime}` : '';
+      const duration = c.durationMin ? ` (${c.durationMin} min)` : '';
+      return `• ${c.title}${time}${duration}`;
+    });
+
+    return ['📅 *Compromissos de hoje:*', ...lines].join('\n');
+  }
+
   async buildMorningBriefing(options?: ReminderDigestOptions) {
     const date = options?.date ?? this.todayDate();
     const briefing = await this.executionInsightsService.getBriefing({
@@ -174,29 +233,39 @@ export class WhatsappCommandService {
       workspaceId: options?.workspaceId
     });
     const top = briefing.top3.slice(0, 3);
+    const commitmentsBlock = await this.buildCommitmentsForDate(date);
 
     if (!top.length) {
-      return `Bom dia. Não há tarefas A elegíveis para foco hoje (${date}).\nEnvie "tarefas" para revisar e organizar o dia.`;
+      const baseMsg = `Bom dia. Não há tarefas A elegíveis para foco hoje (${date}).\nEnvie "tarefas" para revisar e organizar o dia.`;
+      return commitmentsBlock ? `${baseMsg}\n\n${commitmentsBlock}` : baseMsg;
     }
 
     const topText = this.formatTopList(top, false);
     const commitmentLine = briefing.top3Meta.locked
-      ? '✅ *Compromisso:* confirmado'
-      : '⚠️ *Compromisso:* ainda não confirmado';
+      ? '✅ *Foco:* confirmado'
+      : '⚠️ *Foco:* ainda não confirmado';
     const capacityLine = briefing.capacity.isUnrealistic
       ? `🚨 *Planejamento irreal:* +${briefing.capacity.overloadMinutes} min acima da capacidade`
       : `📊 *Capacidade:* ${briefing.capacity.plannedTaskMinutes}/${briefing.capacity.availableMinutes} min planejados`;
     const dateLabel = this.formatDateBrFromKey(date);
 
-    return [
+    const lines = [
       '🌤️ *Bom dia!*',
       `*Foco do dia* (${dateLabel})`,
       topText,
       commitmentLine,
-      capacityLine,
-      '',
-      'Se quiser, responda com *1* para abrir o painel de foco.'
-    ].join('\n');
+      capacityLine
+    ];
+
+    if (commitmentsBlock) {
+      lines.push('');
+      lines.push(commitmentsBlock);
+    }
+
+    lines.push('');
+    lines.push('Se quiser, responda com *1* para abrir o painel de foco.');
+
+    return lines.join('\n');
   }
 
   async buildDueReminderDigest(options?: DueReminderOptions) {
@@ -701,5 +770,161 @@ export class WhatsappCommandService {
       reply:
         'Comando não reconhecido. Use: ajuda, foco, foco confirmar, foco trocar <slot> <id>, tarefas, abertas, backlog, projetos, deep iniciar <id>, deep parar, deep concluir, alocar <id> HH:mm, fiz <id>, adiar <id>, reagendar <id> HH:mm, prazos, followups, inbox, inbox: <texto>.'
     };
+  }
+
+  // ─── LLM support methods ────────────────────────────────────────────────────
+
+  async getBriefingForLLM(dateKey: string): Promise<{ top3Tasks: string[]; todayCommitments: string[] }> {
+    const briefing = await this.executionInsightsService.getBriefing({ date: dateKey });
+    const top3Tasks = briefing.top3.slice(0, 3).map((t) => t.title);
+
+    // Get today's commitments as string descriptions
+    const date = dateAtLocalMidnightFromKey(dateKey);
+    if (!date) return { top3Tasks, todayCommitments: [] };
+
+    const dowPt = this.dayOfWeekPt(date);
+    const filterDate = this.dateKeyToDateTime(dateKey);
+
+    const [fixos, variavels] = await Promise.all([
+      this.prisma.commitment.findMany({
+        where: { type: 'fixo', status: 'ativo', recurrenceDays: { has: dowPt } },
+        orderBy: { startTime: 'asc' }
+      }),
+      this.prisma.commitment.findMany({
+        where: { type: 'variavel', status: 'ativo', date: filterDate },
+        orderBy: { startTime: 'asc' }
+      })
+    ]);
+
+    const allIds = [...fixos, ...variavels].map(c => c.id);
+    const exceptions = allIds.length
+      ? await this.prisma.commitmentException.findMany({
+          where: { commitmentId: { in: allIds }, date: filterDate }
+        })
+      : [];
+
+    const cancelledIds = new Set(exceptions.filter(e => e.action === 'cancelled').map(e => e.commitmentId));
+    const active = [...fixos, ...variavels].filter(c => !cancelledIds.has(c.id));
+
+    const todayCommitments = active.map(c => {
+      const time = c.startTime ? ` ${c.startTime}` : '';
+      return `${c.title}${time}`;
+    });
+
+    return { top3Tasks, todayCommitments };
+  }
+
+  async createCommitmentFromIntent(intent: {
+    title: string;
+    type: 'fixo' | 'variavel';
+    recurrenceDays?: string[];
+    date?: string;
+    startTime?: string;
+    durationMin?: number;
+  }) {
+    const validDays: RecurrenceDay[] = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+    const recurrenceDays = (intent.recurrenceDays ?? []).filter(
+      (d): d is RecurrenceDay => validDays.includes(d as RecurrenceDay)
+    );
+
+    return this.prisma.commitment.create({
+      data: {
+        title: intent.title,
+        type: intent.type,
+        status: 'ativo',
+        recurrenceDays: intent.type === 'fixo' ? recurrenceDays : [],
+        date: intent.type === 'variavel' && intent.date
+          ? this.dateKeyToDateTime(intent.date)
+          : null,
+        startTime: intent.startTime ?? null,
+        durationMin: intent.durationMin ?? null
+      }
+    });
+  }
+
+  async cancelCommitmentFromIntent(intent: { titleHint: string; date?: string }): Promise<string> {
+    const commitment = await this.prisma.commitment.findFirst({
+      where: {
+        title: { contains: intent.titleHint, mode: 'insensitive' },
+        status: 'ativo'
+      }
+    });
+
+    if (!commitment) {
+      throw new Error(`Compromisso "${intent.titleHint}" não encontrado.`);
+    }
+
+    const dateKey = intent.date ?? this.todayDate();
+    const filterDate = this.dateKeyToDateTime(dateKey);
+
+    if (commitment.type === 'fixo') {
+      // Create a cancellation exception for this specific date occurrence
+      await this.prisma.commitmentException.upsert({
+        where: { commitmentId_date: { commitmentId: commitment.id, date: filterDate } },
+        create: { commitmentId: commitment.id, date: filterDate, action: 'cancelled' },
+        update: { action: 'cancelled' }
+      });
+      return `✅ *${commitment.title}* cancelado para ${dateKey}.`;
+    } else {
+      // For variavel, archive (encerrado) the commitment
+      await this.prisma.commitment.update({
+        where: { id: commitment.id },
+        data: { status: 'encerrado' }
+      });
+      return `✅ *${commitment.title}* cancelado.`;
+    }
+  }
+
+  async rescheduleCommitmentFromIntent(intent: { titleHint: string; newDate?: string; newTime?: string }): Promise<string> {
+    const commitment = await this.prisma.commitment.findFirst({
+      where: {
+        title: { contains: intent.titleHint, mode: 'insensitive' },
+        status: 'ativo'
+      }
+    });
+
+    if (!commitment) {
+      throw new Error(`Compromisso "${intent.titleHint}" não encontrado.`);
+    }
+
+    if (!intent.newDate && !intent.newTime) {
+      throw new Error('Informe a nova data ou horário para remarcar.');
+    }
+
+    if (commitment.type === 'fixo') {
+      // For fixo, create a rescheduled exception for today's occurrence
+      const todayKey = this.todayDate();
+      const todayDate = this.dateKeyToDateTime(todayKey);
+      await this.prisma.commitmentException.upsert({
+        where: { commitmentId_date: { commitmentId: commitment.id, date: todayDate } },
+        create: {
+          commitmentId: commitment.id,
+          date: todayDate,
+          action: 'rescheduled',
+          newDate: intent.newDate ? this.dateKeyToDateTime(intent.newDate) : null,
+          newTime: intent.newTime ?? null
+        },
+        update: {
+          action: 'rescheduled',
+          newDate: intent.newDate ? this.dateKeyToDateTime(intent.newDate) : null,
+          newTime: intent.newTime ?? null
+        }
+      });
+    } else {
+      // For variavel, update the commitment directly
+      await this.prisma.commitment.update({
+        where: { id: commitment.id },
+        data: {
+          date: intent.newDate ? this.dateKeyToDateTime(intent.newDate) : undefined,
+          startTime: intent.newTime ?? undefined
+        }
+      });
+    }
+
+    const details: string[] = [];
+    if (intent.newDate) details.push(`data: ${intent.newDate}`);
+    if (intent.newTime) details.push(`horário: ${intent.newTime}`);
+
+    return `✅ *${commitment.title}* remarcado — ${details.join(', ')}.`;
   }
 }

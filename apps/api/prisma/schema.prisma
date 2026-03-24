@@ -44,6 +44,20 @@ enum ProjectMethodology {
   launch
   discovery
   growth
+  entrega
+  exploracao
+  pipeline
+  captacao
+  campanha
+  processo
+  okr
+  decisao
+  mentoria
+  autoridade
+  cenario
+  runway
+  sistema_receita
+  funil
 }
 
 enum ProjectMetricKind {
@@ -225,6 +239,7 @@ model Project {
   actionStatement   String?       @map("action_statement")
   methodologyExtraOne String?     @map("methodology_extra_one")
   methodologyExtraTwo String?     @map("methodology_extra_two")
+  methodologyData   Json?         @map("methodology_data")
   timeHorizonEnd    DateTime?     @map("time_horizon_end")
   resultStartValue  Float?        @map("result_start_value")
   resultCurrentValue Float?       @map("result_current_value")
@@ -394,6 +409,8 @@ model Note {
   project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
   task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
   revisions NoteRevision[]
+  diagram   Diagram?
+  mindMap   MindMap?
 
   @@index([folderId, updatedAt])
   @@index([type, updatedAt])
@@ -619,6 +636,78 @@ model StrategicDecisionEvent {
   @@map("strategic_decision_events")
 }
 
+enum CommitmentType {
+  fixo
+  variavel
+}
+
+enum CommitmentStatus {
+  ativo
+  pausado
+  encerrado
+}
+
+enum RecurrenceDay {
+  seg
+  ter
+  qua
+  qui
+  sex
+  sab
+  dom
+}
+
+model Commitment {
+  id          String           @id @default(uuid())
+  workspaceId String?          @map("workspace_id")
+  projectId   String?          @map("project_id")
+  title       String
+  description String?
+  type        CommitmentType   @default(variavel)
+  status      CommitmentStatus @default(ativo)
+
+  // Horário
+  startTime   String?  @map("start_time")   // HH:mm
+  durationMin Int?     @map("duration_min")  // minutos
+
+  // Recorrência — só type=fixo
+  recurrenceDays RecurrenceDay[] @map("recurrence_days")
+
+  // Data de referência — variável ou início da recorrência
+  date        DateTime?        @db.Date
+
+  // Prazo de fim da recorrência (opcional)
+  recurrenceEnd DateTime?      @db.Date @map("recurrence_end")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  exceptions CommitmentException[]
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([type, status])
+  @@index([date])
+  @@map("commitments")
+}
+
+model CommitmentException {
+  id           String    @id @default(uuid())
+  commitmentId String    @map("commitment_id")
+  date         DateTime  @db.Date   // qual ocorrência foi afetada
+  action       String               // 'cancelled' | 'rescheduled'
+  newDate      DateTime? @db.Date   @map("new_date")
+  newTime      String?              @map("new_time") // HH:mm
+  note         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  commitment Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+
+  @@unique([commitmentId, date])
+  @@index([commitmentId])
+  @@map("commitment_exceptions")
+}
+
 model GamificationState {
   id            String   @id @default(uuid())
   currentScore  Int      @default(0) @map("current_score")
@@ -628,4 +717,108 @@ model GamificationState {
   lastUpdate    DateTime @default(now()) @map("last_update")
 
   @@map("gamification_state")
+}
+
+enum HabitType {
+  binary
+  quantitative
+  vice
+}
+
+enum HabitLifeArea {
+  corpo
+  mente
+  trabalho
+  relacoes
+  financas
+  crescimento
+}
+
+enum HabitFrequency {
+  daily
+  weekly
+  monthly
+  specific_days
+}
+
+enum HabitStatus {
+  ativo
+  pausado
+  arquivado
+}
+
+model Habit {
+  id              String         @id @default(uuid())
+  title           String
+  lifeArea        HabitLifeArea
+  type            HabitType
+  icon            String?
+  color           String?
+  frequencyType   HabitFrequency
+  frequencyTarget Int            @default(1)
+  specificDays    RecurrenceDay[]
+  unit            String?
+  dailyTarget     Float?
+  xpPerCompletion Int            @default(10)
+  status          HabitStatus    @default(ativo)
+  sortOrder       Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  logs            HabitLog[]
+  xpEvents        HabitXPEvent[]
+  @@map("habits")
+}
+
+model HabitLog {
+  id        String   @id @default(uuid())
+  habitId   String
+  date      String
+  value     Float    @default(1)
+  note      String?
+  createdAt DateTime @default(now())
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  @@unique([habitId, date])
+  @@index([habitId, date])
+  @@map("habit_logs")
+}
+
+model HabitXPEvent {
+  id        String        @id @default(uuid())
+  habitId   String
+  lifeArea  HabitLifeArea
+  xp        Int
+  reason    String
+  date      String
+  notified  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  habit     Habit         @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  @@index([habitId])
+  @@index([lifeArea])
+  @@index([date])
+  @@index([notified])
+  @@map("habit_xp_events")
+}
+
+model Diagram {
+  id        String   @id @default(uuid())
+  noteId    String   @unique @map("note_id")
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  title     String?
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("diagrams")
+}
+
+model MindMap {
+  id        String   @id @default(uuid())
+  noteId    String   @unique @map("note_id")
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  title     String?
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("mind_maps")
 }
