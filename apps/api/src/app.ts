@@ -14,6 +14,9 @@ import { registerRecurringBlockRoutes } from './routes/recurring-blocks.js';
 import { registerDeepWorkRoutes } from './routes/deep-work.js';
 import { registerExecutionRoutes } from './routes/execution.js';
 import { registerStrategyRoutes } from './routes/strategy.js';
+import { commitmentsRoutes } from './routes/commitments.js';
+import { registerHabitRoutes } from './routes/habits.js';
+import { registerCanvasRoutes } from './routes/canvas.js';
 import { TaskService } from './services/task-service.js';
 import { DayPlanService } from './services/day-plan-service.js';
 import { GamificationService } from './services/gamification-service.js';
@@ -23,6 +26,7 @@ import { ExecutionInsightsService } from './services/execution-insights-service.
 import { StrategyService } from './services/strategy-service.js';
 import { WhatsappConversationService } from './services/whatsapp-conversation-service.js';
 import { WhatsappAutoDispatchService } from './services/whatsapp-auto-dispatch-service.js';
+import { WhatsappLLMService } from './services/whatsapp-llm-service.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -47,14 +51,22 @@ export async function buildApp() {
     deepWorkService,
     dayPlanService
   );
+  const whatsappLLMService = new WhatsappLLMService();
   const whatsappConversationService = new WhatsappConversationService(
     prisma,
-    whatsappCommandService
+    whatsappCommandService,
+    whatsappLLMService
   );
   const whatsappAutoDispatchService = new WhatsappAutoDispatchService(
     app.log,
-    whatsappCommandService
+    whatsappCommandService,
+    prisma
   );
+
+  // Wire humor declarations from conversation → auto-dispatch for briefing calibration
+  whatsappConversationService.setOnHumorDeclared((humor, dateKey) => {
+    whatsappAutoDispatchService.setHumor(humor, dateKey);
+  });
 
   app.get('/health', async () => ({ ok: true }));
 
@@ -70,6 +82,9 @@ export async function buildApp() {
   registerNoteRoutes(app, prisma);
   registerGamificationRoutes(app, gamificationService);
   registerWebhookRoutes(app, whatsappCommandService, whatsappConversationService, prisma);
+  app.register(commitmentsRoutes, { prisma });
+  registerHabitRoutes(app, prisma);
+  registerCanvasRoutes(app, prisma);
 
   whatsappAutoDispatchService.start();
   app.addHook('onClose', async () => {
