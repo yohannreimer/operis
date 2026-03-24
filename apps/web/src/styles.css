@@ -14221,3 +14221,221 @@ h4 {
   opacity: 0.5;
 }
 
+
+/* ═══════════════════════════════════════════
+   CANVAS — Diagramas e Mapas Mentais
+   ═══════════════════════════════════════════ */
+
+/* Mode toggle */
+.canvas-mode-toggle {
+  display: flex;
+  gap: 2px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 8px;
+}
+.canvas-mode-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.canvas-mode-btn.active {
+  background: rgba(249,115,22,0.12);
+  color: var(--accent, #f97316);
+  box-shadow: 0 0 0 1px rgba(249,115,22,0.12);
+}
+.canvas-mode-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.canvas-mode-btn:hover:not(.active):not(:disabled) { color: var(--text); }
+
+/* Canvas area */
+.canvas-area {
+  height: calc(100vh - 220px);
+  min-height: 400px;
+  position: relative;
+}
+
+/* Empty state */
+.canvas-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 100%;
+  text-align: center;
+}
+.canvas-empty-icon { font-size: 2.5rem; opacity: 0.3; }
+.canvas-empty-state p { color: var(--text-muted); font-size: 0.9rem; margin: 0; }
+.canvas-empty-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+/* Loading / error */
+.canvas-loading, .canvas-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Diagram canvas wrapper */
+.diagram-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Toolbar lateral */
+.diagram-toolbar {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: var(--shadow-md);
+}
+.diagram-toolbar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+  padding: 0;
+}
+.diagram-toolbar-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); color: var(--text); }
+.diagram-toolbar-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.diagram-toolbar-btn.loading { animation: pulse 1s infinite; }
+
+/* Node menus */
+.diagram-node-menu,
+.diagram-templates-menu,
+.diagram-overflow-menu {
+  position: absolute;
+  left: 62px;
+  top: 12px;
+  z-index: 20;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  min-width: 180px;
+  box-shadow: var(--shadow-md);
+}
+.diagram-node-menu-group {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 6px 8px 2px;
+  opacity: 0.7;
+}
+.diagram-node-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.diagram-node-menu-item:hover { background: rgba(255,255,255,0.07); }
+.diagram-node-menu-item--danger:hover { background: rgba(248,113,113,0.1); color: #f87171; }
+
+/* Delete confirm */
+.diagram-delete-confirm {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-elevated);
+  border: 1px solid rgba(248,113,113,0.3);
+  border-radius: 10px;
+  padding: 16px 20px;
+  z-index: 30;
+  min-width: 280px;
+  box-shadow: var(--shadow-md);
+}
+.diagram-delete-confirm p { margin: 0 0 12px; font-size: 0.88rem; color: var(--text); }
+.diagram-delete-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.diagram-delete-btn {
+  background: rgba(248,113,113,0.15);
+  color: #f87171;
+  border: 1px solid rgba(248,113,113,0.3);
+  box-shadow: none;
+  padding: 7px 14px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.diagram-delete-btn:hover { background: rgba(248,113,113,0.25); }
+
+/* ── React Flow node styles ─────────────────────────────── */
+.rf-node {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 500;
+  min-width: 100px;
+  text-align: center;
+  cursor: grab;
+}
+.rf-node--start { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.4); border-radius: 999px; color: #4ade80; }
+.rf-node--end { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); border-radius: 999px; color: #f87171; }
+.rf-node--decision { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.35); }
+.rf-node-diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); background: rgba(249,115,22,0.15); padding: 14px 20px; }
+.rf-node--process { border-left: 3px solid #6366f1; background: rgba(99,102,241,0.08); }
+.rf-node--trigger { border: 2px dashed var(--accent, #f97316); background: rgba(249,115,22,0.06); }
+.rf-node--delay { background: var(--surface-elevated); gap: 6px; }
+.rf-node--parallel { position: relative; }
+.rf-parallel-bar { position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 8px 8px 0 0; }
+.rf-node--checkpoint { background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.3); color: #34d399; }
+.rf-node--warning { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.35); color: #fbbf24; }
+.rf-node--person { display: flex; align-items: center; gap: 8px; }
+.rf-person-avatar { width: 28px; height: 28px; border-radius: 50%; background: rgba(99,102,241,0.25); color: #a5b4fc; font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.rf-node--system { clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); background: rgba(6,182,212,0.08); border-color: rgba(6,182,212,0.3); }
+.rf-node--group { background: rgba(255,255,255,0.02); border: 1.5px dashed rgba(255,255,255,0.12); min-width: 200px; min-height: 120px; border-radius: 12px; }
+.rf-group-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.rf-node--database { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.rf-node--metric .rf-metric-value { font-size: 1.4rem; font-weight: 700; color: var(--accent, #f97316); }
+.rf-node--annotation { background: rgba(251,191,36,0.08); border: 1.5px dashed rgba(251,191,36,0.3); color: #fbbf24; font-style: italic; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }

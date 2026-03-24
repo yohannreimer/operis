@@ -33,6 +33,7 @@ import {
 
 import {
   api,
+  DiagramData,
   Note,
   NoteFolder,
   NoteRevision,
@@ -43,6 +44,7 @@ import {
   Workspace
 } from '../api';
 import { EmptyState, PremiumCard, SkeletonBlock } from '../components/premium-ui';
+import { DiagramCanvas } from '../components/diagram-canvas';
 
 type FolderScope = 'all' | 'unfiled' | string;
 type FolderModalMode = 'create' | 'rename';
@@ -962,6 +964,13 @@ export function NotasPage() {
   const [clipboardFeedback, setClipboardFeedback] = useState<'idle' | 'copy' | 'whatsapp'>('idle');
   const autoSaveTimerRef = useRef<number | null>(null);
   const clipboardFeedbackTimerRef = useRef<number | null>(null);
+
+  // Canvas mode
+  type CanvasMode = 'text' | 'diagram' | 'mindmap';
+  const [canvasMode, setCanvasMode] = useState<CanvasMode>('text');
+  const [diagramState, setDiagramState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
+  const [diagramData, setDiagramData] = useState<DiagramData | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const contentPlain = useMemo(() => extractPlainText(content), [content]);
 
@@ -2954,6 +2963,88 @@ export function NotasPage() {
     await moveNoteToFolder(dataId, targetFolderId);
   }
 
+  // ── Canvas handlers ────────────────────────────────────────────────────
+
+  async function loadDiagram(noteId: string) {
+    if (diagramState !== 'idle') return;
+    setDiagramState('loading');
+    try {
+      const diagram = await api.getDiagram(noteId).catch((err: unknown) => {
+        if (err instanceof Error && err.message.includes('404')) return null;
+        if (err instanceof Response && err.status === 404) return null;
+        throw err;
+      });
+      if (diagram) {
+        setDiagramData(diagram.data);
+        setDiagramState('ready');
+      } else {
+        setDiagramState('empty');
+      }
+    } catch {
+      setDiagramState('error');
+    }
+  }
+
+  function handleModeChange(mode: CanvasMode) {
+    setCanvasMode(mode);
+    if (mode === 'diagram' && diagramState === 'idle' && selectedNoteId) {
+      void loadDiagram(selectedNoteId);
+    }
+  }
+
+  async function handleDiagramSave(data: DiagramData) {
+    if (!selectedNoteId) return;
+    try {
+      if (diagramState === 'empty') {
+        await api.createDiagram(selectedNoteId, data);
+        setDiagramData(data);
+        setDiagramState('ready');
+      } else {
+        await api.updateDiagram(selectedNoteId, data);
+        setDiagramData(data);
+      }
+    } catch {
+      // silent autosave failure — canvas is still editable
+    }
+  }
+
+  async function handleDiagramGenerate() {
+    if (!selectedNoteId) return;
+    setIsGenerating(true);
+    try {
+      let result = await api.generateDiagram(selectedNoteId, false).catch(() => null);
+      if (!result) {
+        setIsGenerating(false);
+        return;
+      }
+      // 409 = diagram_exists, ask user to overwrite
+      if ('data' in result && result.data && (result.data as { error?: string }).error === 'diagram_exists') {
+        const confirm = window.confirm('Já existe um diagrama. Substituir com o gerado pela IA?');
+        if (confirm) {
+          result = await api.generateDiagram(selectedNoteId, true).catch(() => null);
+        }
+      }
+      if (result && 'data' in result) {
+        setDiagramData(result.data as DiagramData);
+        setDiagramState('ready');
+      } else if (result && 'id' in result) {
+        setDiagramData((result as { data: DiagramData }).data);
+        setDiagramState('ready');
+      }
+    } catch {
+      alert('IA indisponível, tente em instantes.');
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function handleDiagramDelete() {
+    if (!selectedNoteId) return;
+    await api.deleteDiagram(selectedNoteId).catch(() => null);
+    setDiagramData(null);
+    setDiagramState('empty');
+  }
+
   async function createNote(options?: { focusWriter?: boolean; withPeopleTemplate?: boolean }) {
     if (recordingStatus === 'recording' || recordingStatus === 'paused') {
       const shouldStopRecording = window.confirm(
@@ -3358,6 +3449,10 @@ export function NotasPage() {
 
     setSelectedNoteId(noteId);
     setWriterMode(true);
+    // Reset canvas state when switching notes
+    setCanvasMode('text');
+    setDiagramState('idle');
+    setDiagramData(null);
   }
 
   function insertPeopleTemplate() {
@@ -4567,7 +4662,24 @@ export function NotasPage() {
                 required
               />
 
-              <div className="notes-writer-formatbar" role="toolbar" aria-label="Formatacao de texto">
+              {/* Canvas mode toggle */}
+              <div className="canvas-mode-toggle">
+                <button
+                  className={`canvas-mode-btn ${canvasMode === 'text' ? 'active' : ''}`}
+                  onClick={() => handleModeChange('text')}
+                >≡ Texto</button>
+                <button
+                  className={`canvas-mode-btn ${canvasMode === 'diagram' ? 'active' : ''}`}
+                  onClick={() => handleModeChange('diagram')}
+                >⬡ Diagrama</button>
+                <button
+                  className="canvas-mode-btn"
+                  title="Em breve"
+                  disabled
+                >✦ Mapa Mental</button>
+              </div>
+
+              {canvasMode === 'text' && <div className="notes-writer-formatbar" role="toolbar" aria-label="Formatacao de texto">
                 <div className="notes-writer-format-group">
                   <button
                     type="button"
@@ -4676,9 +4788,9 @@ export function NotasPage() {
                   )}
                 </div>
 
-              </div>
+              </div>} {/* end canvasMode === 'text' formatbar */}
 
-              <div className="notes-writer-quickblocks">
+              {canvasMode === 'text' && <div className="notes-writer-quickblocks">
                 <button type="button" className="ghost-button" onClick={() => insertSnippetAtCursor('- [ ] ')}>
                   + Checklist
                 </button>
@@ -4716,8 +4828,51 @@ export function NotasPage() {
                 >
                   + Data
                 </button>
-              </div>
+              </div>} {/* end canvasMode === 'text' quickblocks */}
 
+              {canvasMode === 'diagram' && (
+                <div className="canvas-area">
+                  {diagramState === 'loading' && (
+                    <div className="canvas-loading">Carregando diagrama...</div>
+                  )}
+                  {diagramState === 'error' && (
+                    <div className="canvas-error">
+                      <p>Erro ao carregar o diagrama.</p>
+                      <button onClick={() => { setDiagramState('idle'); void loadDiagram(selectedNoteId); }}>
+                        Tentar novamente
+                      </button>
+                    </div>
+                  )}
+                  {diagramState === 'empty' && (
+                    <div className="canvas-empty-state">
+                      <div className="canvas-empty-icon">⬡</div>
+                      <p>Nenhum diagrama ainda</p>
+                      <div className="canvas-empty-actions">
+                        <button className="ghost-button" onClick={() => void handleDiagramSave({ nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } })}>
+                          Começar do zero
+                        </button>
+                        {contentPlain.length >= 50 && (
+                          <button onClick={() => void handleDiagramGenerate()} disabled={isGenerating}>
+                            {isGenerating ? 'Gerando...' : '✦ Gerar da nota'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {diagramState === 'ready' && diagramData && (
+                    <DiagramCanvas
+                      initialData={diagramData}
+                      onSave={(data) => void handleDiagramSave(data)}
+                      onGenerate={() => void handleDiagramGenerate()}
+                      onDelete={() => void handleDiagramDelete()}
+                      isGenerating={isGenerating}
+                      noteTextLength={contentPlain.length}
+                    />
+                  )}
+                </div>
+              )}
+
+              {canvasMode === 'text' && (
               <div className="notes-writer-editor-wrap">
                 <div
                   ref={writerRichEditorRef}
@@ -4769,6 +4924,7 @@ export function NotasPage() {
                   </section>
                 )}
               </div>
+              )} {/* end canvasMode === 'text' */}
 
               {writerMetaOpen && (
                 <section className="notes-writer-meta">
