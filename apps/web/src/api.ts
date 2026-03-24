@@ -1,7 +1,11 @@
 export type WorkspaceType = 'empresa' | 'pessoal' | 'vida' | 'autoridade' | 'geral' | 'outro';
 export type WorkspaceMode = 'expansao' | 'manutencao' | 'standby';
 export type ProjectType = 'construcao' | 'operacao' | 'crescimento';
-export type ProjectMethodology = 'fourdx' | 'delivery' | 'launch' | 'discovery' | 'growth';
+export type ProjectMethodology =
+  | 'fourdx' | 'delivery' | 'launch' | 'discovery' | 'growth'  // legacy
+  | 'entrega' | 'exploracao' | 'pipeline' | 'captacao'
+  | 'campanha' | 'processo' | 'okr' | 'decisao'
+  | 'mentoria' | 'autoridade' | 'cenario' | 'runway' | 'sistema_receita' | 'funil';
 export type ProjectMetricKind = 'lead' | 'lag';
 export type ProjectStatus =
   | 'ativo'
@@ -48,6 +52,60 @@ export type Workspace = {
   updatedAt?: string;
 };
 
+export type MethodologyData = {
+  // Milestone engine (Entrega, Autoridade)
+  milestones?: Array<{ id: string; title: string; done: boolean; critical?: boolean; doneAt?: string | null; order?: number }>;
+  blockers?: Array<{ id: string; title: string; resolvedAt?: string | null }>;
+  // Authority variant
+  proofs?: Array<{ id: string; type: 'artigo' | 'palestra' | 'case' | 'mencao' | 'podcast' | 'outro'; title: string; link?: string | null; points: number; createdAt: string }>;
+  // Pipeline engine (Pipeline, Captação, Sistema de Receita)
+  stages?: Array<{ id: string; label: string; order: number }>;
+  deals?: Array<{ id: string; name: string; stageId: string; amount?: number | null; probability?: number | null; notes?: string | null; createdAt: string; stageEnteredAt?: string | null }>;
+  currency?: string;
+  totalGoal?: number;
+  // Sistema de Receita — per-stage criteria (separate from decision criteria)
+  stageCriteria?: Array<{ id: string; stageId: string; text: string; done: boolean; doneAt?: string | null }>;
+  // Log engine (Exploração)
+  discoveries?: Array<{ id: string; text: string; type: 'confirms' | 'refutes' | 'inconclusive'; week: string; createdAt: string }>;
+  decision?: { choice: 'follow' | 'pivot' | 'discard'; justification: string; decidedAt: string } | null;
+  hypothesis?: string;
+  hypothesisCriteria?: string;
+  // Log engine (Mentoria)
+  sessions?: Array<{ id: string; date: string; durationMin?: number | null; learned: string; commitments: Array<{ id: string; text: string; done: boolean; doneAt?: string | null }> }>;
+  nextSessionDate?: string | null;
+  mentoriaRole?: 'receiving' | 'giving';
+  mentoriaWith?: string | null;
+  // OKR engine
+  krs?: Array<{ id: string; description: string; currentValue: number; targetValue: number; unit?: string | null; confidence: 'alta' | 'media' | 'baixa'; order: number }>;
+  okrPeriod?: string;
+  // Decision engine
+  options?: Array<{ id: string; label: string; scores?: Record<string, number> }>;
+  criteria?: Array<{ id: string; label: string; weight: number }>;
+  decisionChoice?: string | null;
+  decisionJustification?: string | null;
+  decisionDate?: string | null;
+  // Scenario variant
+  scenarios?: Array<{ id: string; label: string }>;
+  scenarioActions?: Array<{ id: string; text: string; done: boolean; scenarioIds: string[] }>;
+  scenarioDecisionDate?: string | null;
+  // Time engine (Campanha)
+  launchDate?: string | null;
+  campaignGoal?: number | null;
+  campaignChannel?: string | null;
+  campaignResult?: number | null;
+  dailyTasks?: Array<{ id: string; date: string; text: string; done: boolean }>;
+  // Time engine (Runway)
+  availableCash?: number | null;
+  burnRateMonthly?: number | null;
+  runwayEvents?: Array<{ id: string; label: string; amount: number; date: string; confirmed: boolean }>;
+  // Recurring engine
+  frequency?: 'semanal' | 'mensal' | 'trimestral';
+  cycleTemplate?: Array<{ id: string; text: string; order: number }>;
+  cycles?: Array<{ id: string; periodLabel: string; startDate: string; items: Array<{ templateId: string; done: boolean }> }>;
+  // Funil engine
+  funilStages?: Array<{ id: string; label: string; value: number | null; order: number }>;
+};
+
 export type Project = {
   id: string;
   title: string;
@@ -60,6 +118,7 @@ export type Project = {
   actionStatement?: string | null;
   methodologyExtraOne?: string | null;
   methodologyExtraTwo?: string | null;
+  methodologyData?: MethodologyData | null;
   timeHorizonEnd?: string | null;
   resultStartValue?: number | null;
   resultCurrentValue?: number | null;
@@ -168,6 +227,50 @@ export type NotesAudioTranscriptionResult = {
   confidence?: number | null;
   durationMs?: number | null;
 };
+
+// ── Canvas ────────────────────────────────────────────────────────────────
+
+export interface DiagramData {
+  nodes: Array<{
+    id: string;
+    type: string;
+    position: { x: number; y: number };
+    data: { label: string; [key: string]: unknown };
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label?: string;
+  }>;
+  viewport: { x: number; y: number; zoom: number };
+}
+
+export interface MindMapData {
+  nodeData: {
+    id: string;
+    topic: string;
+    children?: MindMapData['nodeData'][];
+  };
+}
+
+export interface Diagram {
+  id: string;
+  noteId: string;
+  title: string | null;
+  data: DiagramData;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MindMap {
+  id: string;
+  noteId: string;
+  title: string | null;
+  data: MindMapData;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type ProjectMetric = {
   id: string;
@@ -908,6 +1011,72 @@ export type GamificationDetails = Gamification & {
   }>;
 };
 
+export type CommitmentType = 'fixo' | 'variavel';
+export type CommitmentStatus = 'ativo' | 'pausado' | 'encerrado';
+export type RecurrenceDay = 'seg' | 'ter' | 'qua' | 'qui' | 'sex' | 'sab' | 'dom';
+
+export type CommitmentException = {
+  id: string;
+  commitmentId: string;
+  date: string;
+  action: 'cancelled' | 'rescheduled';
+  newDate: string | null;
+  newTime: string | null;
+  note: string | null;
+  createdAt: string;
+};
+
+export type Commitment = {
+  id: string;
+  workspaceId: string | null;
+  projectId: string | null;
+  title: string;
+  description: string | null;
+  type: CommitmentType;
+  status: CommitmentStatus;
+  startTime: string | null;
+  durationMin: number | null;
+  recurrenceDays: RecurrenceDay[];
+  date: string | null;
+  recurrenceEnd: string | null;
+  createdAt: string;
+  updatedAt: string;
+  exceptions: CommitmentException[];
+};
+
+export type CommitmentWeekResult = Record<string, Commitment[]>;
+
+export type HabitType = 'binary' | 'quantitative' | 'vice';
+export type HabitLifeArea = 'corpo' | 'mente' | 'trabalho' | 'relacoes' | 'financas' | 'crescimento';
+export type HabitFrequency = 'daily' | 'weekly' | 'monthly' | 'specific_days';
+export type HabitStatus = 'ativo' | 'pausado' | 'arquivado';
+
+export type Habit = {
+  id: string; title: string; lifeArea: HabitLifeArea; type: HabitType;
+  icon: string | null; color: string | null; frequencyType: HabitFrequency;
+  frequencyTarget: number; specificDays: RecurrenceDay[];
+  unit: string | null; dailyTarget: number | null; xpPerCompletion: number;
+  status: HabitStatus; sortOrder: number; createdAt: string; updatedAt: string;
+};
+
+export type HabitLog = {
+  id: string; habitId: string; date: string; value: number;
+  note: string | null; createdAt: string;
+};
+
+export type HabitTodayStat = Habit & {
+  currentLog: HabitLog | null; streak: number;
+  periodProgress: { done: number; target: number } | null;
+  isCompletedToday: boolean;
+};
+
+export type HabitLevelInfo = {
+  level: number; name: string; totalXp: number;
+  progressPct: number; nextLevelXp: number | null;
+};
+
+export type HabitRadarStats = Record<HabitLifeArea, HabitLevelInfo>;
+
 export type GhostFrontResolution = {
   ok: boolean;
   workspaceId: string;
@@ -1046,6 +1215,7 @@ export const api = {
     actionStatement?: string | null;
     methodologyExtraOne?: string | null;
     methodologyExtraTwo?: string | null;
+    methodologyData?: MethodologyData | null;
     timeHorizonEnd?: string | null;
     resultStartValue?: number | null;
     resultCurrentValue?: number | null;
@@ -1078,6 +1248,7 @@ export const api = {
       actionStatement: string | null;
       methodologyExtraOne: string | null;
       methodologyExtraTwo: string | null;
+      methodologyData: MethodologyData | null;
       timeHorizonEnd: string | null;
       resultStartValue: number | null;
       resultCurrentValue: number | null;
@@ -1185,6 +1356,16 @@ export const api = {
         method: 'DELETE'
       }
     ),
+
+  // Methodology items CRUD
+  addMethodologyItem: (projectId: string, input: { arrayKey: string; item: Record<string, unknown> }) =>
+    apiRequest<{ item: Record<string, unknown>; methodologyData: MethodologyData }>(`/projects/${projectId}/methodology-items`, { method: 'POST', body: JSON.stringify(input) }),
+
+  updateMethodologyItem: (projectId: string, itemId: string, input: { arrayKey: string; item: Record<string, unknown> }) =>
+    apiRequest<{ item: Record<string, unknown>; methodologyData: MethodologyData }>(`/projects/${projectId}/methodology-items/${itemId}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  deleteMethodologyItem: (projectId: string, itemId: string, input: { arrayKey: string }) =>
+    apiRequest<{ ok: boolean; deleted: boolean }>(`/projects/${projectId}/methodology-items/${itemId}`, { method: 'DELETE', body: JSON.stringify(input) }),
 
   getTasks: (query?: {
     workspaceId?: string;
@@ -1636,5 +1817,120 @@ export const api = {
     }),
 
   getGamification: () => apiRequest<Gamification>('/gamification'),
-  getGamificationDetails: () => apiRequest<GamificationDetails>('/gamification/details')
+  getGamificationDetails: () => apiRequest<GamificationDetails>('/gamification/details'),
+
+  // Commitments
+  getCommitments: (params?: { workspaceId?: string; date?: string; type?: CommitmentType; status?: CommitmentStatus }) => {
+    const q = new URLSearchParams();
+    if (params?.workspaceId) q.set('workspaceId', params.workspaceId);
+    if (params?.date) q.set('date', params.date);
+    if (params?.type) q.set('type', params.type);
+    if (params?.status) q.set('status', params.status);
+    const qs = q.toString();
+    return apiRequest<Commitment[]>(`/commitments${qs ? '?' + qs : ''}`);
+  },
+  getCommitment: (id: string) => apiRequest<Commitment>(`/commitments/${id}`),
+  getCommitmentsForWeek: (weekStart: string, workspaceId?: string) => {
+    const q = workspaceId ? `?workspaceId=${workspaceId}` : '';
+    return apiRequest<CommitmentWeekResult>(`/commitments/week/${weekStart}${q}`);
+  },
+  createCommitment: (input: {
+    workspaceId?: string | null;
+    projectId?: string | null;
+    title: string;
+    description?: string | null;
+    type?: CommitmentType;
+    status?: CommitmentStatus;
+    startTime?: string | null;
+    durationMin?: number | null;
+    recurrenceDays?: RecurrenceDay[];
+    date?: string | null;
+    recurrenceEnd?: string | null;
+  }) => apiRequest<Commitment>('/commitments', { method: 'POST', body: JSON.stringify(input) }),
+  updateCommitment: (id: string, input: Partial<{
+    workspaceId: string | null;
+    projectId: string | null;
+    title: string;
+    description: string | null;
+    type: CommitmentType;
+    status: CommitmentStatus;
+    startTime: string | null;
+    durationMin: number | null;
+    recurrenceDays: RecurrenceDay[];
+    date: string | null;
+    recurrenceEnd: string | null;
+  }>) => apiRequest<Commitment>(`/commitments/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  deleteCommitment: (id: string, hard = false) =>
+    apiRequest<{ ok: boolean }>(`/commitments/${id}${hard ? '?hard=true' : ''}`, { method: 'DELETE' }),
+  createCommitmentException: (id: string, input: {
+    date: string;
+    action: 'cancelled' | 'rescheduled';
+    newDate?: string | null;
+    newTime?: string | null;
+    note?: string | null;
+  }) => apiRequest<CommitmentException>(`/commitments/${id}/exceptions`, { method: 'POST', body: JSON.stringify(input) }),
+  deleteCommitmentException: (id: string, date: string) =>
+    apiRequest<{ ok: boolean }>(`/commitments/${id}/exceptions/${date}`, { method: 'DELETE' }),
+  getHabits: (params?: { lifeArea?: HabitLifeArea; status?: HabitStatus }) =>
+    apiRequest<Habit[]>(withQuery('/habits', params)),
+  createHabit: (data: { title: string; lifeArea: HabitLifeArea; type: HabitType; frequencyType: HabitFrequency; frequencyTarget?: number; specificDays?: RecurrenceDay[]; unit?: string; dailyTarget?: number; icon?: string; color?: string; }) =>
+    apiRequest<Habit>('/habits', { method: 'POST', body: JSON.stringify(data) }),
+  updateHabit: (id: string, data: Partial<Omit<Habit, 'id'|'createdAt'|'updatedAt'>>) =>
+    apiRequest<Habit>(`/habits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  archiveHabit: (id: string) =>
+    apiRequest<{ ok: boolean }>(`/habits/${id}`, { method: 'DELETE' }),
+  getHabitsTodayStats: (date: string) =>
+    apiRequest<HabitTodayStat[]>(withQuery('/habits/stats/today', { date })),
+  getHabitsRadar: () =>
+    apiRequest<HabitRadarStats>('/habits/stats/radar'),
+  getHabitHeatmap: (id: string, days?: number) =>
+    apiRequest<{ habitId: string; startDate: string; endDate: string; logs: HabitLog[] }>(
+      withQuery(`/habits/stats/heatmap/${id}`, days ? { days } : undefined)),
+  logHabit: (id: string, data: { date: string; value?: number; note?: string }) =>
+    apiRequest<HabitLog>(`/habits/${id}/log`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteHabitLog: (id: string, date: string) =>
+    apiRequest<{ ok: boolean }>(`/habits/${id}/log/${date}`, { method: 'DELETE' }),
+  habitRecaiu: (id: string, date: string) =>
+    apiRequest<{ ok: boolean; previousStreak: number }>(`/habits/${id}/recaiu`, { method: 'POST', body: JSON.stringify({ date }) }),
+
+  // ── Canvas ──────────────────────────────────────────────────────────────
+  getDiagram: (noteId: string) =>
+    apiRequest<Diagram>(`/canvas/notes/${noteId}/diagram`),
+  createDiagram: (noteId: string, data: DiagramData, title?: string) =>
+    apiRequest<Diagram>(`/canvas/notes/${noteId}/diagram`, {
+      method: 'POST',
+      body: JSON.stringify({ data, title }),
+    }),
+  updateDiagram: (noteId: string, data: DiagramData) =>
+    apiRequest<Diagram>(`/canvas/notes/${noteId}/diagram`, {
+      method: 'PATCH',
+      body: JSON.stringify({ data }),
+    }),
+  deleteDiagram: (noteId: string) =>
+    apiRequest<void>(`/canvas/notes/${noteId}/diagram`, { method: 'DELETE' }),
+  generateDiagram: (noteId: string, overwrite = false) =>
+    apiRequest<Diagram>(`/canvas/notes/${noteId}/diagram/generate`, {
+      method: 'POST',
+      body: JSON.stringify({ overwrite }),
+    }),
+
+  getMindMap: (noteId: string) =>
+    apiRequest<MindMap>(`/canvas/notes/${noteId}/mindmap`),
+  createMindMap: (noteId: string, data: MindMapData, title?: string) =>
+    apiRequest<MindMap>(`/canvas/notes/${noteId}/mindmap`, {
+      method: 'POST',
+      body: JSON.stringify({ data, title }),
+    }),
+  updateMindMap: (noteId: string, data: MindMapData) =>
+    apiRequest<MindMap>(`/canvas/notes/${noteId}/mindmap`, {
+      method: 'PATCH',
+      body: JSON.stringify({ data }),
+    }),
+  deleteMindMap: (noteId: string) =>
+    apiRequest<void>(`/canvas/notes/${noteId}/mindmap`, { method: 'DELETE' }),
+  generateMindMap: (noteId: string, overwrite = false) =>
+    apiRequest<MindMap>(`/canvas/notes/${noteId}/mindmap/generate`, {
+      method: 'POST',
+      body: JSON.stringify({ overwrite }),
+    }),
 };
