@@ -28,9 +28,7 @@ jobs:
           - name: frontend
             image: ghcr.io/${{ github.repository_owner }}/pluris-frontend
             dockerfile: Dockerfile.web
-            build_args: |
-              VITE_API_URL=/api
-              VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+            build_args: "VITE_API_URL=/api"
 
     steps:
       - name: Checkout
@@ -66,4 +64,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ matrix.build_args }}
+          build-args: |
+            ${{ matrix.build_args }}
+            VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
