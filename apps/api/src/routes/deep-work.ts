@@ -2,19 +2,22 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { DeepWorkService } from '../services/deep-work-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 export function registerDeepWorkRoutes(app: FastifyInstance, deepWorkService: DeepWorkService) {
   app.get('/deep-work/active', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         workspaceId: z.string().uuid().optional()
       })
       .parse(request.query);
 
-    return deepWorkService.getActive(query.workspaceId);
+    return deepWorkService.getActive(query.workspaceId, clerkUserId);
   });
 
   app.get('/deep-work/summary/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -29,7 +32,8 @@ export function registerDeepWorkRoutes(app: FastifyInstance, deepWorkService: De
 
     return deepWorkService.getSummary({
       date: params.date,
-      workspaceId: query.workspaceId
+      workspaceId: query.workspaceId,
+      clerkUserId
     });
   });
 

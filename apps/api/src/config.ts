@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-dotenv.config({ path: process.env.ENV_FILE ?? '../../.env' });
+dotenv.config({ path: process.env.ENV_FILE ?? '../../.env', override: true });
 
 const optionalString = () =>
   z.preprocess(
@@ -22,6 +22,7 @@ const optionalTime = (fallback: string) =>
   );
 
 const envSchema = z.object({
+  CLERK_SECRET_KEY: z.string().min(1),
   PORT: z.coerce.number().default(3000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().min(1),

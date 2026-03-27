@@ -2,22 +2,25 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { StrategyService } from '../services/strategy-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 const reviewPeriodSchema = z.enum(['weekly', 'monthly']);
 const commitmentLevelSchema = z.enum(['baixo', 'medio', 'alto']);
 
 export function registerStrategyRoutes(app: FastifyInstance, strategyService: StrategyService) {
   app.get('/strategy/workspace-portfolio', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
       })
       .parse(request.query);
 
-    return strategyService.getWorkspacePortfolio(query);
+    return strategyService.getWorkspacePortfolio({ ...query, clerkUserId });
   });
 
   app.get('/strategy/weekly-allocation', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -25,7 +28,7 @@ export function registerStrategyRoutes(app: FastifyInstance, strategyService: St
       })
       .parse(request.query);
 
-    return strategyService.getWeeklyAllocation(query);
+    return strategyService.getWeeklyAllocation({ ...query, clerkUserId });
   });
 
   app.put('/strategy/weekly-allocation/:weekStart', async (request) => {
@@ -55,6 +58,7 @@ export function registerStrategyRoutes(app: FastifyInstance, strategyService: St
   });
 
   app.get('/strategy/weekly-review', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -62,10 +66,11 @@ export function registerStrategyRoutes(app: FastifyInstance, strategyService: St
       })
       .parse(request.query);
 
-    return strategyService.getWeeklyReview(query);
+    return strategyService.getWeeklyReview({ ...query, clerkUserId });
   });
 
   app.get('/strategy/monthly-review', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         monthStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -73,10 +78,11 @@ export function registerStrategyRoutes(app: FastifyInstance, strategyService: St
       })
       .parse(request.query);
 
-    return strategyService.getMonthlyReview(query);
+    return strategyService.getMonthlyReview({ ...query, clerkUserId });
   });
 
   app.get('/strategy/review-journal', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         periodType: reviewPeriodSchema,
@@ -85,7 +91,7 @@ export function registerStrategyRoutes(app: FastifyInstance, strategyService: St
       })
       .parse(request.query);
 
-    return strategyService.getReviewJournal(query);
+    return strategyService.getReviewJournal({ ...query, clerkUserId });
   });
 
   app.put('/strategy/review-journal/:periodType/:periodStart', async (request) => {
@@ -120,6 +126,7 @@ export function registerStrategyRoutes(app: FastifyInstance, strategyService: St
   });
 
   app.get('/strategy/review-history', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         periodType: reviewPeriodSchema,
@@ -128,7 +135,7 @@ export function registerStrategyRoutes(app: FastifyInstance, strategyService: St
       })
       .parse(request.query);
 
-    return strategyService.getReviewHistory(query);
+    return strategyService.getReviewHistory({ ...query, clerkUserId });
   });
 
   app.post('/strategy/ghost-fronts/:workspaceId/resolve', async (request) => {

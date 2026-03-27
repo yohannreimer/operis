@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
   addEdge,
@@ -7,8 +7,15 @@ import {
   Controls,
   Background,
   BackgroundVariant,
+  MiniMap,
   Connection,
   NodeTypes,
+  Handle,
+  Position,
+  NodeToolbar,
+  useReactFlow,
+  ConnectionMode,
+  MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DiagramData } from '../api';
@@ -16,97 +23,237 @@ import { DiagramData } from '../api';
 type RFNode = { id: string; type: string; position: { x: number; y: number }; data: { label: string; [key: string]: unknown } };
 type RFEdge = { id: string; source: string; target: string; label?: string };
 
+// ── Shared handles ────────────────────────────────────────────────────────
+
+function NodeHandles() {
+  return (
+    <>
+      <Handle type="source" position={Position.Top}    id="top"    className="rf-handle" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="rf-handle" />
+      <Handle type="source" position={Position.Left}   id="left"   className="rf-handle" />
+      <Handle type="source" position={Position.Right}  id="right"  className="rf-handle" />
+    </>
+  );
+}
+
+// ── Node toolbar (shown on select) ───────────────────────────────────────
+
+const NODE_COLORS = [
+  { label: 'Laranja', bg: 'rgba(249,115,22,0.25)', border: '#f97316' },
+  { label: 'Roxo',    bg: 'rgba(99,102,241,0.25)',  border: '#6366f1' },
+  { label: 'Verde',   bg: 'rgba(34,197,94,0.25)',   border: '#22c55e' },
+  { label: 'Azul',    bg: 'rgba(6,182,212,0.25)',   border: '#06b6d4' },
+  { label: 'Verm',    bg: 'rgba(239,68,68,0.25)',   border: '#ef4444' },
+  { label: 'Padrão',  bg: '',                        border: '' },
+];
+
+function RFNodeToolbar({ id, data }: { id: string; data: { label: string; bg?: string; border?: string } }) {
+  const { updateNodeData, setNodes } = useReactFlow();
+  return (
+    <NodeToolbar className="rf-node-toolbar">
+      {NODE_COLORS.map((c) => (
+        <button
+          key={c.label}
+          title={c.label}
+          className="rf-toolbar-color"
+          style={{ background: c.bg || 'rgba(255,255,255,0.08)', borderColor: c.border || 'rgba(255,255,255,0.15)' }}
+          onClick={() => updateNodeData(id, { bg: c.bg, border: c.border })}
+        />
+      ))}
+      <div className="rf-toolbar-divider" />
+      <button
+        className="rf-toolbar-delete"
+        title="Deletar nó"
+        onClick={() => setNodes((ns) => ns.filter((n) => n.id !== id))}
+      >✕</button>
+    </NodeToolbar>
+  );
+}
+
+// ── Inline-editable label ────────────────────────────────────────────────
+
+function NodeLabel({ id, label }: { id: string; label: string }) {
+  const { updateNodeData } = useReactFlow();
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        className="rf-node-input"
+        defaultValue={label}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') { updateNodeData(id, { label: e.currentTarget.value }); setEditing(false); }
+          if (e.key === 'Escape') setEditing(false);
+        }}
+        onBlur={(e) => { updateNodeData(id, { label: e.target.value }); setEditing(false); }}
+      />
+    );
+  }
+  return <span onDoubleClick={(e) => { e.stopPropagation(); setEditing(true); }}>{label}</span>;
+}
+
 // ── Custom node components ────────────────────────────────────────────────
 
-function DefaultNode({ data }: { data: { label: string } }) {
+type NodeData = { label: string; bg?: string; border?: string };
+
+function DefaultNode({ id, data }: { id: string; data: NodeData }) {
   return (
-    <div className="rf-node rf-node--default">
-      <span>{data.label}</span>
+    <div className="rf-node rf-node--default" style={{ background: data.bg || '', borderColor: data.border || '' }}>
+      <RFNodeToolbar id={id} data={data} />
+      <NodeHandles />
+      <NodeLabel id={id} label={data.label} />
     </div>
   );
 }
 
-function StartNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--start"><span>{data.label || 'Início'}</span></div>;
-}
-
-function EndNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--end"><span>{data.label || 'Fim'}</span></div>;
-}
-
-function DecisionNode({ data }: { data: { label: string } }) {
+function StartNode({ id, data }: { id: string; data: NodeData }) {
   return (
-    <div className="rf-node rf-node--decision">
-      <div className="rf-node-diamond"><span>{data.label}</span></div>
+    <div className="rf-node rf-node--start" style={{ background: data.bg || '', borderColor: data.border || '' }}>
+      <RFNodeToolbar id={id} data={data} />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="rf-handle" />
+      <Handle type="source" position={Position.Right}  id="right"  className="rf-handle" />
+      <NodeLabel id={id} label={data.label || 'Início'} />
     </div>
   );
 }
 
-function ProcessNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--process"><span>{data.label}</span></div>;
+function EndNode({ id, data }: { id: string; data: NodeData }) {
+  return (
+    <div className="rf-node rf-node--end" style={{ background: data.bg || '', borderColor: data.border || '' }}>
+      <RFNodeToolbar id={id} data={data} />
+      <Handle type="source" position={Position.Top}  id="top"  className="rf-handle" />
+      <Handle type="source" position={Position.Left} id="left" className="rf-handle" />
+      <NodeLabel id={id} label={data.label || 'Fim'} />
+    </div>
+  );
 }
 
-function TriggerNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--trigger"><span>{data.label}</span></div>;
+function DecisionNode({ id, data }: { id: string; data: NodeData }) {
+  return (
+    <div className="rf-node rf-node--decision" style={{ background: data.bg || '', borderColor: data.border || '' }}>
+      <RFNodeToolbar id={id} data={data} />
+      <NodeHandles />
+      <div className="rf-node-diamond"><NodeLabel id={id} label={data.label} /></div>
+    </div>
+  );
 }
 
-function DelayNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--delay">⏱ <span>{data.label}</span></div>;
+function ProcessNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--process">
+      <NodeHandles />
+      <NodeLabel id={id} label={data.label} />
+    </div>
+  );
 }
 
-function ParallelNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--parallel"><div className="rf-parallel-bar" /><span>{data.label}</span></div>;
+function TriggerNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--trigger">
+      <NodeHandles />
+      <NodeLabel id={id} label={data.label} />
+    </div>
+  );
 }
 
-function CheckpointNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--checkpoint">✓ <span>{data.label}</span></div>;
+function DelayNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--delay">
+      <NodeHandles />
+      ⏱ <NodeLabel id={id} label={data.label} />
+    </div>
+  );
 }
 
-function WarningNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--warning">⚠ <span>{data.label}</span></div>;
+function ParallelNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--parallel">
+      <NodeHandles />
+      <div className="rf-parallel-bar" /><NodeLabel id={id} label={data.label} />
+    </div>
+  );
 }
 
-function PersonNode({ data }: { data: { label: string } }) {
+function CheckpointNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--checkpoint">
+      <NodeHandles />
+      ✓ <NodeLabel id={id} label={data.label} />
+    </div>
+  );
+}
+
+function WarningNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--warning">
+      <NodeHandles />
+      ⚠ <NodeLabel id={id} label={data.label} />
+    </div>
+  );
+}
+
+function PersonNode({ id, data }: { id: string; data: { label: string } }) {
   return (
     <div className="rf-node rf-node--person">
+      <NodeHandles />
       <div className="rf-person-avatar">{data.label[0]?.toUpperCase()}</div>
-      <span>{data.label}</span>
+      <NodeLabel id={id} label={data.label} />
     </div>
   );
 }
 
-function SystemNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--system"><span>{data.label}</span></div>;
+function SystemNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--system">
+      <NodeHandles />
+      <NodeLabel id={id} label={data.label} />
+    </div>
+  );
 }
 
-function GroupNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--group"><span className="rf-group-label">{data.label}</span></div>;
+function GroupNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--group">
+      <span className="rf-group-label"><NodeLabel id={id} label={data.label} /></span>
+    </div>
+  );
 }
 
-function DatabaseNode({ data }: { data: { label: string } }) {
+function DatabaseNode({ id, data }: { id: string; data: { label: string } }) {
   return (
     <div className="rf-node rf-node--database">
+      <NodeHandles />
       <svg viewBox="0 0 40 30" width="40" height="30">
         <ellipse cx="20" cy="6" rx="18" ry="5" fill="currentColor" opacity="0.3"/>
         <rect x="2" y="6" width="36" height="18" fill="currentColor" opacity="0.1"/>
         <ellipse cx="20" cy="24" rx="18" ry="5" fill="currentColor" opacity="0.3"/>
       </svg>
-      <span>{data.label}</span>
+      <NodeLabel id={id} label={data.label} />
     </div>
   );
 }
 
-function MetricNode({ data }: { data: { label: string; value?: string } }) {
+function MetricNode({ id, data }: { id: string; data: { label: string; value?: string } }) {
   return (
     <div className="rf-node rf-node--metric">
+      <NodeHandles />
       {data.value && <div className="rf-metric-value">{data.value}</div>}
-      <span>{data.label}</span>
+      <NodeLabel id={id} label={data.label} />
     </div>
   );
 }
 
-function AnnotationNode({ data }: { data: { label: string } }) {
-  return <div className="rf-node rf-node--annotation"><span>{data.label}</span></div>;
+function AnnotationNode({ id, data }: { id: string; data: { label: string } }) {
+  return (
+    <div className="rf-node rf-node--annotation">
+      <NodeHandles />
+      <NodeLabel id={id} label={data.label} />
+    </div>
+  );
 }
 
 const nodeTypes: NodeTypes = {
@@ -267,18 +414,59 @@ export function DiagramCanvas({
   const rfInstance = useRef<any>(null);
   const saveTimer = useRef<{ id: ReturnType<typeof setTimeout> | null }>({ id: null });
 
+  // ── History for undo/redo ──────────────────────────────────────────────
+  const history = useRef<Array<{ nodes: RFNode[]; edges: RFEdge[] }>>([]);
+  const historyIndex = useRef(-1);
+
+  const pushHistory = useCallback((ns: RFNode[], es: RFEdge[]) => {
+    history.current = history.current.slice(0, historyIndex.current + 1);
+    history.current.push({ nodes: JSON.parse(JSON.stringify(ns)), edges: JSON.parse(JSON.stringify(es)) });
+    historyIndex.current = history.current.length - 1;
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key === 'z' && !e.shiftKey) {
+        if (historyIndex.current > 0) {
+          e.preventDefault();
+          historyIndex.current--;
+          const s = history.current[historyIndex.current];
+          setNodes(s.nodes as Parameters<typeof setNodes>[0]);
+          setEdges(s.edges as Parameters<typeof setEdges>[0]);
+        }
+      }
+      if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+        if (historyIndex.current < history.current.length - 1) {
+          e.preventDefault();
+          historyIndex.current++;
+          const s = history.current[historyIndex.current];
+          setNodes(s.nodes as Parameters<typeof setNodes>[0]);
+          setEdges(s.edges as Parameters<typeof setEdges>[0]);
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [setNodes, setEdges]);
+
   const triggerSave = useCallback(() => {
     if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
     saveTimer.current.id = setTimeout(() => {
       if (!rfInstance.current) return;
       const flow = rfInstance.current.toObject();
+      pushHistory(flow.nodes as RFNode[], flow.edges as RFEdge[]);
       onSave(flow as DiagramData);
     }, 1500);
-  }, [onSave]);
+  }, [onSave, pushHistory]);
 
   const onConnect = useCallback(
     (params: Connection) => {
-      setEdges((eds) => addEdge(params, eds));
+      setEdges((eds) => addEdge(params, eds).map((e) =>
+        e.source === params.source && e.target === params.target
+          ? { ...e, animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(249,115,22,0.8)' }, style: { stroke: 'rgba(249,115,22,0.6)', strokeWidth: 2 } }
+          : e
+      ));
       triggerSave();
     },
     [setEdges, triggerSave]
@@ -405,13 +593,30 @@ export function DiagramCanvas({
         onNodesChange={(changes) => { onNodesChange(changes); triggerSave(); }}
         onEdgesChange={(changes) => { onEdgesChange(changes); triggerSave(); }}
         onConnect={onConnect}
+        onReconnect={(oldEdge, newConn) => {
+          setEdges((eds) => eds.map((e) => e.id === oldEdge.id ? { ...oldEdge, ...newConn } : e));
+          triggerSave();
+        }}
         nodeTypes={nodeTypes}
-        onInit={(inst) => { rfInstance.current = inst as unknown; }}
+        onInit={(inst) => {
+          rfInstance.current = inst as unknown;
+          if (initialData) setTimeout(() => (inst as any).fitView({ padding: 0.1 }), 50);
+        }}
         defaultViewport={initialData?.viewport ?? { x: 0, y: 0, zoom: 1 }}
         fitView={!initialData}
         colorMode="dark"
+        connectionMode={ConnectionMode.Loose}
+        snapToGrid
+        snapGrid={[16, 16]}
+        deleteKeyCode="Delete"
+        multiSelectionKeyCode="Shift"
       >
         <Controls />
+        <MiniMap
+          nodeColor={() => 'rgba(249,115,22,0.5)'}
+          maskColor="rgba(0,0,0,0.6)"
+          style={{ background: '#1a1a20', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8 }}
+        />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.06)" />
       </ReactFlow>
     </div>

@@ -17,7 +17,7 @@ export class GamificationService {
     }
 
     return this.prisma.gamificationState.create({
-      data: {}
+      data: { clerkUserId: 'legacy' }
     });
   }
 

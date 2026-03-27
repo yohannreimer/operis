@@ -187,14 +187,15 @@ model User {
 }
 
 model Workspace {
-  id        String        @id @default(uuid())
-  name      String
-  type      WorkspaceType
-  category  String        @default("Empresa")
-  mode      WorkspaceMode @default(manutencao)
-  color     String        @default("#2563EB")
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  id          String        @id @default(uuid())
+  clerkUserId String        @map("clerk_user_id")
+  name        String
+  type        WorkspaceType
+  category    String        @default("Empresa")
+  mode        WorkspaceMode @default(manutencao)
+  color       String        @default("#2563EB")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
 
   projects Project[]
   tasks    Task[]
@@ -204,25 +205,27 @@ model Workspace {
   strategicReviews StrategicReview[]
   strategicDecisionEvents StrategicDecisionEvent[]
 
+  @@index([clerkUserId])
   @@map("workspaces")
 }
 
 model NoteFolder {
-  id        String    @id @default(uuid())
-  name      String
-  color     String?   @default("#4f7cff")
-  parentId  String?   @map("parent_id")
-  sortOrder Int       @default(0) @map("sort_order")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  archivedAt DateTime? @map("archived_at")
+  id          String    @id @default(uuid())
+  clerkUserId String    @map("clerk_user_id")
+  name        String
+  color       String?   @default("#4f7cff")
+  parentId    String?   @map("parent_id")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  archivedAt  DateTime? @map("archived_at")
 
   parent   NoteFolder?  @relation("NoteFolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children NoteFolder[] @relation("NoteFolderHierarchy")
   notes    Note[]
 
-  @@index([parentId, sortOrder])
-  @@index([archivedAt, sortOrder])
+  @@index([clerkUserId, parentId, sortOrder])
+  @@index([clerkUserId, archivedAt, sortOrder])
   @@map("note_folders")
 }
 
@@ -456,24 +459,28 @@ model TaskDependency {
 }
 
 model RecurringBlock {
-  id        String  @id @default(uuid())
-  title     String
-  weekday   Int
-  startTime String  @map("start_time")
-  endTime   String  @map("end_time")
-  active    Boolean @default(true)
+  id          String  @id @default(uuid())
+  clerkUserId String  @map("clerk_user_id")
+  title       String
+  weekday     Int
+  startTime   String  @map("start_time")
+  endTime     String  @map("end_time")
+  active      Boolean @default(true)
 
+  @@index([clerkUserId])
   @@map("recurring_blocks")
 }
 
 model DayPlan {
-  id        String    @id @default(uuid())
-  date      DateTime  @db.Date
-  createdAt DateTime  @default(now()) @map("created_at")
+  id          String    @id @default(uuid())
+  clerkUserId String    @map("clerk_user_id")
+  date        DateTime  @db.Date
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   items DayPlanItem[]
 
-  @@unique([date])
+  @@unique([clerkUserId, date])
+  @@index([clerkUserId])
   @@map("day_plans")
 }
 
@@ -496,13 +503,14 @@ model DayPlanItem {
 }
 
 model InboxItem {
-  id        String      @id @default(uuid())
-  content   String
-  source    InboxSource
-  processed Boolean     @default(false)
-  createdAt DateTime    @default(now()) @map("created_at")
+  id          String      @id @default(uuid())
+  clerkUserId String      @map("clerk_user_id")
+  content     String
+  source      InboxSource
+  processed   Boolean     @default(false)
+  createdAt   DateTime    @default(now()) @map("created_at")
 
-  @@index([processed])
+  @@index([clerkUserId, processed])
   @@map("inbox_items")
 }
 
@@ -710,6 +718,7 @@ model CommitmentException {
 
 model GamificationState {
   id            String   @id @default(uuid())
+  clerkUserId   String   @unique @map("clerk_user_id")
   currentScore  Int      @default(0) @map("current_score")
   streakDays    Int      @default(0) @map("streak_days")
   weeklyScore   Int      @default(0) @map("weekly_score")
@@ -749,6 +758,7 @@ enum HabitStatus {
 
 model Habit {
   id              String         @id @default(uuid())
+  clerkUserId     String         @map("clerk_user_id")
   title           String
   lifeArea        HabitLifeArea
   type            HabitType
@@ -766,6 +776,7 @@ model Habit {
   updatedAt       DateTime       @updatedAt
   logs            HabitLog[]
   xpEvents        HabitXPEvent[]
+  @@index([clerkUserId])
   @@map("habits")
 }
 

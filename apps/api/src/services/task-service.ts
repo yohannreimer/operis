@@ -274,7 +274,8 @@ export class TaskService {
       data: {
         name: folderName,
         color: '#22c55e',
-        sortOrder: (lastRootFolder?.sortOrder ?? -1) + 1
+        sortOrder: (lastRootFolder?.sortOrder ?? -1) + 1,
+        clerkUserId: 'legacy'
       },
       select: {
         id: true
@@ -477,6 +478,7 @@ export class TaskService {
     horizon?: TaskHorizon;
     waitingOnly?: boolean;
     restrictedOnly?: boolean;
+    clerkUserId?: string;
   }) {
     const where: Prisma.TaskWhereInput = {
       workspaceId: filters.workspaceId,
@@ -490,7 +492,8 @@ export class TaskService {
               status: 'aberta'
             }
           }
-        : undefined
+        : undefined,
+      workspace: filters.clerkUserId ? { clerkUserId: filters.clerkUserId } : undefined
     };
 
     return this.prisma.task.findMany({
@@ -506,7 +509,7 @@ export class TaskService {
     });
   }
 
-  async getWaitingRadar(filters?: { workspaceId?: string }) {
+  async getWaitingRadar(filters?: { workspaceId?: string; clerkUserId?: string }) {
     const waitingTasks = await this.prisma.task.findMany({
       where: {
         workspaceId: filters?.workspaceId,
@@ -516,7 +519,8 @@ export class TaskService {
         },
         waitingOnPerson: {
           not: null
-        }
+        },
+        workspace: filters?.clerkUserId ? { clerkUserId: filters.clerkUserId } : undefined
       },
       include: {
         workspace: {

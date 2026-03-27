@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 
 import { TaskService } from '../services/task-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 const executableTitleSchema = z
   .string()
@@ -144,6 +145,7 @@ const completeTaskBodySchema = z
 
 export function registerTaskRoutes(app: FastifyInstance, taskService: TaskService) {
   app.get('/tasks', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         workspaceId: z.string().uuid().optional(),
@@ -155,17 +157,18 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
       })
       .parse(request.query);
 
-    return taskService.list(query);
+    return taskService.list({ ...query, clerkUserId });
   });
 
   app.get('/tasks/waiting-radar', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         workspaceId: z.string().uuid().optional()
       })
       .parse(request.query);
 
-    return taskService.getWaitingRadar(query);
+    return taskService.getWaitingRadar({ ...query, clerkUserId });
   });
 
   app.post('/tasks', async (request, reply) => {

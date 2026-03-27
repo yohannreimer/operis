@@ -970,6 +970,7 @@ export function NotasPage() {
   // Canvas mode
   type CanvasMode = 'text' | 'diagram' | 'mindmap';
   const [canvasMode, setCanvasMode] = useState<CanvasMode>('text');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [diagramState, setDiagramState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
   const [diagramData, setDiagramData] = useState<DiagramData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -2622,7 +2623,7 @@ export function NotasPage() {
     if (editor.innerHTML !== normalized) {
       editor.innerHTML = normalized;
     }
-  }, [writerMode, selectedNoteId, content]);
+  }, [writerMode, selectedNoteId, content, canvasMode]);
 
   useEffect(() => {
     if (!slashMenuOpen) {
@@ -2971,11 +2972,10 @@ export function NotasPage() {
   // ── Canvas handlers ────────────────────────────────────────────────────
 
   async function loadDiagram(noteId: string) {
-    if (diagramState !== 'idle') return;
     setDiagramState('loading');
     try {
       const diagram = await api.getDiagram(noteId).catch((err: unknown) => {
-        if (err instanceof Error && err.message.includes('404')) return null;
+        if (err instanceof Error && (err.message.includes('404') || err.message.includes('not_found'))) return null;
         if (err instanceof Response && err.status === 404) return null;
         throw err;
       });
@@ -3001,11 +3001,10 @@ export function NotasPage() {
   }
 
   async function loadMindMap(noteId: string) {
-    if (mindmapState !== 'idle') return;
     setMindmapState('loading');
     try {
       const mindMap = await api.getMindMap(noteId).catch((err: unknown) => {
-        if (err instanceof Error && err.message.includes('404')) return null;
+        if (err instanceof Error && (err.message.includes('404') || err.message.includes('not_found'))) return null;
         if (err instanceof Response && err.status === 404) return null;
         throw err;
       });
@@ -4615,7 +4614,7 @@ export function NotasPage() {
             </PremiumCard>
           ) : (
             <section className="notes-writer-shell">
-            <form className="notes-writer-form" onSubmit={saveNote}>
+            <form className={`notes-writer-form${isFullscreen ? ' fullscreen-mode' : ''}`} onSubmit={saveNote}>
               <div className="notes-writer-meta-line">
                 <span>Atualização: {formatDateTimeLabel(lastSavedAt ?? selectedNote.updatedAt)}</span>
                 <span>
@@ -4755,6 +4754,11 @@ export function NotasPage() {
                   className={`canvas-mode-btn ${canvasMode === 'mindmap' ? 'active' : ''}`}
                   onClick={() => handleModeChange('mindmap')}
                 >✦ Mapa Mental</button>
+                <button
+                  className="canvas-fullscreen-btn"
+                  title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                  onClick={() => setIsFullscreen((v) => !v)}
+                >{isFullscreen ? '⊠' : '⛶'}</button>
               </div>
 
               {canvasMode === 'text' && <div className="notes-writer-formatbar" role="toolbar" aria-label="Formatacao de texto">
@@ -4908,15 +4912,14 @@ export function NotasPage() {
                 </button>
               </div>} {/* end canvasMode === 'text' quickblocks */}
 
-              {canvasMode === 'diagram' && (
-                <div className="canvas-area">
+              <div className="canvas-area" style={{ display: canvasMode === 'diagram' ? '' : 'none' }}>
                   {diagramState === 'loading' && (
                     <div className="canvas-loading">Carregando diagrama...</div>
                   )}
                   {diagramState === 'error' && (
                     <div className="canvas-error">
                       <p>Erro ao carregar o diagrama.</p>
-                      <button onClick={() => { setDiagramState('idle'); void loadDiagram(selectedNoteId); }}>
+                      <button onClick={() => { void loadDiagram(selectedNoteId); }}>
                         Tentar novamente
                       </button>
                     </div>
@@ -4939,6 +4942,7 @@ export function NotasPage() {
                   )}
                   {diagramState === 'ready' && diagramData && (
                     <DiagramCanvas
+                      key={selectedNoteId}
                       initialData={diagramData}
                       onSave={(data) => void handleDiagramSave(data)}
                       onGenerate={() => void handleDiagramGenerate()}
@@ -4948,17 +4952,15 @@ export function NotasPage() {
                     />
                   )}
                 </div>
-              )}
 
-              {canvasMode === 'mindmap' && (
-                <div className="canvas-area">
+              <div className="canvas-area" style={{ display: canvasMode === 'mindmap' ? '' : 'none' }}>
                   {mindmapState === 'loading' && (
                     <div className="canvas-loading">Carregando mapa mental...</div>
                   )}
                   {mindmapState === 'error' && (
                     <div className="canvas-error">
                       <p>Erro ao carregar o mapa mental.</p>
-                      <button onClick={() => { setMindmapState('idle'); void loadMindMap(selectedNoteId); }}>
+                      <button onClick={() => { void loadMindMap(selectedNoteId); }}>
                         Tentar novamente
                       </button>
                     </div>
@@ -4981,6 +4983,7 @@ export function NotasPage() {
                   )}
                   {mindmapState === 'ready' && mindmapData && (
                     <MindMapCanvas
+                      key={selectedNoteId}
                       initialData={mindmapData}
                       onSave={(data) => void handleMindMapSave(data)}
                       onGenerate={() => void handleMindMapGenerate()}
@@ -4990,7 +4993,6 @@ export function NotasPage() {
                     />
                   )}
                 </div>
-              )}
 
               {canvasMode === 'text' && (
               <div className="notes-writer-editor-wrap">

@@ -16,11 +16,12 @@ export class DeepWorkService {
     return Math.max(0, delta);
   }
 
-  async getActive(workspaceId?: string) {
+  async getActive(workspaceId?: string, clerkUserId?: string) {
     return this.prisma.deepWorkSession.findFirst({
       where: {
         state: 'active',
-        workspaceId
+        workspaceId,
+        task: clerkUserId ? { workspace: { clerkUserId } } : undefined
       },
       include: {
         task: true,
@@ -306,7 +307,7 @@ export class DeepWorkService {
     return stopped;
   }
 
-  async getSummary(params: { date: string; workspaceId?: string }) {
+  async getSummary(params: { date: string; workspaceId?: string; clerkUserId?: string }) {
     const start = startOfDay(params.date);
     const end = endOfDay(params.date);
     const now = new Date();
@@ -317,7 +318,8 @@ export class DeepWorkService {
         startedAt: {
           gte: start,
           lte: end
-        }
+        },
+        task: params.clerkUserId ? { workspace: { clerkUserId: params.clerkUserId } } : undefined
       },
       include: {
         task: true,

@@ -18,7 +18,8 @@ async function main() {
       create: {
         id: `00000000-0000-0000-0000-${workspace.type === 'pessoal' ? '000000000001' : '000000000002'}`,
         name: workspace.name,
-        type: workspace.type
+        type: workspace.type,
+        clerkUserId: 'legacy'
       }
     });
   }
@@ -29,7 +30,7 @@ async function main() {
 
   if (!state) {
     await prisma.gamificationState.create({
-      data: {}
+      data: { clerkUserId: 'legacy' }
     });
   }
 

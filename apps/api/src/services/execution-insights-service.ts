@@ -788,6 +788,7 @@ export class ExecutionInsightsService {
     date: string;
     workspaceId?: string;
     strictMode?: boolean;
+    clerkUserId?: string;
   }) {
     await refreshGhostProjects(this.prisma, {
       workspaceId: params.workspaceId
@@ -802,7 +803,10 @@ export class ExecutionInsightsService {
 
     const [tasks, dayPlan, expansion, strategicProjectLoad, deepFocusProjectLoad, delayedEvents, activeProjects, ghostProjects] = await Promise.all([
       this.prisma.task.findMany({
-        where: this.taskScopeWhere(params.workspaceId),
+        where: {
+          ...this.taskScopeWhere(params.workspaceId),
+          workspace: params.clerkUserId ? { clerkUserId: params.clerkUserId } : undefined
+        },
         include: {
           workspace: true,
           project: true,
@@ -816,7 +820,7 @@ export class ExecutionInsightsService {
           }
         }
       }),
-      this.prisma.dayPlan.findUnique({
+      this.prisma.dayPlan.findFirst({
         where: {
           date: dayStart
         },
@@ -1247,9 +1251,13 @@ export class ExecutionInsightsService {
   async getTop3Commitment(params: {
     date: string;
     workspaceId?: string;
+    clerkUserId?: string;
   }) {
     const tasks = await this.prisma.task.findMany({
-      where: this.taskScopeWhere(params.workspaceId),
+      where: {
+        ...this.taskScopeWhere(params.workspaceId),
+        workspace: params.clerkUserId ? { clerkUserId: params.clerkUserId } : undefined
+      },
       include: {
         workspace: true,
         project: true,
@@ -1292,6 +1300,7 @@ export class ExecutionInsightsService {
     workspaceId?: string;
     taskIds: string[];
     note?: string;
+    clerkUserId?: string;
   }) {
     const uniqueTaskIds = Array.from(new Set(params.taskIds.map((taskId) => taskId.trim()).filter(Boolean)));
     if (uniqueTaskIds.length === 0) {
@@ -1307,7 +1316,8 @@ export class ExecutionInsightsService {
         id: {
           in: uniqueTaskIds
         },
-        ...this.taskScopeWhere(params.workspaceId)
+        ...this.taskScopeWhere(params.workspaceId),
+        workspace: params.clerkUserId ? { clerkUserId: params.clerkUserId } : undefined
       },
       include: {
         workspace: true,
@@ -1363,6 +1373,7 @@ export class ExecutionInsightsService {
   async clearTop3Commitment(params: {
     date: string;
     workspaceId?: string;
+    clerkUserId?: string;
   }) {
     await safeRecordStrategicDecisionEvent(this.prisma, {
       workspaceId: params.workspaceId ?? null,
@@ -1387,12 +1398,13 @@ export class ExecutionInsightsService {
   async getExecutionScore(params: {
     date: string;
     workspaceId?: string;
+    clerkUserId?: string;
   }) {
     const dayStart = startOfDay(params.date);
     const dayEnd = endOfDay(params.date);
 
     const [dayPlan, events, sessions] = await Promise.all([
-      this.prisma.dayPlan.findUnique({
+      this.prisma.dayPlan.findFirst({
         where: {
           date: dayStart
         },
@@ -1551,6 +1563,7 @@ export class ExecutionInsightsService {
   async getEvolutionEngine(params: {
     workspaceId?: string;
     windowDays?: number;
+    clerkUserId?: string;
   }) {
     const now = new Date();
     const windowDays = this.clampEvolutionWindow(params.windowDays);
@@ -2189,6 +2202,7 @@ export class ExecutionInsightsService {
   async getWeeklyPulse(params: {
     workspaceId?: string;
     weekStart?: string;
+    clerkUserId?: string;
   }) {
     const baseDate = params.weekStart
       ? new Date(`${params.weekStart}T00:00:00.000Z`)

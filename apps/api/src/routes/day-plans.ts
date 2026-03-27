@@ -2,20 +2,23 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { DayPlanService } from '../services/day-plan-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayPlanService) {
   app.get('/day-plans/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
       })
       .parse(request.params);
 
-    const plan = await dayPlanService.getByDate(params.date);
+    const plan = await dayPlanService.getByDate(params.date, clerkUserId);
     return plan ?? { date: params.date, items: [] };
   });
 
   app.post('/day-plans/:date/items', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -33,6 +36,7 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
       .parse(request.body);
 
     const item = await dayPlanService.addItem({
+      clerkUserId,
       date: params.date,
       ...payload
     });

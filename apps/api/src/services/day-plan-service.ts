@@ -11,6 +11,7 @@ function isStrategicExecutionKind(kind?: string | null) {
 }
 
 type AddDayPlanItemInput = {
+  clerkUserId: string;
   date: string;
   taskId?: string | null;
   startTime: string;
@@ -33,11 +34,11 @@ export class DayPlanService {
     private readonly taskService: TaskService
   ) {}
 
-  private async getOrCreatePlan(date: string) {
+  private async getOrCreatePlan(date: string, clerkUserId: string) {
     const normalizedDate = startOfDay(date);
 
     const existing = await this.prisma.dayPlan.findUnique({
-      where: { date: normalizedDate }
+      where: { clerkUserId_date: { clerkUserId, date: normalizedDate } }
     });
 
     if (existing) {
@@ -45,9 +46,7 @@ export class DayPlanService {
     }
 
     return this.prisma.dayPlan.create({
-      data: {
-        date: normalizedDate
-      }
+      data: { clerkUserId, date: normalizedDate }
     });
   }
 
@@ -101,12 +100,12 @@ export class DayPlanService {
     }
   }
 
-  async getByDate(date: string) {
+  async getByDate(date: string, clerkUserId: string) {
     await this.cleanupPendingTaskDuplicates();
 
     const normalizedDate = startOfDay(date);
     const plan = await this.prisma.dayPlan.findUnique({
-      where: { date: normalizedDate },
+      where: { clerkUserId_date: { clerkUserId, date: normalizedDate } },
       include: {
         items: {
           include: {
@@ -130,7 +129,7 @@ export class DayPlanService {
       throw new Error('start_time precisa ser menor que end_time.');
     }
 
-    const plan = await this.getOrCreatePlan(input.date);
+    const plan = await this.getOrCreatePlan(input.date, input.clerkUserId);
 
     if (input.taskId) {
       const task = await this.prisma.task.findUnique({

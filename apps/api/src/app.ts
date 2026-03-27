@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { requireAuth } from './middleware/auth.js';
 
 import { prisma } from './db.js';
 import { registerWorkspaceRoutes } from './routes/workspaces.js';
@@ -37,6 +38,8 @@ export async function buildApp() {
   await app.register(cors, {
     origin: true
   });
+
+  app.addHook('preHandler', requireAuth);
 
   const gamificationService = new GamificationService(prisma);
   const taskService = new TaskService(prisma);

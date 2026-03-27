@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "mind-elixir/dist/MindElixir.css";
 
 :root {
   /* Warm dark palette (Sunsama-inspired) */
@@ -14451,4 +14452,198 @@ h4 {
   height: 100%;
   border-radius: 12px;
   overflow: hidden;
+}
+
+/* mind-elixir inline edit input — seamless overlay */
+.map-container #input-box {
+  background-color: #1e1e24 !important;
+  color: #e8e4df !important;
+  border: 2px solid #f97316 !important;
+  border-radius: 6px !important;
+  padding: 4px 12px !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  min-width: 80px !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.2) !important;
+  line-height: inherit !important;
+  white-space: pre-wrap !important;
+  z-index: 100 !important;
+}
+
+/* mind-elixir root node input (larger font) */
+.map-container me-root #input-box,
+.map-container #input-box.me-root-input {
+  font-size: 20px !important;
+  padding: 8px 20px !important;
+  border-radius: 50px !important;
+}
+
+/* mind-elixir node topic box */
+.map-container me-tpc {
+  min-width: 60px;
+  text-align: center;
+}
+
+/* Diagram handles — show only on node hover */
+.react-flow__node .rf-handle {
+  width: 10px !important;
+  height: 10px !important;
+  background: var(--accent, #f97316) !important;
+  border: 2px solid #1a1a1e !important;
+  border-radius: 50% !important;
+  opacity: 0 !important;
+  transition: opacity 0.15s !important;
+  cursor: crosshair !important;
+}
+.react-flow__node:hover .rf-handle {
+  opacity: 1 !important;
+}
+.react-flow__node .rf-handle:hover {
+  opacity: 1 !important;
+  transform: scale(1.3) !important;
+}
+
+/* Inline node edit input */
+.rf-node-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent, #f97316);
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  outline: none;
+  text-align: center;
+  width: 100%;
+  padding: 0 2px;
+  min-width: 40px;
+}
+
+/* Fullscreen mode */
+.canvas-fullscreen-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.canvas-fullscreen-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.fullscreen-mode {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  background: var(--bg) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+.fullscreen-mode .notes-writer-title {
+  display: none !important;
+}
+.fullscreen-mode .canvas-mode-toggle {
+  border-radius: 0 !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  padding: 10px 16px !important;
+  flex-shrink: 0;
+}
+.fullscreen-mode .canvas-area {
+  flex: 1 !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+.fullscreen-mode .notes-writer-editor-wrap {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  padding: 24px 32px !important;
+}
+.fullscreen-mode .notes-writer-formatbar,
+.fullscreen-mode .notes-writer-quickblocks {
+  flex-shrink: 0;
+}
+
+/* ── NodeToolbar ─────────────────────────────────────────────────────────── */
+.rf-node-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #1e1e24;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.rf-toolbar-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, opacity 0.1s;
+  flex-shrink: 0;
+}
+.rf-toolbar-color:hover { transform: scale(1.25); }
+.rf-toolbar-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(255,255,255,0.12);
+  margin: 0 2px;
+}
+.rf-toolbar-delete {
+  font-size: 10px;
+  color: #ef4444;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 4px;
+  padding: 2px 5px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.rf-toolbar-delete:hover { background: rgba(239,68,68,0.25); }
+
+/* Link mode hint banner */
+.mindmap-link-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(99,102,241,0.9);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 20;
+  pointer-events: all;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.mindmap-link-hint button {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }

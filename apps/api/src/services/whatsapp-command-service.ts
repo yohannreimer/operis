@@ -337,7 +337,7 @@ export class WhatsappCommandService {
   async buildUpcomingBlockDigest(options?: UpcomingDigestOptions) {
     const date = options?.date ?? this.todayDate();
     const withinMinutes = Math.max(5, Math.min(120, Math.round(options?.withinMinutes ?? 20)));
-    const plan = await this.dayPlanService.getByDate(date);
+    const plan = await this.dayPlanService.getByDate(date, 'legacy');
 
     if (!plan) {
       return null;
@@ -403,7 +403,8 @@ export class WhatsappCommandService {
         data: {
           content,
           source: 'whatsapp',
-          processed: false
+          processed: false,
+          clerkUserId: 'legacy'
         }
       });
 
@@ -555,7 +556,8 @@ export class WhatsappCommandService {
         taskId: task.id,
         blockType: 'task',
         startTime: start.toISOString(),
-        endTime: end.toISOString()
+        endTime: end.toISOString(),
+        clerkUserId: 'legacy'
       });
 
       return {

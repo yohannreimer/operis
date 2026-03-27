@@ -7,6 +7,7 @@ import {
   signalFromImpact
 } from '../services/strategic-decision-service.js';
 import { refreshGhostProjects } from '../services/project-ghost-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 function startOfWeekUtc(input: Date) {
   const base = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
@@ -643,8 +644,18 @@ const workspaceIdQuerySchema = z.preprocess((value) => {
   return normalized;
 }, z.string().uuid().optional());
 
+async function findOwnedProject(prisma: PrismaClient, projectId: string, clerkUserId: string) {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, workspace: { clerkUserId } },
+    select: { id: true }
+  });
+  if (!project) throw new Error('Projeto não encontrado.');
+  return project;
+}
+
 export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient) {
   app.get('/projects', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         workspaceId: workspaceIdQuerySchema
@@ -658,6 +669,7 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
     return prisma.project.findMany({
       where: {
         workspaceId: query.workspaceId,
+        workspace: { clerkUserId },
         archivedAt: null
       },
       include: {
@@ -670,6 +682,7 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.post('/projects', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const payload = z
       .object({
         workspaceId: z.string().uuid(),
@@ -692,6 +705,13 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
         methodologyData: z.unknown().optional()
       })
       .parse(request.body);
+
+    // Verify workspace belongs to user
+    const ownedWorkspace = await prisma.workspace.findFirst({
+      where: { id: payload.workspaceId, clerkUserId },
+      select: { id: true }
+    });
+    if (!ownedWorkspace) throw new Error('Frente não encontrada.');
 
     const methodology = payload.methodology ?? 'fourdx';
     const metricsToCreate =
@@ -759,7 +779,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.patch('/projects/:projectId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const payload = z
       .object({
         title: z.string().min(2).optional(),
@@ -931,7 +953,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   ] as const;
 
   app.post('/projects/:projectId/methodology-items', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const payload = z
       .object({
         arrayKey: z.enum(VALID_ARRAY_KEYS),
@@ -959,9 +983,11 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.patch('/projects/:projectId/methodology-items/:itemId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({ projectId: z.string().uuid(), itemId: z.string().min(1) })
       .parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const payload = z
       .object({
         arrayKey: z.enum(VALID_ARRAY_KEYS),
@@ -993,9 +1019,11 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.delete('/projects/:projectId/methodology-items/:itemId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({ projectId: z.string().uuid(), itemId: z.string().min(1) })
       .parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const payload = z
       .object({
         arrayKey: z.enum(VALID_ARRAY_KEYS)
@@ -1021,7 +1049,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.post('/projects/:projectId/ghost-action', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const payload = z
       .object({
         action: z.enum(['reativar', 'mover_latente', 'encerrar'])
@@ -1093,7 +1123,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.get('/projects/:projectId/scorecard', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const query = z
       .object({
         weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
@@ -1346,7 +1378,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.post('/projects/:projectId/metrics', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const payload = projectMetricSchema.parse(request.body);
 
     const project = await prisma.project.findUniqueOrThrow({
@@ -1386,6 +1420,7 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.patch('/project-metrics/:metricId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ metricId: z.string().uuid() }).parse(request.params);
     const payload = z
       .object({
@@ -1399,9 +1434,10 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
       })
       .parse(request.body);
 
-    const current = await prisma.projectMetric.findUniqueOrThrow({
+    const current = await prisma.projectMetric.findFirstOrThrow({
       where: {
-        id: params.metricId
+        id: params.metricId,
+        project: { workspace: { clerkUserId } }
       },
       select: {
         id: true,
@@ -1451,6 +1487,7 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.delete('/project-metrics/:metricId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ metricId: z.string().uuid() }).parse(request.params);
 
     const metric = await prisma.projectMetric.findUnique({
@@ -1501,6 +1538,7 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.post('/project-metrics/:metricId/checkins', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ metricId: z.string().uuid() }).parse(request.params);
     const payload = z
       .object({
@@ -1590,7 +1628,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.post('/projects/:projectId/framework-checkin', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const payload = z
       .object({
         weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -1750,6 +1790,7 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.delete('/project-metrics/:metricId/checkins', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ metricId: z.string().uuid() }).parse(request.params);
     const query = z
       .object({
@@ -1852,7 +1893,9 @@ export function registerProjectRoutes(app: FastifyInstance, prisma: PrismaClient
   });
 
   app.delete('/projects/:projectId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ projectId: z.string().uuid() }).parse(request.params);
+    await findOwnedProject(prisma, params.projectId, clerkUserId);
     const query = z
       .object({
         cascadeTasks: z.coerce.boolean().optional()

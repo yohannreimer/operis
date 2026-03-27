@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { PrismaClient, TaskHorizon } from '@prisma/client';
 import { z } from 'zod';
+import { getUserId } from '../middleware/auth.js';
 
 export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient) {
   function ensureExecutableTitle(raw: string) {
@@ -17,15 +18,16 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient) 
     return `Executar ${normalized}`;
   }
 
-  app.get('/inbox', async () => {
+  app.get('/inbox', async (request) => {
+    const clerkUserId = getUserId(request);
     return prisma.inboxItem.findMany({
-      orderBy: {
-        createdAt: 'desc'
-      }
+      where: { clerkUserId },
+      orderBy: { createdAt: 'desc' }
     });
   });
 
   app.post('/inbox', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const payload = z
       .object({
         content: z.string().min(1),
@@ -35,6 +37,7 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient) 
 
     const item = await prisma.inboxItem.create({
       data: {
+        clerkUserId,
         content: payload.content,
         source: payload.source,
         processed: false

@@ -1,0 +1,48 @@
+-- Add clerk_user_id to all tables that need user scoping
+-- Existing rows get a placeholder value 'legacy' so NOT NULL constraint is satisfied
+-- After deploy, populate real values via backfill if needed
+
+-- DropIndex (changing unique constraints)
+DROP INDEX IF EXISTS "day_plans_date_key";
+DROP INDEX IF EXISTS "inbox_items_processed_idx";
+DROP INDEX IF EXISTS "note_folders_archived_at_sort_order_idx";
+DROP INDEX IF EXISTS "note_folders_parent_id_sort_order_idx";
+
+-- workspaces
+ALTER TABLE "workspaces" ADD COLUMN "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "workspaces" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
+
+-- day_plans
+ALTER TABLE "day_plans" ADD COLUMN "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "day_plans" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
+
+-- gamification_state
+ALTER TABLE "gamification_state" ADD COLUMN "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "gamification_state" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
+
+-- habits
+ALTER TABLE "habits" ADD COLUMN "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "habits" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
+
+-- inbox_items
+ALTER TABLE "inbox_items" ADD COLUMN "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "inbox_items" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
+
+-- note_folders
+ALTER TABLE "note_folders" ADD COLUMN "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "note_folders" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
+
+-- recurring_blocks
+ALTER TABLE "recurring_blocks" ADD COLUMN "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE "recurring_blocks" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
+
+-- CreateIndex
+CREATE INDEX "workspaces_clerk_user_id_idx" ON "workspaces"("clerk_user_id");
+CREATE INDEX "day_plans_clerk_user_id_idx" ON "day_plans"("clerk_user_id");
+CREATE UNIQUE INDEX "day_plans_clerk_user_id_date_key" ON "day_plans"("clerk_user_id", "date");
+CREATE UNIQUE INDEX "gamification_state_clerk_user_id_key" ON "gamification_state"("clerk_user_id");
+CREATE INDEX "habits_clerk_user_id_idx" ON "habits"("clerk_user_id");
+CREATE INDEX "inbox_items_clerk_user_id_processed_idx" ON "inbox_items"("clerk_user_id", "processed");
+CREATE INDEX "note_folders_clerk_user_id_parent_id_sort_order_idx" ON "note_folders"("clerk_user_id", "parent_id", "sort_order");
+CREATE INDEX "note_folders_clerk_user_id_archived_at_sort_order_idx" ON "note_folders"("clerk_user_id", "archived_at", "sort_order");
+CREATE INDEX "recurring_blocks_clerk_user_id_idx" ON "recurring_blocks"("clerk_user_id");

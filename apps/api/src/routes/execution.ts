@@ -2,9 +2,11 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { ExecutionInsightsService } from '../services/execution-insights-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 export function registerExecutionRoutes(app: FastifyInstance, executionInsightsService: ExecutionInsightsService) {
   app.get('/execution/briefing/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -21,11 +23,13 @@ export function registerExecutionRoutes(app: FastifyInstance, executionInsightsS
     return executionInsightsService.getBriefing({
       date: params.date,
       workspaceId: query.workspaceId,
-      strictMode: query.strictMode
+      strictMode: query.strictMode,
+      clerkUserId
     });
   });
 
   app.get('/execution/score/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -40,11 +44,13 @@ export function registerExecutionRoutes(app: FastifyInstance, executionInsightsS
 
     return executionInsightsService.getExecutionScore({
       date: params.date,
-      workspaceId: query.workspaceId
+      workspaceId: query.workspaceId,
+      clerkUserId
     });
   });
 
   app.get('/execution/weekly-pulse', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         workspaceId: z.string().uuid().optional(),
@@ -54,11 +60,13 @@ export function registerExecutionRoutes(app: FastifyInstance, executionInsightsS
 
     return executionInsightsService.getWeeklyPulse({
       workspaceId: query.workspaceId,
-      weekStart: query.weekStart
+      weekStart: query.weekStart,
+      clerkUserId
     });
   });
 
   app.get('/execution/evolution', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         workspaceId: z.string().uuid().optional(),
@@ -68,11 +76,13 @@ export function registerExecutionRoutes(app: FastifyInstance, executionInsightsS
 
     return executionInsightsService.getEvolutionEngine({
       workspaceId: query.workspaceId,
-      windowDays: query.windowDays
+      windowDays: query.windowDays,
+      clerkUserId
     });
   });
 
   app.get('/execution/top3/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -87,11 +97,13 @@ export function registerExecutionRoutes(app: FastifyInstance, executionInsightsS
 
     return executionInsightsService.getTop3Commitment({
       date: params.date,
-      workspaceId: query.workspaceId
+      workspaceId: query.workspaceId,
+      clerkUserId
     });
   });
 
   app.put('/execution/top3/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -115,11 +127,13 @@ export function registerExecutionRoutes(app: FastifyInstance, executionInsightsS
       date: params.date,
       workspaceId: query.workspaceId,
       taskIds: payload.taskIds,
-      note: payload.note
+      note: payload.note,
+      clerkUserId
     });
   });
 
   app.delete('/execution/top3/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -134,7 +148,8 @@ export function registerExecutionRoutes(app: FastifyInstance, executionInsightsS
 
     return executionInsightsService.clearTop3Commitment({
       date: params.date,
-      workspaceId: query.workspaceId
+      workspaceId: query.workspaceId,
+      clerkUserId
     });
   });
 }

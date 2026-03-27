@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 
 import { DayPlanService } from '../services/day-plan-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 function toDateTime(date: string, time: string) {
   return new Date(`${date}T${time}:00.000Z`).toISOString();
@@ -13,16 +14,16 @@ export function registerRecurringBlockRoutes(
   prisma: PrismaClient,
   dayPlanService: DayPlanService
 ) {
-  app.get('/recurring-blocks', async () => {
+  app.get('/recurring-blocks', async (request) => {
+    const clerkUserId = getUserId(request);
     return prisma.recurringBlock.findMany({
-      where: {
-        active: true
-      },
+      where: { clerkUserId, active: true },
       orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }]
     });
   });
 
   app.post('/recurring-blocks', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const payload = z
       .object({
         title: z.string().min(2),
@@ -35,6 +36,7 @@ export function registerRecurringBlockRoutes(
 
     const created = await prisma.recurringBlock.create({
       data: {
+        clerkUserId,
         title: payload.title,
         weekday: payload.weekday,
         startTime: payload.startTime,
@@ -47,41 +49,31 @@ export function registerRecurringBlockRoutes(
   });
 
   app.post('/recurring-blocks/apply/:date', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z
-      .object({
-        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-      })
+      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
       .parse(request.params);
 
     const date = new Date(`${params.date}T00:00:00.000Z`);
     const weekday = date.getUTCDay();
 
     const blocks = await prisma.recurringBlock.findMany({
-      where: {
-        weekday,
-        active: true
-      },
-      orderBy: {
-        startTime: 'asc'
-      }
+      where: { clerkUserId, weekday, active: true },
+      orderBy: { startTime: 'asc' }
     });
 
     const createdItems = [];
-
     for (const block of blocks) {
       const item = await dayPlanService.addItem({
+        clerkUserId,
         date: params.date,
         startTime: toDateTime(params.date, block.startTime),
         endTime: toDateTime(params.date, block.endTime),
         blockType: 'fixed'
       });
-
       createdItems.push(item);
     }
 
-    return {
-      appliedBlocks: createdItems.length,
-      items: createdItems
-    };
+    return { appliedBlocks: createdItems.length, items: createdItems };
   });
 }

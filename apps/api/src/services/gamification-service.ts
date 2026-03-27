@@ -94,11 +94,9 @@ export class GamificationService {
     return streak;
   }
 
-  private async getOrCreateState() {
-    const existing = await this.prisma.gamificationState.findFirst({
-      orderBy: {
-        lastUpdate: 'desc'
-      }
+  private async getOrCreateState(clerkUserId: string) {
+    const existing = await this.prisma.gamificationState.findUnique({
+      where: { clerkUserId }
     });
 
     if (existing) {
@@ -107,6 +105,7 @@ export class GamificationService {
 
     return this.prisma.gamificationState.create({
       data: {
+        clerkUserId,
         currentScore: 0,
         weeklyScore: 0,
         streakDays: 0,
@@ -115,8 +114,8 @@ export class GamificationService {
     });
   }
 
-  async applyResult(result: keyof typeof gamificationDelta) {
-    const state = await this.getOrCreateState();
+  async applyResult(result: keyof typeof gamificationDelta, clerkUserId: string) {
+    const state = await this.getOrCreateState(clerkUserId);
     const delta = gamificationDelta[result];
     const now = new Date();
 
@@ -144,8 +143,8 @@ export class GamificationService {
     });
   }
 
-  async getOverview() {
-    const state = await this.getOrCreateState();
+  async getOverview(clerkUserId: string) {
+    const state = await this.getOrCreateState(clerkUserId);
     return {
       scoreAtual: state.currentScore,
       scoreSemanal: state.weeklyScore,
@@ -155,8 +154,8 @@ export class GamificationService {
     };
   }
 
-  async getDetails() {
-    const overview = await this.getOverview();
+  async getDetails(clerkUserId: string) {
+    const overview = await this.getOverview(clerkUserId);
     const now = new Date();
     const thisWeekStart = this.startOfWeek(now);
     const sixWeeksAgo = new Date(thisWeekStart);

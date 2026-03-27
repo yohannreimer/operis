@@ -1092,6 +1092,13 @@ const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 const REQUEST_TIMEOUT_MS = 12000;
 const NOTES_TRANSCRIBE_TIMEOUT_MS = 180000;
 
+// Token getter injected by AuthSync component so apiRequest stays a plain function
+let _getToken: (() => Promise<string | null>) | null = null;
+
+export function setAuthTokenGetter(getter: () => Promise<string | null>) {
+  _getToken = getter;
+}
+
 function withQuery(path: string, params?: Record<string, string | number | boolean | undefined>) {
   if (!params) {
     return path;
@@ -1128,6 +1135,11 @@ async function apiRequest<T>(path: string, options?: ApiRequestOptions): Promise
 
     if (hasBody && !isFormDataBody && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
+    }
+
+    if (_getToken) {
+      const token = await _getToken();
+      if (token) headers.set('Authorization', `Bearer ${token}`);
     }
 
     const response = await fetch(`${API_BASE}${path}`, {

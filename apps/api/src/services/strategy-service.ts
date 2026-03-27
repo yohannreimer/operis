@@ -310,6 +310,7 @@ export class StrategyService {
 
   private async collectGhostFronts(params: {
     workspaceId?: string;
+    clerkUserId?: string;
     start: Date;
     end: Date;
   }) {
@@ -319,7 +320,8 @@ export class StrategyService {
           type: {
             not: 'geral'
           },
-          id: params.workspaceId
+          id: params.workspaceId,
+          clerkUserId: params.clerkUserId
         },
         select: {
           id: true,
@@ -479,6 +481,7 @@ export class StrategyService {
   async getWeeklyAllocation(params: {
     weekStart?: string;
     workspaceId?: string;
+    clerkUserId?: string;
   }) {
     await refreshGhostProjects(this.prisma, {
       workspaceId: params.workspaceId
@@ -493,7 +496,8 @@ export class StrategyService {
           type: {
             not: 'geral'
           },
-          id: params.workspaceId
+          id: params.workspaceId,
+          clerkUserId: params.clerkUserId
         },
         orderBy: {
           createdAt: 'asc'
@@ -551,6 +555,7 @@ export class StrategyService {
 
   async getWorkspacePortfolio(params: {
     weekStart?: string;
+    clerkUserId?: string;
   }) {
     await refreshGhostProjects(this.prisma);
 
@@ -562,7 +567,8 @@ export class StrategyService {
         where: {
           type: {
             not: 'geral'
-          }
+          },
+          clerkUserId: params.clerkUserId
         },
         orderBy: {
           createdAt: 'asc'
@@ -818,6 +824,7 @@ export class StrategyService {
   async getWeeklyReview(params: {
     weekStart?: string;
     workspaceId?: string;
+    clerkUserId?: string;
   }) {
     await refreshGhostProjects(this.prisma, {
       workspaceId: params.workspaceId
@@ -829,7 +836,8 @@ export class StrategyService {
     const [allocation, completedA, deepWorkSessions, ghostFronts, events] = await Promise.all([
       this.getWeeklyAllocation({
         weekStart: toDateKey(weekStart),
-        workspaceId: params.workspaceId
+        workspaceId: params.workspaceId,
+        clerkUserId: params.clerkUserId
       }),
       this.prisma.task.count({
         where: {
@@ -853,6 +861,7 @@ export class StrategyService {
       }),
       this.collectGhostFronts({
         workspaceId: params.workspaceId,
+        clerkUserId: params.clerkUserId,
         start,
         end
       }),
@@ -923,6 +932,7 @@ export class StrategyService {
   async getMonthlyReview(params: {
     monthStart?: string;
     workspaceId?: string;
+    clerkUserId?: string;
   }) {
     await refreshGhostProjects(this.prisma, {
       workspaceId: params.workspaceId
@@ -937,7 +947,8 @@ export class StrategyService {
           type: {
             not: 'geral'
           },
-          id: params.workspaceId
+          id: params.workspaceId,
+          clerkUserId: params.clerkUserId
         },
         orderBy: {
           createdAt: 'asc'
@@ -979,6 +990,7 @@ export class StrategyService {
       }),
       this.collectGhostFronts({
         workspaceId: params.workspaceId,
+        clerkUserId: params.clerkUserId,
         start,
         end
       }),
@@ -1089,6 +1101,7 @@ export class StrategyService {
     periodType: ReviewPeriodType;
     periodStart?: string;
     workspaceId?: string;
+    clerkUserId?: string;
   }) {
     await this.ensureWorkspaceExists(params.workspaceId);
 
@@ -1304,6 +1317,7 @@ export class StrategyService {
     periodType: ReviewPeriodType;
     workspaceId?: string;
     limit?: number;
+    clerkUserId?: string;
   }) {
     await this.ensureWorkspaceExists(params.workspaceId);
 

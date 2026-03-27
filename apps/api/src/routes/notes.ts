@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { NoteType, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { env } from '../config.js';
+import { getUserId } from '../middleware/auth.js';
 
 const tagsSchema = z
   .array(z.string().min(1).max(32))
@@ -45,7 +46,7 @@ const folderUpdateSchema = z
 
 const noteCreateSchema = z.object({
   title: z.string().min(1).max(180),
-  content: z.string().max(25000).optional().nullable(),
+  content: z.string().max(500000).optional().nullable(),
   type: z.nativeEnum(NoteType).optional(),
   tags: tagsSchema.optional(),
   pinned: z.boolean().optional(),
@@ -58,7 +59,7 @@ const noteCreateSchema = z.object({
 const noteUpdateSchema = z
   .object({
     title: z.string().min(1).max(180).optional(),
-    content: z.string().max(25000).optional().nullable(),
+    content: z.string().max(500000).optional().nullable(),
     type: z.nativeEnum(NoteType).optional(),
     tags: tagsSchema.optional(),
     pinned: z.boolean().optional(),
@@ -443,6 +444,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.get('/note-folders', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         includeArchived: z.coerce.boolean().optional()
@@ -451,6 +453,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
 
     return prisma.noteFolder.findMany({
       where: {
+        clerkUserId,
         archivedAt: query.includeArchived ? undefined : null
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }]
@@ -458,12 +461,14 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.post('/note-folders', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const payload = folderCreateSchema.parse(request.body);
 
     if (payload.parentId) {
       const parent = await prisma.noteFolder.findFirst({
         where: {
           id: payload.parentId,
+          clerkUserId,
           archivedAt: null
         },
         select: {
@@ -479,6 +484,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
 
     const folder = await prisma.noteFolder.create({
       data: {
+        clerkUserId,
         name: payload.name.trim(),
         color: payload.color ?? '#4f7cff',
         parentId: payload.parentId ?? null,
@@ -490,12 +496,14 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.patch('/note-folders/:folderId', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ folderId: z.string().uuid() }).parse(request.params);
     const payload = folderUpdateSchema.parse(request.body);
 
-    const currentFolder = await prisma.noteFolder.findUnique({
+    const currentFolder = await prisma.noteFolder.findFirst({
       where: {
-        id: params.folderId
+        id: params.folderId,
+        clerkUserId
       },
       select: {
         id: true
@@ -565,11 +573,13 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.delete('/note-folders/:folderId', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ folderId: z.string().uuid() }).parse(request.params);
 
-    const folder = await prisma.noteFolder.findUnique({
+    const folder = await prisma.noteFolder.findFirst({
       where: {
-        id: params.folderId
+        id: params.folderId,
+        clerkUserId
       },
       select: {
         id: true
@@ -610,6 +620,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.get('/notes', async (request) => {
+    const clerkUserId = getUserId(request);
     const query = z
       .object({
         type: z.nativeEnum(NoteType).optional(),
@@ -630,27 +641,26 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
         workspaceId: query.workspaceId,
         projectId: query.projectId,
         taskId: query.taskId,
-        OR: query.q
-          ? [
-              {
-                title: {
-                  contains: query.q,
-                  mode: 'insensitive'
-                }
-              },
-              {
-                content: {
-                  contains: query.q,
-                  mode: 'insensitive'
-                }
-              },
-              {
-                tags: {
-                  has: query.q.toLowerCase()
-                }
-              }
+        AND: [
+          {
+            OR: [
+              { workspace: { clerkUserId } },
+              { workspaceId: null, folder: { clerkUserId } },
+              { workspaceId: null, folderId: null }
             ]
-          : undefined
+          },
+          ...(query.q
+            ? [
+                {
+                  OR: [
+                    { title: { contains: query.q, mode: 'insensitive' as const } },
+                    { content: { contains: query.q, mode: 'insensitive' as const } },
+                    { tags: { has: query.q.toLowerCase() } }
+                  ]
+                }
+              ]
+            : [])
+        ]
       },
       include: {
         ...NOTE_RELATION_INCLUDE

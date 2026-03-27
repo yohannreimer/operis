@@ -1,5 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { ClerkLoading, ClerkLoaded, SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
+import { AuthSync } from './components/auth-sync';
 
 const Layout = lazy(() => import('./components/layout').then((module) => ({ default: module.Layout })));
 const DashboardPage = lazy(() => import('./pages/dashboard').then((module) => ({ default: module.DashboardPage })));
@@ -23,27 +25,50 @@ function RouteFallback() {
 export function App() {
   return (
     <BrowserRouter>
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/notas/*" element={<NotasPage />} />
-          <Route path="/" element={<Layout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="hoje" element={<HojePage />} />
-            <Route path="amanha" element={<Navigate to="/hoje" replace />} />
-            <Route path="ritual" element={<Navigate to="/" replace />} />
-            <Route path="workspaces" element={<Navigate to="/projetos" replace />} />
-            <Route path="workspaces/:workspaceId" element={<Navigate to="/projetos" replace />} />
-            <Route path="projetos" element={<ProjetosPage />} />
-            <Route path="projetos/:projectId" element={<ProjetosPage />} />
-            <Route path="tarefas" element={<TarefasPage />} />
-            <Route path="agenda" element={<AgendaPage />} />
-            <Route path="habitos" element={<HabitosPage />} />
-            <Route path="inbox" element={<Navigate to="/tarefas" replace />} />
-            <Route path="gamificacao" element={<Navigate to="/" replace />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </Suspense>
+      <ClerkLoading>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ opacity: 0.4, fontSize: 14 }}>Carregando...</div>
+        </div>
+      </ClerkLoading>
+      <ClerkLoaded>
+        <SignedIn>
+          <AuthSync />
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/notas/*" element={<NotasPage />} />
+              <Route path="/" element={<Layout />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="hoje" element={<HojePage />} />
+                <Route path="amanha" element={<Navigate to="/hoje" replace />} />
+                <Route path="ritual" element={<Navigate to="/" replace />} />
+                <Route path="workspaces" element={<Navigate to="/projetos" replace />} />
+                <Route path="workspaces/:workspaceId" element={<Navigate to="/projetos" replace />} />
+                <Route path="projetos" element={<ProjetosPage />} />
+                <Route path="projetos/:projectId" element={<ProjetosPage />} />
+                <Route path="tarefas" element={<TarefasPage />} />
+                <Route path="agenda" element={<AgendaPage />} />
+                <Route path="habitos" element={<HabitosPage />} />
+                <Route path="inbox" element={<Navigate to="/tarefas" replace />} />
+                <Route path="gamificacao" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+            </Routes>
+          </Suspense>
+        </SignedIn>
+        <SignedOut>
+          <Routes>
+            <Route
+              path="/sign-in/*"
+              element={
+                <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <SignIn routing="path" path="/sign-in" />
+                </div>
+              }
+            />
+            <Route path="*" element={<Navigate to="/sign-in" replace />} />
+          </Routes>
+        </SignedOut>
+      </ClerkLoaded>
     </BrowserRouter>
   );
 }
