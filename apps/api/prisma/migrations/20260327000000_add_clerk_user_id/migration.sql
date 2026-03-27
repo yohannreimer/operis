@@ -36,6 +36,14 @@ ALTER TABLE "note_folders" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
 ALTER TABLE "recurring_blocks" ADD COLUMN IF NOT EXISTS "clerk_user_id" TEXT NOT NULL DEFAULT 'legacy';
 ALTER TABLE "recurring_blocks" ALTER COLUMN "clerk_user_id" DROP DEFAULT;
 
+-- Deduplicate day_plans before creating unique index (keep row with highest id per date+clerk_user_id)
+DELETE FROM "day_plans" a USING "day_plans" b
+WHERE a.id > b.id AND a.date = b.date AND a.clerk_user_id = b.clerk_user_id;
+
+-- Deduplicate gamification_state before creating unique index (keep row with highest id per clerk_user_id)
+DELETE FROM "gamification_state" a USING "gamification_state" b
+WHERE a.id > b.id AND a.clerk_user_id = b.clerk_user_id;
+
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "workspaces_clerk_user_id_idx" ON "workspaces"("clerk_user_id");
 CREATE INDEX IF NOT EXISTS "day_plans_clerk_user_id_idx" ON "day_plans"("clerk_user_id");
