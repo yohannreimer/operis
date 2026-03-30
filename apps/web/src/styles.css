@@ -6651,6 +6651,8 @@ h4 {
   align-content: start;
   gap: 11px;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .notes-sidebar-head {
@@ -6676,7 +6678,7 @@ h4 {
 .notes-folder-tree {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 2px 2px;
   display: grid;
   gap: 6px;
   max-height: calc(100vh - 350px);
@@ -7156,7 +7158,7 @@ h4 {
 .notes-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 2px 2px;
   display: grid;
   gap: 10px;
   max-height: calc(100vh - 390px);
@@ -7178,6 +7180,8 @@ h4 {
   text-align: left;
   cursor: grab;
   color: var(--text);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .notes-list li button:hover {
@@ -7204,6 +7208,9 @@ h4 {
   font-size: 0.98rem;
   color: var(--text);
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .notes-list li button.active strong {
@@ -7218,10 +7225,15 @@ h4 {
 }
 
 .notes-list li button small {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   color: var(--muted);
   line-height: 1.4;
   font-size: 0.81rem;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .notes-list-date {
@@ -7230,10 +7242,17 @@ h4 {
   color: var(--muted);
 }
 
+.notes-list li button > div:first-child {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
 .notes-row-meta {
   display: grid;
   gap: 6px;
   justify-items: end;
+  flex-shrink: 0;
 }
 
 .notes-row-tag {
@@ -7253,6 +7272,8 @@ h4 {
   padding: 14px;
   display: grid;
   gap: 12px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .notes-preview-header-meta {
@@ -7285,6 +7306,8 @@ h4 {
   line-height: 1.62;
   color: var(--text);
   font-size: 1.01rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .notes-preview-content {
@@ -7294,6 +7317,12 @@ h4 {
   line-height: 1.62;
   font-size: 1.01rem;
   white-space: normal;
+  max-height: 320px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
 }
 
 .notes-preview-content p,

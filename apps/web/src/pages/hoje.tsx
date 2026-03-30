@@ -430,15 +430,15 @@ export function HojePage() {
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const completionTask = tasks.find((task) => task.id === completionTaskId) ?? null;
 
-  // Commitment blocks for the scheduler overlay (only timed + duration ones)
+  // Commitment blocks for the scheduler overlay (all timed commitments; default 30 min if no duration set)
   const schedulerCommitmentBlocks = useMemo((): CommitmentBlock[] =>
     todayCommitments
-      .filter(c => c.startTime && c.durationMin)
+      .filter(c => c.startTime)
       .map(c => ({
         id: c.id,
         title: c.title,
         startTime: c.startTime!,
-        durationMin: c.durationMin!
+        durationMin: c.durationMin ?? 30
       })),
     [todayCommitments]
   );

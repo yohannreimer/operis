@@ -23,6 +23,7 @@ import {
   RecurrenceDay,
   Workspace
 } from '../api';
+import { localDateKey } from '../utils/date';
 import {
   EmptyState,
   PremiumCard,
@@ -87,7 +88,7 @@ function formatDate(iso: string) {
 }
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateKey();
 }
 
 function statusDotClass(s: CommitmentStatus) {
