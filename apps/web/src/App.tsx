@@ -7,6 +7,7 @@ const Layout = lazy(() => import('./components/layout').then((module) => ({ defa
 const DashboardPage = lazy(() => import('./pages/dashboard').then((module) => ({ default: module.DashboardPage })));
 const HojePage = lazy(() => import('./pages/hoje').then((module) => ({ default: module.HojePage })));
 const ProjetosPage = lazy(() => import('./pages/projetos').then((module) => ({ default: module.ProjetosPage })));
+const WorkspacesPage = lazy(() => import('./pages/workspaces').then((module) => ({ default: module.WorkspacesPage })));
 const TarefasPage = lazy(() => import('./pages/tarefas').then((module) => ({ default: module.TarefasPage })));
 const NotasPage = lazy(() => import('./pages/notas').then((module) => ({ default: module.NotasPage })));
 const AgendaPage = lazy(() => import('./pages/agenda').then((module) => ({ default: module.AgendaPage })));
@@ -41,8 +42,10 @@ export function App() {
                 <Route path="hoje" element={<HojePage />} />
                 <Route path="amanha" element={<Navigate to="/hoje" replace />} />
                 <Route path="ritual" element={<Navigate to="/" replace />} />
-                <Route path="workspaces" element={<Navigate to="/projetos" replace />} />
-                <Route path="workspaces/:workspaceId" element={<Navigate to="/projetos" replace />} />
+                <Route path="frentes" element={<WorkspacesPage />} />
+                <Route path="frentes/:workspaceId" element={<WorkspacesPage />} />
+                <Route path="workspaces" element={<Navigate to="/frentes" replace />} />
+                <Route path="workspaces/:workspaceId" element={<Navigate to="/frentes" replace />} />
                 <Route path="projetos" element={<ProjetosPage />} />
                 <Route path="projetos/:projectId" element={<ProjetosPage />} />
                 <Route path="tarefas" element={<TarefasPage />} />

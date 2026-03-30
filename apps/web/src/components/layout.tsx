@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   BriefcaseBusiness,
+  Building2,
   CalendarCheck2,
   CalendarClock,
   ChevronDown,
@@ -157,6 +158,7 @@ const links: NavItem[] = [
   { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
   { to: '/agenda', label: 'Agenda', caption: 'Compromissos', icon: CalendarClock },
   { to: '/habitos', label: 'Hábitos', caption: 'RPG de vida', icon: Target },
+  { to: '/frentes', label: 'Frentes', caption: 'Estratégia e frentes', icon: Building2 },
   { to: '/projetos', label: 'Projetos', caption: 'Entregas ativas', icon: BriefcaseBusiness },
   { to: '/tarefas', label: 'Tarefas', caption: 'Backlog e inbox', icon: ListTodo },
   { to: '/notas', label: 'Notas', caption: 'Segundo cérebro', icon: NotebookPen },
