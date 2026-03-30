@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, MoreVertical, Pencil, Archive, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MoreVertical, Pencil, Archive, Trash2, Flame, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
   api,
   Habit,
   HabitFrequency,
+  HabitLevelInfo,
   HabitLifeArea,
   HabitLog,
   HabitRadarStats,
@@ -38,6 +39,8 @@ const AREA_MAP = Object.fromEntries(LIFE_AREAS.map((a) => [a.key, a])) as Record
   (typeof LIFE_AREAS)[number]
 >;
 
+const RADAR_AREAS: HabitLifeArea[] = ['corpo', 'mente', 'financas', 'crescimento', 'relacoes', 'trabalho'];
+
 const ALL_DAYS: RecurrenceDay[] = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
 const DAY_LABELS: Record<RecurrenceDay, string> = {
   seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sáb', dom: 'Dom',
@@ -61,90 +64,108 @@ function formatDisplayDate(dateStr: string) {
   return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
 }
 
-// ─── HabitRadar ───────────────────────────────────────────────────────────────
+// ─── HabitRadarCompact ────────────────────────────────────────────────────────
 
-const RADAR_SIZE = 300;
-const RADAR_CENTER = RADAR_SIZE / 2;
-const RADAR_MAX_RADIUS = 110;
-const RADAR_AREAS: HabitLifeArea[] = ['corpo', 'mente', 'financas', 'crescimento', 'relacoes', 'trabalho'];
+const R_SIZE = 140;
+const R_CENTER = R_SIZE / 2;
+const R_MAX = 50;
 
-function polarToXY(angle: number, radius: number) {
-  return {
-    x: RADAR_CENTER + radius * Math.cos(angle),
-    y: RADAR_CENTER + radius * Math.sin(angle),
-  };
+function polarToXY(angle: number, radius: number, cx = R_CENTER, cy = R_CENTER) {
+  return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
 }
 
-function levelToRadius(level: number) {
-  return (level / 10) * RADAR_MAX_RADIUS;
+function levelToR(level: number) { return (level / 10) * R_MAX; }
+
+interface HabitRadarCompactProps {
+  stats: HabitRadarStats | null;
+  hoveredArea: HabitLifeArea | null;
+  onHover: (area: HabitLifeArea | null) => void;
 }
 
-function HabitRadar({ stats }: { stats: HabitRadarStats | null }) {
+function HabitRadarCompact({ stats, hoveredArea, onHover }: HabitRadarCompactProps) {
   const angles = RADAR_AREAS.map((_, i) => (Math.PI * (270 + 60 * i)) / 180);
-  const gridLevels = [2, 4, 6, 8, 10];
-
-  function makePolygon(levels: number[]) {
-    return levels.map((lvl, i) => {
-      const r = levelToRadius(lvl);
-      const { x, y } = polarToXY(angles[i], r);
-      return `${x},${y}`;
-    }).join(' ');
-  }
+  const gridLevels = [3, 6, 10];
 
   const areaLevels = RADAR_AREAS.map((area) => stats?.[area]?.level ?? 1);
-  const filledPolygon = makePolygon(areaLevels);
+  const filledPoints = areaLevels.map((lvl, i) => {
+    const r = levelToR(lvl);
+    const { x, y } = polarToXY(angles[i], r);
+    return `${x},${y}`;
+  }).join(' ');
 
   return (
-    <svg viewBox={`-50 -40 ${RADAR_SIZE + 100} ${RADAR_SIZE + 80}`} className="habit-radar-svg">
-      {gridLevels.map((gl) => {
-        const pts = angles.map((angle) => {
-          const r = levelToRadius(gl);
-          const { x, y } = polarToXY(angle, r);
-          return `${x},${y}`;
-        }).join(' ');
-        return <polygon key={gl} points={pts} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={1} />;
-      })}
-      {angles.map((angle, i) => {
-        const outer = polarToXY(angle, RADAR_MAX_RADIUS);
-        return <line key={i} x1={RADAR_CENTER} y1={RADAR_CENTER} x2={outer.x} y2={outer.y} stroke="rgba(255,255,255,0.08)" strokeWidth={1} />;
-      })}
+    <svg
+      viewBox={`0 0 ${R_SIZE} ${R_SIZE}`}
+      width={R_SIZE}
+      height={R_SIZE}
+      style={{ display: 'block', flexShrink: 0 }}
+    >
       <defs>
-        <radialGradient id="radar-fill-gradient" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(224,124,74,0.35)" />
-          <stop offset="60%" stopColor="rgba(129,140,248,0.2)" />
-          <stop offset="100%" stopColor="rgba(91,185,140,0.1)" />
+        <radialGradient id="r-grad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgba(224,124,74,0.4)" />
+          <stop offset="100%" stopColor="rgba(129,140,248,0.15)" />
         </radialGradient>
-        <filter id="radar-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+        <filter id="r-glow">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
-      <polygon points={filledPolygon} fill="url(#radar-fill-gradient)" stroke="none" />
-      <polygon points={filledPolygon} fill="none" stroke="rgba(224,124,74,0.7)" strokeWidth={1.5} filter="url(#radar-glow)" />
+
+      {/* Grid */}
+      {gridLevels.map((gl) => (
+        <polygon
+          key={gl}
+          points={angles.map((a) => { const { x, y } = polarToXY(a, levelToR(gl)); return `${x},${y}`; }).join(' ')}
+          fill="none"
+          stroke="rgba(255,255,255,0.07)"
+          strokeWidth={1}
+        />
+      ))}
+
+      {/* Axes */}
+      {angles.map((angle, i) => {
+        const outer = polarToXY(angle, R_MAX);
+        return <line key={i} x1={R_CENTER} y1={R_CENTER} x2={outer.x} y2={outer.y} stroke="rgba(255,255,255,0.07)" strokeWidth={1} />;
+      })}
+
+      {/* Fill */}
+      <polygon points={filledPoints} fill="url(#r-grad)" stroke="none" />
+      <polygon points={filledPoints} fill="none" stroke="rgba(224,124,74,0.6)" strokeWidth={1.5} filter="url(#r-glow)" />
+
+      {/* Dots + hover hit areas */}
       {RADAR_AREAS.map((area, i) => {
         const lvl = stats?.[area]?.level ?? 1;
-        const r = levelToRadius(lvl);
-        const { x, y } = polarToXY(angles[i], r);
-        return (
-          <circle key={`dot-${area}`} cx={x} cy={y} r={4} fill={AREA_MAP[area].color}
-            stroke="rgba(255,255,255,0.2)" strokeWidth={1} filter="url(#radar-glow)" />
-        );
-      })}
-      {RADAR_AREAS.map((area, i) => {
-        const angle = angles[i];
-        const labelRadius = RADAR_MAX_RADIUS + 32;
-        const { x, y } = polarToXY(angle, labelRadius);
-        const info = AREA_MAP[area];
-        const level = stats?.[area]?.level ?? 1;
-        const textAnchor = x < RADAR_CENTER - 10 ? 'end' : x > RADAR_CENTER + 10 ? 'start' : 'middle';
+        const { x, y } = polarToXY(angles[i], levelToR(lvl));
+        const isHovered = hoveredArea === area;
+
+        // Wedge hit area between adjacent midpoint angles
+        const prev = angles[(i - 1 + 6) % 6];
+        const next = angles[(i + 1) % 6];
+        const midP = (angles[i] + prev) / 2;
+        const midN = (angles[i] + next) / 2;
+        const hitR = R_MAX + 18;
+        const p0 = polarToXY(midP, hitR);
+        const p1 = polarToXY(angles[i], hitR);
+        const p2 = polarToXY(midN, hitR);
+        const hitPts = `${R_CENTER},${R_CENTER} ${p0.x},${p0.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`;
+
         return (
           <g key={area}>
-            <text x={x} y={y - 6} textAnchor={textAnchor} fontSize={11} fill="rgba(255,255,255,0.85)" fontWeight="600">
-              {info.emoji} {info.label}
-            </text>
-            <text x={x} y={y + 8} textAnchor={textAnchor} fontSize={10} fill={info.color} fontWeight="700">
-              Nv.{level}
-            </text>
+            <polygon
+              points={hitPts}
+              fill="transparent"
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => onHover(area)}
+              onMouseLeave={() => onHover(null)}
+            />
+            <circle
+              cx={x} cy={y} r={isHovered ? 5 : 3}
+              fill={AREA_MAP[area].color}
+              stroke={isHovered ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)'}
+              strokeWidth={isHovered ? 1.5 : 1}
+              filter={isHovered ? 'url(#r-glow)' : undefined}
+              style={{ transition: 'all 0.15s' }}
+            />
           </g>
         );
       })}
@@ -152,26 +173,120 @@ function HabitRadar({ stats }: { stats: HabitRadarStats | null }) {
   );
 }
 
+// ─── AreaLevelCard ─────────────────────────────────────────────────────────────
+
+interface AreaLevelCardProps {
+  area: (typeof LIFE_AREAS)[number];
+  info: HabitLevelInfo | null;
+  hovered: boolean;
+  onHover: (v: boolean) => void;
+}
+
+function AreaLevelCard({ area, info, hovered, onHover }: AreaLevelCardProps) {
+  const level = info?.level ?? 1;
+  const pct = info?.progressPct ?? 0;
+  const xpLeft = info && info.nextLevelXp !== null ? info.nextLevelXp - info.totalXp : null;
+
+  return (
+    <div
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
+      style={{
+        padding: '8px 10px',
+        borderRadius: 10,
+        border: `1px solid ${hovered ? area.color + '55' : 'var(--border)'}`,
+        background: hovered ? `${area.color}0d` : 'var(--surface)',
+        transition: 'all 0.18s',
+        cursor: 'default',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: hovered ? area.color : 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          {area.emoji} {area.label}
+        </span>
+        <span style={{
+          fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99,
+          background: `${area.color}22`, color: area.color,
+        }}>
+          Nv.{level}
+        </span>
+      </div>
+      <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', borderRadius: 99, background: area.color,
+          width: `${pct}%`, transition: 'width 0.5s ease',
+          boxShadow: hovered ? `0 0 6px ${area.color}` : 'none',
+        }} />
+      </div>
+      {hovered && (
+        <div style={{ fontSize: '0.67rem', color: 'var(--muted)', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+          <span>{info?.totalXp ?? 0} XP</span>
+          {xpLeft !== null && <span>faltam {xpLeft} XP</span>}
+          {xpLeft === null && <span style={{ color: area.color }}>Nível máximo 🏆</span>}
+        </div>
+      )}
+      {hovered && info && (
+        <div style={{ fontSize: '0.65rem', color: area.color, marginTop: 2 }}>{info.name}</div>
+      )}
+    </div>
+  );
+}
+
+// ─── HabitStatsWidget ─────────────────────────────────────────────────────────
+
+interface HabitStatsWidgetProps {
+  stats: HabitRadarStats | null;
+  ready: boolean;
+}
+
+function HabitStatsWidget({ stats, ready }: HabitStatsWidgetProps) {
+  const [hoveredArea, setHoveredArea] = useState<HabitLifeArea | null>(null);
+
+  if (!ready) return <SkeletonBlock lines={1} height={150} />;
+
+  return (
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      {/* Compact radar */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <HabitRadarCompact
+          stats={stats}
+          hoveredArea={hoveredArea}
+          onHover={setHoveredArea}
+        />
+      </div>
+
+      {/* Area cards grid */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+        {LIFE_AREAS.map((area) => (
+          <AreaLevelCard
+            key={area.key}
+            area={area}
+            info={stats?.[area.key] ?? null}
+            hovered={hoveredArea === area.key}
+            onHover={(v) => setHoveredArea(v ? area.key : null)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── HabitMenu ────────────────────────────────────────────────────────────────
 
-interface HabitMenuProps {
+function HabitMenu({ habit, onEdit, onArchive, onDelete }: {
   habit: HabitTodayStat;
   onEdit: (h: HabitTodayStat) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
-}
-
-function HabitMenu({ habit, onEdit, onArchive, onDelete }: HabitMenuProps) {
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
   }, [open]);
 
   return (
@@ -179,53 +294,44 @@ function HabitMenu({ habit, onEdit, onArchive, onDelete }: HabitMenuProps) {
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
         style={{
-          background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px',
+          background: 'none', border: 'none', cursor: 'pointer', padding: '6px',
           color: 'var(--muted)', borderRadius: 6, display: 'flex', alignItems: 'center',
-          opacity: 0.5, transition: 'opacity 0.15s',
+          opacity: 0, transition: 'opacity 0.15s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-        onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
+        className="habit-menu-trigger"
         title="Opções"
       >
         <MoreVertical size={14} />
       </button>
       {open && (
         <div style={{
-          position: 'absolute', right: 0, top: '100%', zIndex: 100,
+          position: 'absolute', right: 0, top: '100%', zIndex: 200,
           background: 'var(--surface-elevated)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: '4px', minWidth: 140,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          borderRadius: 10, padding: 4, minWidth: 140,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         }}>
-          <button
-            onClick={() => { setOpen(false); onEdit(habit); }}
-            style={{ ...menuItemStyle }}
-          >
-            <Pencil size={13} /> Editar
-          </button>
-          <button
-            onClick={() => { setOpen(false); onArchive(habit.id); }}
-            style={{ ...menuItemStyle }}
-          >
-            <Archive size={13} /> Arquivar
-          </button>
-          <button
-            onClick={() => { setOpen(false); onDelete(habit.id); }}
-            style={{ ...menuItemStyle, color: 'var(--danger)' }}
-          >
-            <Trash2 size={13} /> Excluir
-          </button>
+          {[
+            { icon: <Pencil size={12} />, label: 'Editar', action: () => onEdit(habit) },
+            { icon: <Archive size={12} />, label: 'Arquivar', action: () => onArchive(habit.id) },
+            { icon: <Trash2 size={12} />, label: 'Excluir', action: () => onDelete(habit.id), danger: true },
+          ].map((item) => (
+            <button
+              key={item.label}
+              onClick={() => { setOpen(false); item.action(); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px',
+                background: 'none', border: 'none', cursor: 'pointer', borderRadius: 7,
+                fontSize: '0.8rem', color: item.danger ? 'var(--danger)' : 'var(--text)', textAlign: 'left',
+              }}
+            >
+              {item.icon} {item.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
   );
 }
-
-const menuItemStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px',
-  background: 'none', border: 'none', cursor: 'pointer', borderRadius: 7,
-  fontSize: '0.8rem', color: 'var(--text)', textAlign: 'left',
-  transition: 'background 0.1s',
-};
 
 // ─── HabitRow ─────────────────────────────────────────────────────────────────
 
@@ -240,42 +346,80 @@ interface HabitRowProps {
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   busy: boolean;
+  areaColor: string;
 }
 
-function HabitRow({ stat, date: _date, onLog, onUndo, onRecaiu, onUndoRecaiu, onEdit, onArchive, onDelete, busy }: HabitRowProps) {
+function HabitRow({ stat, onLog, onUndo, onRecaiu, onUndoRecaiu, onEdit, onArchive, onDelete, busy, areaColor }: HabitRowProps) {
   const { type, title, streak, currentLog, periodProgress, isCompletedToday, dailyTarget, unit } = stat;
+
+  const rowStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0',
+    borderBottom: '1px solid rgba(255,255,255,0.04)',
+    transition: 'background 0.15s',
+  };
 
   if (type === 'binary') {
     return (
-      <div className="habit-row">
+      <div className="habit-row-hover" style={rowStyle}>
+        {/* Check circle */}
         <button
-          className={`habit-row-check ${isCompletedToday ? 'done' : ''}`}
           onClick={() => isCompletedToday ? onUndo(stat.id) : onLog(stat.id)}
           disabled={busy}
-          title={isCompletedToday ? 'Clique para desfazer' : 'Marcar como feito'}
+          style={{
+            width: 28, height: 28, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+            border: `2px solid ${isCompletedToday ? areaColor : 'rgba(255,255,255,0.15)'}`,
+            background: isCompletedToday ? areaColor : 'transparent',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.8rem', color: 'white', transition: 'all 0.2s',
+            boxShadow: isCompletedToday ? `0 0 8px ${areaColor}55` : 'none',
+          }}
         >
-          {isCompletedToday ? '✓' : ''}
+          {isCompletedToday && '✓'}
         </button>
-        <div className="habit-row-info">
-          <div className={`habit-row-title ${isCompletedToday ? 'done-title' : ''}`}>
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: '0.88rem', fontWeight: 600,
+            color: isCompletedToday ? 'var(--muted)' : 'var(--text)',
+            textDecoration: isCompletedToday ? 'line-through' : 'none',
+            transition: 'all 0.2s',
+          }}>
             {stat.icon ? `${stat.icon} ` : ''}{title}
           </div>
           {periodProgress && (
-            <div className="habit-row-sub">
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: 2 }}>
               {periodProgress.done}/{periodProgress.target} esta {stat.frequencyType === 'weekly' ? 'semana' : 'mês'}
             </div>
           )}
         </div>
-        {streak > 1 && <span className="habit-streak">🔥 {streak}</span>}
-        <div className="habit-row-actions">
-          <button
-            className={`habit-btn-done ${isCompletedToday ? 'done' : ''}`}
-            onClick={() => isCompletedToday ? onUndo(stat.id) : onLog(stat.id)}
-            disabled={busy}
-          >
-            {isCompletedToday ? '✓ Feito' : 'Feito'}
-          </button>
-        </div>
+
+        {/* Streak */}
+        {streak > 1 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 3,
+            fontSize: '0.75rem', fontWeight: 700, color: '#f97316',
+            background: 'rgba(249,115,22,0.1)', padding: '3px 8px', borderRadius: 99,
+          }}>
+            <Flame size={12} /> {streak}
+          </div>
+        )}
+
+        {/* Done button */}
+        <button
+          onClick={() => isCompletedToday ? onUndo(stat.id) : onLog(stat.id)}
+          disabled={busy}
+          style={{
+            padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
+            fontWeight: 600, border: `1px solid ${isCompletedToday ? areaColor + '44' : 'var(--border)'}`,
+            background: isCompletedToday ? `${areaColor}18` : 'var(--surface)',
+            color: isCompletedToday ? areaColor : 'var(--text)',
+            transition: 'all 0.2s', whiteSpace: 'nowrap',
+          }}
+        >
+          {isCompletedToday ? '✓ Feito' : 'Marcar'}
+        </button>
+
         <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
       </div>
     );
@@ -286,43 +430,90 @@ function HabitRow({ stat, date: _date, onLog, onUndo, onRecaiu, onUndoRecaiu, on
     const target = dailyTarget ?? 1;
     const pct = Math.min(100, Math.round((current / target) * 100));
     const isComplete = pct >= 100;
-    const incrementUnit = unit === 'páginas' ? 10 : 1;
-    const incrementLabel = unit ? `+${incrementUnit} ${unit}` : `+${incrementUnit}`;
+    const inc = unit === 'páginas' ? 10 : 1;
 
     return (
-      <div className="habit-row">
-        <div className="habit-row-info">
-          <div className={`habit-row-title ${isComplete ? 'done-title' : ''}`}>
+      <div className="habit-row-hover" style={rowStyle}>
+        {/* Progress ring */}
+        <div style={{ position: 'relative', flexShrink: 0, width: 28, height: 28 }}>
+          <svg viewBox="0 0 28 28" width={28} height={28}>
+            <circle cx={14} cy={14} r={11} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
+            <circle
+              cx={14} cy={14} r={11} fill="none"
+              stroke={isComplete ? areaColor : `${areaColor}88`}
+              strokeWidth={3}
+              strokeDasharray={`${Math.round(2 * Math.PI * 11 * pct / 100)} 100`}
+              strokeLinecap="round"
+              transform="rotate(-90 14 14)"
+              style={{ transition: 'stroke-dasharray 0.4s ease', filter: isComplete ? `drop-shadow(0 0 4px ${areaColor})` : 'none' }}
+            />
+            {isComplete && (
+              <text x={14} y={18} textAnchor="middle" fontSize={9} fill={areaColor}>✓</text>
+            )}
+          </svg>
+        </div>
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '0.88rem', fontWeight: 600, color: isComplete ? 'var(--muted)' : 'var(--text)' }}>
             {stat.icon ? `${stat.icon} ` : ''}{title}
           </div>
-          <div className="habit-progress-bar">
-            <div className={`habit-progress-fill ${isComplete ? 'complete' : ''}`} style={{ width: `${pct}%` }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 99, background: isComplete ? areaColor : `${areaColor}88`,
+                width: `${pct}%`, transition: 'width 0.4s ease',
+              }} />
+            </div>
+            <span style={{ fontSize: '0.7rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+              {current}/{target} {unit ?? ''}
+            </span>
           </div>
-          <div className="habit-row-sub">
-            {current} / {target} {unit ?? ''}
-            {periodProgress ? ` · ${periodProgress.done}/${periodProgress.target} esta ${stat.frequencyType === 'weekly' ? 'semana' : 'mês'}` : ''}
-          </div>
+          {periodProgress && (
+            <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: 2 }}>
+              {periodProgress.done}/{periodProgress.target} esta {stat.frequencyType === 'weekly' ? 'semana' : 'mês'}
+            </div>
+          )}
         </div>
-        {streak > 1 && <span className="habit-streak">🔥 {streak}</span>}
-        <div className="habit-row-actions">
-          <button className="habit-btn-increment" onClick={() => onLog(stat.id, incrementUnit)} disabled={busy} title={incrementLabel}>
-            {incrementLabel}
+
+        {streak > 1 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 3,
+            fontSize: '0.75rem', fontWeight: 700, color: '#f97316',
+            background: 'rgba(249,115,22,0.1)', padding: '3px 8px', borderRadius: 99,
+          }}>
+            <Flame size={12} /> {streak}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => onLog(stat.id, inc)}
+            disabled={busy}
+            style={{
+              padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
+              fontWeight: 600, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text)',
+              transition: 'all 0.15s', whiteSpace: 'nowrap',
+            }}
+          >
+            +{inc} {unit ?? ''}
           </button>
           {current > 0 && (
             <button
               onClick={() => onUndo(stat.id)}
               disabled={busy}
-              title="Zerar registro de hoje"
+              title="Zerar dia"
               style={{
-                background: 'none', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer',
-                padding: '5px 8px', borderRadius: 6, fontSize: '0.72rem', color: 'var(--muted)',
-                transition: 'all 0.15s',
+                padding: '5px 8px', borderRadius: 8, cursor: 'pointer', fontSize: '0.72rem',
+                border: '1px solid rgba(255,255,255,0.06)', background: 'none', color: 'var(--muted)',
               }}
             >
-              Zerar
+              ↺
             </button>
           )}
         </div>
+
         <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
       </div>
     );
@@ -331,32 +522,63 @@ function HabitRow({ stat, date: _date, onLog, onUndo, onRecaiu, onUndoRecaiu, on
   // vice
   const recaiu = currentLog?.value === -1;
   return (
-    <div className="habit-row">
-      <div className="habit-row-info">
-        <div className="habit-row-title">{stat.icon ? `${stat.icon} ` : ''}{title}</div>
-        <div className="habit-row-sub" style={recaiu ? { color: 'var(--danger)' } : {}}>
+    <div className="habit-row-hover" style={rowStyle}>
+      {/* Clean indicator */}
+      <div style={{
+        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+        border: `2px solid ${recaiu ? 'var(--danger)' : areaColor}`,
+        background: recaiu ? 'rgba(239,68,68,0.1)' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '0.8rem',
+      }}>
+        {recaiu ? '✗' : '✓'}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>
+          {stat.icon ? `${stat.icon} ` : ''}{title}
+        </div>
+        <div style={{ fontSize: '0.72rem', color: recaiu ? 'var(--danger)' : 'var(--muted)', marginTop: 2 }}>
           {recaiu ? '⚠ Recaiu hoje' : `${streak} dias limpos`}
         </div>
       </div>
-      <div className="habit-row-actions">
-        {recaiu ? (
-          <button
-            onClick={() => onUndoRecaiu(stat.id)}
-            disabled={busy}
-            style={{
-              background: 'rgba(91,185,140,0.12)', border: '1px solid rgba(91,185,140,0.3)',
-              cursor: 'pointer', padding: '6px 12px', borderRadius: 8, fontSize: '0.78rem',
-              color: '#5bb98c', transition: 'all 0.15s',
-            }}
-          >
-            Desfazer
-          </button>
-        ) : (
-          <button className="habit-btn-recaiu" onClick={() => onRecaiu(stat.id)} disabled={busy}>
-            Recaí
-          </button>
-        )}
-      </div>
+
+      {!recaiu && streak > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 3,
+          fontSize: '0.75rem', fontWeight: 700, color: '#22c55e',
+          background: 'rgba(34,197,94,0.1)', padding: '3px 8px', borderRadius: 99,
+        }}>
+          <Zap size={11} /> {streak}d
+        </div>
+      )}
+
+      {recaiu ? (
+        <button
+          onClick={() => onUndoRecaiu(stat.id)}
+          disabled={busy}
+          style={{
+            padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
+            fontWeight: 600, border: '1px solid rgba(34,197,94,0.3)',
+            background: 'rgba(34,197,94,0.08)', color: '#22c55e', transition: 'all 0.15s',
+          }}
+        >
+          Desfazer
+        </button>
+      ) : (
+        <button
+          onClick={() => onRecaiu(stat.id)}
+          disabled={busy}
+          style={{
+            padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
+            fontWeight: 600, border: '1px solid rgba(239,68,68,0.3)',
+            background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', transition: 'all 0.15s',
+          }}
+        >
+          Recaí
+        </button>
+      )}
+
       <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
     </div>
   );
@@ -383,18 +605,23 @@ function HabitAreaSection({ area, habits, date, onLog, onUndo, onRecaiu, onUndoR
   const allDone = done === habits.length;
 
   return (
-    <div className="habit-area-section" style={{ borderLeftColor: area.color }}>
-      <div className="habit-area-header">
-        <span>{area.emoji}</span>
-        <span className="habit-area-label">{area.label}</span>
-        <span
-          className="habit-area-badge"
-          style={{
-            background: allDone ? `${area.color}28` : 'rgba(255,255,255,0.05)',
-            color: allDone ? area.color : 'var(--muted)',
-            border: `1px solid ${allDone ? area.color + '44' : 'transparent'}`,
-          }}
-        >
+    <div style={{
+      borderLeft: `3px solid ${area.color}`,
+      paddingLeft: 14,
+      marginBottom: 20,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: '1rem' }}>{area.emoji}</span>
+        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+          {area.label}
+        </span>
+        <span style={{
+          fontSize: '0.7rem', fontWeight: 700, padding: '1px 7px', borderRadius: 99,
+          background: allDone ? `${area.color}22` : 'rgba(255,255,255,0.05)',
+          color: allDone ? area.color : 'var(--muted)',
+          border: `1px solid ${allDone ? area.color + '44' : 'transparent'}`,
+          marginLeft: 'auto',
+        }}>
           {done}/{habits.length}
         </span>
       </div>
@@ -411,6 +638,7 @@ function HabitAreaSection({ area, habits, date, onLog, onUndo, onRecaiu, onUndoR
           onArchive={onArchive}
           onDelete={onDelete}
           busy={busy}
+          areaColor={area.color}
         />
       ))}
     </div>
@@ -431,100 +659,61 @@ interface FrequencyFieldProps {
 function FrequencyField({ frequencyType, frequencyTarget, specificDays, onFreqChange, onTargetChange, onDaysChange }: FrequencyFieldProps) {
   return (
     <div>
-      {/* Frequency type pills */}
       <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
         Frequência
       </label>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
         {FREQ_OPTIONS.map((opt) => (
-          <button
-            key={opt.key}
-            type="button"
-            onClick={() => onFreqChange(opt.key)}
-            style={{
-              padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontSize: '0.82rem',
-              fontWeight: frequencyType === opt.key ? 700 : 500,
-              border: `1px solid ${frequencyType === opt.key ? 'var(--accent)' : 'var(--border)'}`,
-              background: frequencyType === opt.key ? 'rgba(224,124,74,0.15)' : 'var(--surface)',
-              color: frequencyType === opt.key ? 'var(--accent)' : 'var(--text)',
-              transition: 'all 0.15s', textAlign: 'left',
-              display: 'flex', alignItems: 'center', gap: 7,
-            }}
-          >
-            <span style={{ fontSize: '1rem' }}>{opt.icon}</span> {opt.label}
+          <button key={opt.key} type="button" onClick={() => onFreqChange(opt.key)} style={{
+            padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontSize: '0.82rem',
+            fontWeight: frequencyType === opt.key ? 700 : 500,
+            border: `1px solid ${frequencyType === opt.key ? 'var(--accent)' : 'var(--border)'}`,
+            background: frequencyType === opt.key ? 'rgba(224,124,74,0.15)' : 'var(--surface)',
+            color: frequencyType === opt.key ? 'var(--accent)' : 'var(--text)',
+            transition: 'all 0.15s', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 7,
+          }}>
+            <span>{opt.icon}</span> {opt.label}
           </button>
         ))}
       </div>
 
-      {/* Target stepper for weekly/monthly */}
       {(frequencyType === 'weekly' || frequencyType === 'monthly') && (
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
             Quantas vezes por {frequencyType === 'weekly' ? 'semana' : 'mês'}
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button
-              type="button"
-              onClick={() => onTargetChange(Math.max(1, frequencyTarget - 1))}
-              style={{
-                width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
-                background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem',
-                color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >−</button>
-            <span style={{ fontSize: '1.4rem', fontWeight: 700, minWidth: 32, textAlign: 'center', color: 'var(--accent)' }}>
-              {frequencyTarget}
-            </span>
-            <button
-              type="button"
-              onClick={() => onTargetChange(Math.min(frequencyType === 'weekly' ? 7 : 31, frequencyTarget + 1))}
-              style={{
-                width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
-                background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem',
-                color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >+</button>
-            <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
-              {frequencyType === 'weekly' ? 'dias/semana' : 'dias/mês'}
-            </span>
+            <button type="button" onClick={() => onTargetChange(Math.max(1, frequencyTarget - 1))}
+              style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+            <span style={{ fontSize: '1.4rem', fontWeight: 700, minWidth: 32, textAlign: 'center', color: 'var(--accent)' }}>{frequencyTarget}</span>
+            <button type="button" onClick={() => onTargetChange(Math.min(frequencyType === 'weekly' ? 7 : 31, frequencyTarget + 1))}
+              style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+            <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>{frequencyType === 'weekly' ? 'dias/semana' : 'dias/mês'}</span>
           </div>
         </div>
       )}
 
-      {/* Specific days selector */}
       {frequencyType === 'specific_days' && (
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
-            Selecione os dias
-          </label>
+          <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Dias</label>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {ALL_DAYS.map((day) => {
-              const selected = specificDays.includes(day);
+              const sel = specificDays.includes(day);
               return (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => onDaysChange(
-                    selected ? specificDays.filter((d) => d !== day) : [...specificDays, day]
-                  )}
+                <button key={day} type="button"
+                  onClick={() => onDaysChange(sel ? specificDays.filter((d) => d !== day) : [...specificDays, day])}
                   style={{
                     padding: '8px 12px', borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem',
-                    fontWeight: selected ? 700 : 500, minWidth: 44,
-                    border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
-                    background: selected ? 'rgba(224,124,74,0.15)' : 'var(--surface)',
-                    color: selected ? 'var(--accent)' : 'var(--muted)',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {DAY_LABELS[day]}
-                </button>
+                    fontWeight: sel ? 700 : 500, minWidth: 44,
+                    border: `1px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
+                    background: sel ? 'rgba(224,124,74,0.15)' : 'var(--surface)',
+                    color: sel ? 'var(--accent)' : 'var(--muted)', transition: 'all 0.15s',
+                  }}>{DAY_LABELS[day]}</button>
               );
             })}
           </div>
           {specificDays.length === 0 && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: 6 }}>
-              Selecione pelo menos um dia
-            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: 6 }}>Selecione pelo menos um dia</p>
           )}
         </div>
       )}
@@ -532,33 +721,15 @@ function FrequencyField({ frequencyType, frequencyTarget, specificDays, onFreqCh
   );
 }
 
-// ─── HabitFormFields ──────────────────────────────────────────────────────────
+// ─── Shared form state ────────────────────────────────────────────────────────
 
 interface HabitFormState {
-  title: string;
-  icon: string;
-  lifeArea: HabitLifeArea | null;
-  type: HabitType | null;
-  frequencyType: HabitFrequency;
-  frequencyTarget: number;
-  specificDays: RecurrenceDay[];
-  unit: string;
-  dailyTarget: number | '';
+  title: string; icon: string; lifeArea: HabitLifeArea | null; type: HabitType | null;
+  frequencyType: HabitFrequency; frequencyTarget: number; specificDays: RecurrenceDay[];
+  unit: string; dailyTarget: number | '';
 }
-
-function defaultFormState(): HabitFormState {
-  return {
-    title: '', icon: '', lifeArea: null, type: null,
-    frequencyType: 'daily', frequencyTarget: 3,
-    specificDays: [], unit: '', dailyTarget: '',
-  };
-}
-
-// ─── HabitCreateModal ─────────────────────────────────────────────────────────
-
-interface HabitCreateModalProps {
-  onClose: () => void;
-  onCreate: () => void;
+function defaultForm(): HabitFormState {
+  return { title: '', icon: '', lifeArea: null, type: null, frequencyType: 'daily', frequencyTarget: 3, specificDays: [], unit: '', dailyTarget: '' };
 }
 
 const TYPE_OPTIONS: Array<{ key: HabitType; icon: string; label: string; desc: string }> = [
@@ -567,25 +738,24 @@ const TYPE_OPTIONS: Array<{ key: HabitType; icon: string; label: string; desc: s
   { key: 'vice', icon: '🚫', label: 'Vício', desc: 'Dias sem recair' },
 ];
 
-function HabitCreateModal({ onClose, onCreate }: HabitCreateModalProps) {
+// ─── HabitCreateModal ─────────────────────────────────────────────────────────
+
+function HabitCreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [form, setForm] = useState<HabitFormState>(defaultFormState());
+  const [form, setForm] = useState<HabitFormState>(defaultForm());
   const [saving, setSaving] = useState(false);
 
-  const set = (patch: Partial<HabitFormState>) => setForm((f) => ({ ...f, ...patch }));
+  const set = (p: Partial<HabitFormState>) => setForm((f) => ({ ...f, ...p }));
+  const canNext1 = Boolean(form.title.trim() && form.lifeArea && form.type);
+  const canNext2 = form.frequencyType !== 'specific_days' || form.specificDays.length > 0;
+  const isLast = step === 3 || (step === 2 && form.type !== 'quantitative');
 
-  const canGoNext1 = Boolean(form.title.trim() && form.lifeArea && form.type);
-  const canGoNext2 = form.frequencyType !== 'specific_days' || form.specificDays.length > 0;
-  const isLastStep = step === 3 || (step === 2 && form.type !== 'quantitative');
-
-  async function handleSubmit() {
+  async function submit() {
     if (!form.lifeArea || !form.type) return;
     setSaving(true);
     try {
       await api.createHabit({
-        title: form.title.trim(),
-        lifeArea: form.lifeArea,
-        type: form.type,
+        title: form.title.trim(), lifeArea: form.lifeArea, type: form.type,
         frequencyType: form.frequencyType,
         frequencyTarget: form.frequencyType === 'weekly' || form.frequencyType === 'monthly' ? form.frequencyTarget : 1,
         specificDays: form.frequencyType === 'specific_days' ? form.specificDays : [],
@@ -595,31 +765,21 @@ function HabitCreateModal({ onClose, onCreate }: HabitCreateModalProps) {
       });
       toast.success('Hábito criado!');
       onCreate();
-    } catch {
-      toast.error('Erro ao criar hábito');
-    } finally {
-      setSaving(false);
-    }
+    } catch { toast.error('Erro ao criar hábito'); }
+    finally { setSaving(false); }
   }
 
-  function nextStep() {
-    if (step === 1) {
-      setStep(2);
-    } else if (step === 2 && form.type === 'quantitative') {
-      setStep(3);
-    } else {
-      handleSubmit();
-    }
+  function next() {
+    if (step === 1) setStep(2);
+    else if (step === 2 && form.type === 'quantitative') setStep(3);
+    else submit();
   }
-
-  const totalSteps = form.type === 'quantitative' ? 3 : 2;
 
   return (
     <div className="habit-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="habit-modal">
-        {/* Steps indicator */}
+      <div className="habit-modal" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="habit-modal-steps">
-          {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
+          {Array.from({ length: form.type === 'quantitative' ? 3 : 2 }, (_, i) => i + 1).map((s) => (
             <div key={s} className={`habit-modal-step-dot ${step === s ? 'active' : step > s ? 'done' : ''}`} />
           ))}
           <span className="habit-modal-step-label">
@@ -627,70 +787,37 @@ function HabitCreateModal({ onClose, onCreate }: HabitCreateModalProps) {
           </span>
         </div>
         <div className="habit-modal-title">
-          {step === 1 && 'Novo hábito'}{step === 2 && 'Com que frequência?'}{step === 3 && 'Qual é a meta diária?'}
+          {step === 1 && 'Novo hábito'}{step === 2 && 'Com que frequência?'}{step === 3 && 'Qual a meta diária?'}
         </div>
 
-        {/* Step 1: Definition */}
         {step === 1 && (
           <>
             <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-                  Nome do hábito
-                </label>
-                <input
-                  className="premium-input"
-                  placeholder="Ex: Exercício, Leitura..."
-                  value={form.title}
-                  onChange={(e) => set({ title: e.target.value })}
-                  autoFocus
-                />
+                <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Nome</label>
+                <input className="premium-input" placeholder="Ex: Exercício, Leitura..." value={form.title} onChange={(e) => set({ title: e.target.value })} autoFocus />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-                  Emoji
-                </label>
-                <input
-                  className="premium-input"
-                  placeholder="💪"
-                  value={form.icon}
-                  onChange={(e) => set({ icon: e.target.value })}
-                  style={{ width: 64, textAlign: 'center', fontSize: '1.2rem' }}
-                />
+                <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Emoji</label>
+                <input className="premium-input" placeholder="💪" value={form.icon} onChange={(e) => set({ icon: e.target.value })} style={{ width: 64, textAlign: 'center', fontSize: '1.2rem' }} />
               </div>
             </div>
-
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
-                Área da vida
-              </label>
+              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Área da vida</label>
               <div className="habit-area-grid">
                 {LIFE_AREAS.map((area) => (
-                  <button
-                    key={area.key}
-                    type="button"
-                    className={`habit-area-btn ${form.lifeArea === area.key ? 'selected' : ''}`}
-                    style={{ '--area-color': area.color } as React.CSSProperties}
-                    onClick={() => set({ lifeArea: area.key })}
-                  >
+                  <button key={area.key} type="button" className={`habit-area-btn ${form.lifeArea === area.key ? 'selected' : ''}`}
+                    style={{ '--area-color': area.color } as React.CSSProperties} onClick={() => set({ lifeArea: area.key })}>
                     {area.emoji} {area.label}
                   </button>
                 ))}
               </div>
             </div>
-
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
-                Tipo de hábito
-              </label>
+              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Tipo</label>
               <div className="habit-type-grid">
                 {TYPE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={`habit-type-btn ${form.type === opt.key ? 'selected' : ''}`}
-                    onClick={() => set({ type: opt.key })}
-                  >
+                  <button key={opt.key} type="button" className={`habit-type-btn ${form.type === opt.key ? 'selected' : ''}`} onClick={() => set({ type: opt.key })}>
                     <div className="type-icon">{opt.icon}</div>
                     <div className="type-label">{opt.label}</div>
                     <div className="type-desc">{opt.desc}</div>
@@ -701,87 +828,39 @@ function HabitCreateModal({ onClose, onCreate }: HabitCreateModalProps) {
           </>
         )}
 
-        {/* Step 2: Frequency */}
         {step === 2 && (
-          <FrequencyField
-            frequencyType={form.frequencyType}
-            frequencyTarget={form.frequencyTarget}
-            specificDays={form.specificDays}
-            onFreqChange={(f) => set({ frequencyType: f })}
-            onTargetChange={(n) => set({ frequencyTarget: n })}
-            onDaysChange={(days) => set({ specificDays: days })}
-          />
+          <FrequencyField frequencyType={form.frequencyType} frequencyTarget={form.frequencyTarget}
+            specificDays={form.specificDays} onFreqChange={(f) => set({ frequencyType: f })}
+            onTargetChange={(n) => set({ frequencyTarget: n })} onDaysChange={(d) => set({ specificDays: d })} />
         )}
 
-        {/* Step 3: Quantitative meta */}
         {step === 3 && (
           <>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-                Unidade (ex: páginas, copos, km)
-              </label>
-              <input
-                className="premium-input"
-                placeholder="páginas"
-                value={form.unit}
-                onChange={(e) => set({ unit: e.target.value })}
-                autoFocus
-              />
+              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Unidade (páginas, copos, km...)</label>
+              <input className="premium-input" placeholder="páginas" value={form.unit} onChange={(e) => set({ unit: e.target.value })} autoFocus />
             </div>
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-                Meta diária
-              </label>
+              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Meta diária</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => set({ dailyTarget: Math.max(1, Number(form.dailyTarget || 1) - 1) })}
-                  style={{
-                    width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
-                    background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem', color: 'var(--text)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >−</button>
-                <input
-                  type="number"
-                  className="premium-input"
-                  placeholder="50"
-                  value={form.dailyTarget}
+                <button type="button" onClick={() => set({ dailyTarget: Math.max(1, Number(form.dailyTarget || 1) - 1) })}
+                  style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                <input type="number" className="premium-input" placeholder="50" value={form.dailyTarget}
                   onChange={(e) => set({ dailyTarget: e.target.value === '' ? '' : Number(e.target.value) })}
-                  style={{ width: 80, textAlign: 'center', fontSize: '1.1rem' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => set({ dailyTarget: Number(form.dailyTarget || 0) + 1 })}
-                  style={{
-                    width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
-                    background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem', color: 'var(--text)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >+</button>
-                {form.unit && (
-                  <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>{form.unit}/dia</span>
-                )}
+                  style={{ width: 80, textAlign: 'center', fontSize: '1.1rem' }} />
+                <button type="button" onClick={() => set({ dailyTarget: Number(form.dailyTarget || 0) + 1 })}
+                  style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                {form.unit && <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>{form.unit}/dia</span>}
               </div>
             </div>
           </>
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          {step > 1 && (
-            <button className="premium-btn-secondary" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} disabled={saving}>
-              Voltar
-            </button>
-          )}
-          <button className="premium-btn-secondary" onClick={onClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button
-            className="premium-btn"
-            onClick={nextStep}
-            disabled={saving || (step === 1 && !canGoNext1) || (step === 2 && !canGoNext2)}
-          >
-            {saving ? 'Salvando...' : isLastStep ? 'Criar hábito' : 'Próximo →'}
+          {step > 1 && <button className="premium-btn-secondary" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} disabled={saving}>Voltar</button>}
+          <button className="premium-btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="premium-btn" onClick={next} disabled={saving || (step === 1 && !canNext1) || (step === 2 && !canNext2)}>
+            {saving ? 'Salvando...' : isLast ? 'Criar hábito' : 'Próximo →'}
           </button>
         </div>
       </div>
@@ -791,37 +870,22 @@ function HabitCreateModal({ onClose, onCreate }: HabitCreateModalProps) {
 
 // ─── HabitEditModal ───────────────────────────────────────────────────────────
 
-interface HabitEditModalProps {
-  habit: HabitTodayStat;
-  onClose: () => void;
-  onSave: () => void;
-}
-
-function HabitEditModal({ habit, onClose, onSave }: HabitEditModalProps) {
+function HabitEditModal({ habit, onClose, onSave }: { habit: HabitTodayStat; onClose: () => void; onSave: () => void }) {
   const [form, setForm] = useState<HabitFormState>({
-    title: habit.title,
-    icon: habit.icon ?? '',
-    lifeArea: habit.lifeArea,
-    type: habit.type,
-    frequencyType: habit.frequencyType,
-    frequencyTarget: habit.frequencyTarget ?? 3,
+    title: habit.title, icon: habit.icon ?? '', lifeArea: habit.lifeArea, type: habit.type,
+    frequencyType: habit.frequencyType, frequencyTarget: habit.frequencyTarget ?? 3,
     specificDays: (habit.specificDays ?? []) as RecurrenceDay[],
-    unit: habit.unit ?? '',
-    dailyTarget: habit.dailyTarget ?? '',
+    unit: habit.unit ?? '', dailyTarget: habit.dailyTarget ?? '',
   });
   const [saving, setSaving] = useState(false);
+  const set = (p: Partial<HabitFormState>) => setForm((f) => ({ ...f, ...p }));
 
-  const set = (patch: Partial<HabitFormState>) => setForm((f) => ({ ...f, ...patch }));
-  const canSave = Boolean(form.title.trim() && form.lifeArea);
-
-  async function handleSave() {
+  async function save() {
     if (!form.lifeArea) return;
     setSaving(true);
     try {
       await api.updateHabit(habit.id, {
-        title: form.title.trim(),
-        icon: form.icon.trim() || undefined,
-        lifeArea: form.lifeArea,
+        title: form.title.trim(), icon: form.icon.trim() || undefined, lifeArea: form.lifeArea,
         frequencyType: form.frequencyType,
         frequencyTarget: form.frequencyType === 'weekly' || form.frequencyType === 'monthly' ? form.frequencyTarget : 1,
         specificDays: form.frequencyType === 'specific_days' ? form.specificDays : [],
@@ -830,105 +894,56 @@ function HabitEditModal({ habit, onClose, onSave }: HabitEditModalProps) {
       });
       toast.success('Hábito atualizado!');
       onSave();
-    } catch {
-      toast.error('Erro ao atualizar hábito');
-    } finally {
-      setSaving(false);
-    }
+    } catch { toast.error('Erro ao atualizar'); }
+    finally { setSaving(false); }
   }
 
   return (
     <div className="habit-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="habit-modal" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+      <div className="habit-modal" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="habit-modal-title">Editar hábito</div>
-
-        {/* Name + icon */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
           <div style={{ flex: 1 }}>
-            <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-              Nome
-            </label>
-            <input
-              className="premium-input"
-              value={form.title}
-              onChange={(e) => set({ title: e.target.value })}
-              autoFocus
-            />
+            <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Nome</label>
+            <input className="premium-input" value={form.title} onChange={(e) => set({ title: e.target.value })} autoFocus />
           </div>
           <div>
-            <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-              Emoji
-            </label>
-            <input
-              className="premium-input"
-              value={form.icon}
-              onChange={(e) => set({ icon: e.target.value })}
-              style={{ width: 64, textAlign: 'center', fontSize: '1.2rem' }}
-            />
+            <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Emoji</label>
+            <input className="premium-input" value={form.icon} onChange={(e) => set({ icon: e.target.value })} style={{ width: 64, textAlign: 'center', fontSize: '1.2rem' }} />
           </div>
         </div>
-
-        {/* Life area */}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>
-            Área da vida
-          </label>
+          <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Área da vida</label>
           <div className="habit-area-grid">
             {LIFE_AREAS.map((area) => (
-              <button
-                key={area.key}
-                type="button"
-                className={`habit-area-btn ${form.lifeArea === area.key ? 'selected' : ''}`}
-                style={{ '--area-color': area.color } as React.CSSProperties}
-                onClick={() => set({ lifeArea: area.key })}
-              >
+              <button key={area.key} type="button" className={`habit-area-btn ${form.lifeArea === area.key ? 'selected' : ''}`}
+                style={{ '--area-color': area.color } as React.CSSProperties} onClick={() => set({ lifeArea: area.key })}>
                 {area.emoji} {area.label}
               </button>
             ))}
           </div>
         </div>
-
-        {/* Frequency */}
         <div style={{ marginBottom: 16 }}>
-          <FrequencyField
-            frequencyType={form.frequencyType}
-            frequencyTarget={form.frequencyTarget}
-            specificDays={form.specificDays}
-            onFreqChange={(f) => set({ frequencyType: f })}
-            onTargetChange={(n) => set({ frequencyTarget: n })}
-            onDaysChange={(days) => set({ specificDays: days })}
-          />
+          <FrequencyField frequencyType={form.frequencyType} frequencyTarget={form.frequencyTarget}
+            specificDays={form.specificDays} onFreqChange={(f) => set({ frequencyType: f })}
+            onTargetChange={(n) => set({ frequencyTarget: n })} onDaysChange={(d) => set({ specificDays: d })} />
         </div>
-
-        {/* Quantitative meta */}
         {form.type === 'quantitative' && (
           <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-                Unidade
-              </label>
+              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Unidade</label>
               <input className="premium-input" value={form.unit} onChange={(e) => set({ unit: e.target.value })} placeholder="páginas" />
             </div>
             <div>
-              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
-                Meta diária
-              </label>
-              <input
-                type="number"
-                className="premium-input"
-                value={form.dailyTarget}
-                onChange={(e) => set({ dailyTarget: e.target.value === '' ? '' : Number(e.target.value) })}
-                style={{ width: 90 }}
-              />
+              <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Meta diária</label>
+              <input type="number" className="premium-input" value={form.dailyTarget}
+                onChange={(e) => set({ dailyTarget: e.target.value === '' ? '' : Number(e.target.value) })} style={{ width: 90 }} />
             </div>
           </div>
         )}
-
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button className="premium-btn-secondary" onClick={onClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button className="premium-btn" onClick={handleSave} disabled={saving || !canSave}>
+          <button className="premium-btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="premium-btn" onClick={save} disabled={saving || !form.title.trim()}>
             {saving ? 'Salvando...' : 'Salvar'}
           </button>
         </div>
@@ -937,70 +952,110 @@ function HabitEditModal({ habit, onClose, onSave }: HabitEditModalProps) {
   );
 }
 
-// ─── HabitAnalysis ────────────────────────────────────────────────────────────
+// ─── HabitHeatmap ─────────────────────────────────────────────────────────────
 
-function HabitAnalysis({ habits }: { habits: Habit[] }) {
-  const [selectedHabit, setSelectedHabit] = useState<string | null>(habits[0]?.id ?? null);
-  const [heatmapData, setHeatmapData] = useState<{ logs: HabitLog[]; startDate: string; endDate: string } | null>(null);
+function HabitHeatmap({ habits, allHabits }: { habits: HabitTodayStat[]; allHabits: Habit[] }) {
+  const ids = allHabits.map((h) => h.id);
+  const [selectedId, setSelectedId] = useState<string | null>(ids[0] ?? null);
+  const [heatmap, setHeatmap] = useState<{ logs: HabitLog[]; startDate: string; endDate: string } | null>(null);
 
   useEffect(() => {
-    if (!selectedHabit) return;
-    api.getHabitHeatmap(selectedHabit, 365).then(setHeatmapData).catch(() => {});
-  }, [selectedHabit]);
+    if (!selectedId) return;
+    setHeatmap(null);
+    api.getHabitHeatmap(selectedId, 365).then(setHeatmap).catch(() => {});
+  }, [selectedId]);
 
-  if (habits.length === 0) {
+  if (allHabits.length === 0) {
     return <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Nenhum hábito ainda.</p>;
   }
 
-  const logValues = new Map(heatmapData?.logs.map((l) => [l.date, l.value]) ?? []);
-  const today = new Date();
-  const cells: Array<{ date: string; value: number | null }> = [];
-  for (let i = 364; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
+  const selectedHabit = allHabits.find((h) => h.id === selectedId);
+
+  // Only show cells from habit creation date to today
+  const todayStr = localDateKey();
+  const createdStr = selectedHabit?.createdAt
+    ? selectedHabit.createdAt.slice(0, 10)
+    : todayStr;
+
+  const logValues = new Map(heatmap?.logs.map((l) => [l.date, l.value]) ?? []);
+
+  // Generate cells from createdAt → today
+  const cells: Array<{ date: string; value: number | null; isFuture: boolean }> = [];
+  const startDate = new Date(createdStr + 'T00:00:00Z');
+  const endDate = new Date(todayStr + 'T00:00:00Z');
+  const msPerDay = 86400000;
+  const dayCount = Math.round((endDate.getTime() - startDate.getTime()) / msPerDay) + 1;
+
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date(startDate.getTime() + i * msPerDay);
     const key = d.toISOString().slice(0, 10);
-    cells.push({ date: key, value: logValues.get(key) ?? null });
+    cells.push({ date: key, value: logValues.get(key) ?? null, isFuture: false });
   }
 
-  function cellClass(value: number | null) {
-    if (value === null) return '';
-    if (value === -1) return 'vice-fail';
-    if (value >= 10) return 'done-high';
-    if (value >= 3) return 'done-mid';
-    return 'done-low';
+  function cellBg(value: number | null, isFuture: boolean) {
+    if (isFuture) return 'rgba(255,255,255,0.03)';
+    if (value === null) return 'rgba(255,255,255,0.05)';
+    if (value === -1) return 'rgba(239,68,68,0.5)';
+    if (value >= 10) return 'rgba(91,185,140,0.9)';
+    if (value >= 3) return 'rgba(91,185,140,0.55)';
+    return 'rgba(91,185,140,0.25)';
   }
+
+  const doneCount = cells.filter((c) => c.value !== null && c.value > 0).length;
+  const totalDays = cells.filter((c) => !c.isFuture).length;
+  const consistency = totalDays > 0 ? Math.round((doneCount / totalDays) * 100) : 0;
 
   return (
     <div>
-      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <label style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>Hábito:</label>
-        <select
-          className="premium-input"
-          value={selectedHabit ?? ''}
-          onChange={(e) => setSelectedHabit(e.target.value)}
-          style={{ display: 'inline-block', width: 'auto', flex: 1 }}
-        >
-          {habits.map((h) => (
+      {/* Selector + stats */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <select className="premium-input" value={selectedId ?? ''} onChange={(e) => setSelectedId(e.target.value)}
+          style={{ display: 'inline-block', width: 'auto', flex: 1, minWidth: 140 }}>
+          {allHabits.map((h) => (
             <option key={h.id} value={h.id}>{h.icon ? `${h.icon} ` : ''}{h.title}</option>
           ))}
         </select>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>{doneCount}</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>dias feitos</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#5bb98c' }}>{consistency}%</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>consistência</div>
+          </div>
+        </div>
       </div>
-      <div className="habit-heatmap-grid">
-        {cells.map((cell) => (
-          <div
-            key={cell.date}
-            className={`habit-heatmap-cell ${cellClass(cell.value)}`}
-            title={`${cell.date}: ${cell.value ?? 'sem registro'}`}
-          />
-        ))}
-      </div>
+
+      {/* Grid */}
+      {cells.length === 0 ? (
+        <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>Hábito criado hoje — dados aparecerão amanhã.</p>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+          {cells.map((cell) => (
+            <div
+              key={cell.date}
+              title={`${cell.date}: ${cell.value === null ? 'sem registro' : cell.value === -1 ? 'recaiu' : `${cell.value}`}`}
+              style={{
+                width: 11, height: 11, borderRadius: 2,
+                background: cellBg(cell.value, cell.isFuture),
+                cursor: 'default', transition: 'transform 0.1s',
+                outline: cell.date === todayStr ? '1.5px solid rgba(255,255,255,0.35)' : 'none',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.5)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Legend */}
-      <div style={{ display: 'flex', gap: 12, marginTop: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
-        <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Menos</span>
-        {['', 'done-low', 'done-mid', 'done-high'].map((cls, i) => (
-          <div key={i} className={`habit-heatmap-cell ${cls}`} style={{ flexShrink: 0 }} />
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
+        <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Menos</span>
+        {[null, 1, 5, 10].map((v, i) => (
+          <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: cellBg(v, false) }} />
         ))}
-        <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Mais</span>
+        <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Mais</span>
       </div>
     </div>
   );
@@ -1040,10 +1095,7 @@ export function HabitosPage() {
     }
   }, [date]);
 
-  useEffect(() => {
-    setReady(false);
-    load();
-  }, [load]);
+  useEffect(() => { setReady(false); load(); }, [load]);
 
   const handleLog = useCallback(async (id: string, value?: number) => {
     const stat = habits.find((h) => h.id === id);
@@ -1063,101 +1115,66 @@ export function HabitosPage() {
           toast.success(`+${stat.xpPerCompletion ?? 10} XP ${AREA_MAP[areaKey].emoji}`, { duration: 2000 });
         }
       }
-    } catch {
-      toast.error('Erro ao registrar hábito');
-    } finally {
-      setBusy(false);
-    }
+    } catch { toast.error('Erro ao registrar'); }
+    finally { setBusy(false); }
   }, [date, habits, radar, load]);
 
   const handleUndo = useCallback(async (id: string) => {
     setBusy(true);
-    try {
-      await api.deleteHabitLog(id, date);
-      await load();
-      toast.success('Registro removido');
-    } catch {
-      toast.error('Erro ao desfazer');
-    } finally {
-      setBusy(false);
-    }
+    try { await api.deleteHabitLog(id, date); await load(); toast.success('Registro removido'); }
+    catch { toast.error('Erro ao desfazer'); }
+    finally { setBusy(false); }
   }, [date, load]);
 
   const handleRecaiu = useCallback(async (id: string) => {
-    if (!confirm('Tem certeza que quer registrar uma recaída?')) return;
+    if (!confirm('Registrar recaída?')) return;
     setBusy(true);
     try {
       const result = await api.habitRecaiu(id, date);
-      if (result.previousStreak > 0) {
-        toast.info(`Sequência de ${result.previousStreak} dias encerrada. Você consegue recomeçar!`);
-      }
+      if (result.previousStreak > 0) toast.info(`Sequência de ${result.previousStreak} dias encerrada.`);
       await load();
-    } catch {
-      toast.error('Erro ao registrar recaída');
-    } finally {
-      setBusy(false);
-    }
+    } catch { toast.error('Erro ao registrar recaída'); }
+    finally { setBusy(false); }
   }, [date, load]);
 
   const handleUndoRecaiu = useCallback(async (id: string) => {
     setBusy(true);
-    try {
-      await api.deleteHabitLog(id, date);
-      await load();
-      toast.success('Recaída desfeita! Continue assim 💪');
-    } catch {
-      toast.error('Erro ao desfazer recaída');
-    } finally {
-      setBusy(false);
-    }
+    try { await api.deleteHabitLog(id, date); await load(); toast.success('Recaída desfeita! 💪'); }
+    catch { toast.error('Erro ao desfazer'); }
+    finally { setBusy(false); }
   }, [date, load]);
 
   const handleArchive = useCallback(async (id: string) => {
-    if (!confirm('Arquivar este hábito? Ele não aparecerá mais no dia a dia.')) return;
-    try {
-      await api.archiveHabit(id);
-      toast.success('Hábito arquivado');
-      await load();
-    } catch {
-      toast.error('Erro ao arquivar hábito');
-    }
+    if (!confirm('Arquivar este hábito?')) return;
+    try { await api.archiveHabit(id); toast.success('Arquivado'); await load(); }
+    catch { toast.error('Erro ao arquivar'); }
   }, [load]);
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Excluir permanentemente este hábito e todo seu histórico?')) return;
-    try {
-      await api.archiveHabit(id);
-      toast.success('Hábito removido');
-      await load();
-    } catch {
-      toast.error('Erro ao excluir hábito');
-    }
+    if (!confirm('Excluir este hábito permanentemente?')) return;
+    try { await api.archiveHabit(id); toast.success('Removido'); await load(); }
+    catch { toast.error('Erro ao excluir'); }
   }, [load]);
 
   const areaHabits = LIFE_AREAS.map((area) => ({
-    area,
-    habits: habits.filter((h) => h.lifeArea === area.key),
+    area, habits: habits.filter((h) => h.lifeArea === area.key),
   })).filter((g) => g.habits.length > 0);
 
   const isToday = date === todayStr;
-  const displayLabel = isToday
-    ? 'Hoje'
-    : date === addDays(todayStr, -1)
-    ? 'Ontem'
+  const displayLabel = isToday ? 'Hoje'
+    : date === addDays(todayStr, -1) ? 'Ontem'
     : formatDisplayDate(date);
 
-  const totalHabits = habits.length;
-  const doneHabits = habits.filter((h) => h.isCompletedToday).length;
+  const totalH = habits.length;
+  const doneH = habits.filter((h) => h.isCompletedToday).length;
 
   return (
     <PremiumPage>
       <PremiumHeader
         title="Hábitos"
-        subtitle={ready && totalHabits > 0 ? `${doneHabits}/${totalHabits} concluídos hoje` : 'RPG de vida'}
+        subtitle="RPG de vida"
         actions={
-          <button className="premium-btn" onClick={() => setShowCreateModal(true)}>
-            + Novo hábito
-          </button>
+          <button className="premium-btn" onClick={() => setShowCreateModal(true)}>+ Novo hábito</button>
         }
       />
 
@@ -1179,52 +1196,46 @@ export function HabitosPage() {
         </button>
       </div>
 
-      {/* Radar */}
+      {/* Stats widget: compact radar + area cards */}
       <PremiumCard>
-        {!ready ? <SkeletonBlock lines={1} height={300} /> : <HabitRadar stats={radar} />}
+        <HabitStatsWidget stats={radar} ready={ready} />
       </PremiumCard>
 
-      {/* Progress bar summary */}
-      {ready && totalHabits > 0 && (
-        <div style={{ padding: '0 2px', marginBottom: 4 }}>
-          <div style={{ height: 3, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
-            <div
-              style={{
-                height: '100%', borderRadius: 99, background: 'var(--accent)',
-                width: `${Math.round((doneHabits / totalHabits) * 100)}%`,
-                transition: 'width 0.5s ease',
-              }}
-            />
+      {/* Global progress bar */}
+      {ready && totalH > 0 && (
+        <div style={{ padding: '4px 2px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Progresso do dia</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: doneH === totalH ? '#5bb98c' : 'var(--muted)' }}>
+              {doneH}/{totalH} {doneH === totalH && '🎉'}
+            </span>
+          </div>
+          <div style={{ height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 99,
+              background: doneH === totalH ? '#5bb98c' : 'var(--accent)',
+              width: `${Math.round((doneH / totalH) * 100)}%`,
+              transition: 'width 0.5s ease',
+            }} />
           </div>
         </div>
       )}
 
-      {/* Habits by area */}
+      {/* Habit list */}
       {!ready ? (
         <PremiumCard><SkeletonBlock lines={4} height={52} /></PremiumCard>
       ) : habits.length === 0 ? (
         <PremiumCard>
-          <EmptyState
-            title="Nenhum hábito para este dia"
-            description='Crie o primeiro hábito clicando em "+ Novo hábito"'
-          />
+          <EmptyState title="Nenhum hábito para este dia" description='Crie o primeiro hábito clicando em "+ Novo hábito"' />
         </PremiumCard>
       ) : (
         <PremiumCard>
+          <style>{`.habit-row-hover:hover .habit-menu-trigger { opacity: 1 !important; }`}</style>
           {areaHabits.map(({ area, habits: aHabits }) => (
             <HabitAreaSection
-              key={area.key}
-              area={area}
-              habits={aHabits}
-              date={date}
-              onLog={handleLog}
-              onUndo={handleUndo}
-              onRecaiu={handleRecaiu}
-              onUndoRecaiu={handleUndoRecaiu}
-              onEdit={setEditingHabit}
-              onArchive={handleArchive}
-              onDelete={handleDelete}
-              busy={busy}
+              key={area.key} area={area} habits={aHabits} date={date}
+              onLog={handleLog} onUndo={handleUndo} onRecaiu={handleRecaiu} onUndoRecaiu={handleUndoRecaiu}
+              onEdit={setEditingHabit} onArchive={handleArchive} onDelete={handleDelete} busy={busy}
             />
           ))}
         </PremiumCard>
@@ -1233,35 +1244,22 @@ export function HabitosPage() {
       {/* Analysis */}
       {allHabits.length > 0 && (
         <div style={{ marginTop: 8 }}>
-          <button
-            className="premium-btn-secondary"
-            onClick={() => setAnalysisOpen(!analysisOpen)}
-            style={{ width: '100%', justifyContent: 'center' }}
-          >
+          <button className="premium-btn-secondary" onClick={() => setAnalysisOpen(!analysisOpen)}
+            style={{ width: '100%', justifyContent: 'center' }}>
             Análise {analysisOpen ? '▴' : '▾'}
           </button>
           {analysisOpen && (
             <div style={{ marginTop: 8 }}>
-              <PremiumCard><HabitAnalysis habits={allHabits} /></PremiumCard>
+              <PremiumCard>
+                <HabitHeatmap habits={habits} allHabits={allHabits} />
+              </PremiumCard>
             </div>
           )}
         </div>
       )}
 
-      {/* Modals */}
-      {showCreateModal && (
-        <HabitCreateModal
-          onClose={() => setShowCreateModal(false)}
-          onCreate={() => { setShowCreateModal(false); load(); }}
-        />
-      )}
-      {editingHabit && (
-        <HabitEditModal
-          habit={editingHabit}
-          onClose={() => setEditingHabit(null)}
-          onSave={() => { setEditingHabit(null); load(); }}
-        />
-      )}
+      {showCreateModal && <HabitCreateModal onClose={() => setShowCreateModal(false)} onCreate={() => { setShowCreateModal(false); load(); }} />}
+      {editingHabit && <HabitEditModal habit={editingHabit} onClose={() => setEditingHabit(null)} onSave={() => { setEditingHabit(null); load(); }} />}
     </PremiumPage>
   );
 }
