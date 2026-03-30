@@ -7,6 +7,7 @@ import {
   extractPlainText,
   CanvasAIError,
 } from '../services/canvas-ai-service.js';
+import { getUserId } from '../middleware/auth.js';
 
 const MAX_CANVAS_BYTES = 500 * 1024; // 500 KB
 
@@ -15,11 +16,28 @@ const dataSchema = z.record(z.unknown()).refine(
   { message: 'Canvas data exceeds 500 KB limit' }
 );
 
+async function assertNoteOwnership(prisma: PrismaClient, noteId: string, clerkUserId: string) {
+  const note = await prisma.note.findFirst({
+    where: {
+      id: noteId,
+      OR: [
+        { workspace: { clerkUserId } },
+        { workspaceId: null, folder: { clerkUserId } },
+        { workspaceId: null, folderId: null },
+      ],
+    },
+  });
+  return note;
+}
+
 export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaClient) {
   // ── DIAGRAM ──────────────────────────────────────────────────────────────
 
   app.get('/canvas/notes/:noteId/diagram', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const diagram = await prisma.diagram.findUnique({ where: { noteId } });
     if (!diagram) return reply.status(404).send({ error: 'not_found' });
     return diagram;
@@ -27,6 +45,9 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.post('/canvas/notes/:noteId/diagram', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const body = req.body as { data: unknown; title?: string };
 
     const existing = await prisma.diagram.findUnique({ where: { noteId } });
@@ -43,6 +64,9 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.patch('/canvas/notes/:noteId/diagram', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const body = req.body as { data?: unknown; title?: string };
 
     const existing = await prisma.diagram.findUnique({ where: { noteId } });
@@ -65,6 +89,9 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.delete('/canvas/notes/:noteId/diagram', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const existing = await prisma.diagram.findUnique({ where: { noteId } });
     if (!existing) return reply.status(404).send({ error: 'not_found' });
     await prisma.diagram.delete({ where: { noteId } });
@@ -73,9 +100,10 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.post('/canvas/notes/:noteId/diagram/generate', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
     const body = (req.body ?? {}) as { overwrite?: boolean };
 
-    const note = await prisma.note.findUnique({ where: { id: noteId } });
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
     if (!note) return reply.status(404).send({ error: 'note_not_found' });
 
     const plainText = extractPlainText(note.content ?? '');
@@ -109,6 +137,9 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.get('/canvas/notes/:noteId/mindmap', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const mindMap = await prisma.mindMap.findUnique({ where: { noteId } });
     if (!mindMap) return reply.status(404).send({ error: 'not_found' });
     return mindMap;
@@ -116,6 +147,9 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.post('/canvas/notes/:noteId/mindmap', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const body = req.body as { data: unknown; title?: string };
 
     const existing = await prisma.mindMap.findUnique({ where: { noteId } });
@@ -132,6 +166,9 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.patch('/canvas/notes/:noteId/mindmap', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const body = req.body as { data?: unknown; title?: string };
 
     const existing = await prisma.mindMap.findUnique({ where: { noteId } });
@@ -154,6 +191,9 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.delete('/canvas/notes/:noteId/mindmap', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
     const existing = await prisma.mindMap.findUnique({ where: { noteId } });
     if (!existing) return reply.status(404).send({ error: 'not_found' });
     await prisma.mindMap.delete({ where: { noteId } });
@@ -162,9 +202,10 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
 
   app.post('/canvas/notes/:noteId/mindmap/generate', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
     const body = (req.body ?? {}) as { overwrite?: boolean };
 
-    const note = await prisma.note.findUnique({ where: { id: noteId } });
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
     if (!note) return reply.status(404).send({ error: 'note_not_found' });
 
     const plainText = extractPlainText(note.content ?? '');
