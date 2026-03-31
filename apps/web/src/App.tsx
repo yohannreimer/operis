@@ -9,6 +9,7 @@ const HojePage = lazy(() => import('./pages/hoje').then((module) => ({ default: 
 const ProjetosPage = lazy(() => import('./pages/projetos').then((module) => ({ default: module.ProjetosPage })));
 const WorkspacesPage = lazy(() => import('./pages/workspaces').then((module) => ({ default: module.WorkspacesPage })));
 const TarefasPage = lazy(() => import('./pages/tarefas').then((module) => ({ default: module.TarefasPage })));
+const InboxPage = lazy(() => import('./pages/inbox').then((module) => ({ default: module.InboxPage })));
 const NotasPage = lazy(() => import('./pages/notas').then((module) => ({ default: module.NotasPage })));
 const AgendaPage = lazy(() => import('./pages/agenda').then((module) => ({ default: module.AgendaPage })));
 const HabitosPage = lazy(() => import('./pages/habitos').then((module) => ({ default: module.HabitosPage })));
@@ -51,7 +52,7 @@ export function App() {
                 <Route path="tarefas" element={<TarefasPage />} />
                 <Route path="agenda" element={<AgendaPage />} />
                 <Route path="habitos" element={<HabitosPage />} />
-                <Route path="inbox" element={<Navigate to="/tarefas" replace />} />
+                <Route path="inbox" element={<InboxPage />} />
                 <Route path="gamificacao" element={<Navigate to="/" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>

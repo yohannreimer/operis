@@ -156,6 +156,7 @@ function readClosedWeeks() {
 
 const links: NavItem[] = [
   { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
+  { to: '/inbox', label: 'Inbox', caption: 'Captura rápida', icon: Inbox },
   { to: '/agenda', label: 'Agenda', caption: 'Compromissos', icon: CalendarClock },
   { to: '/habitos', label: 'Hábitos', caption: 'RPG de vida', icon: Target },
   { to: '/frentes', label: 'Frentes', caption: 'Estratégia e frentes', icon: Building2 },
@@ -167,6 +168,7 @@ const links: NavItem[] = [
 
 const GO_ROUTE_MAP: Record<string, string> = {
   h: '/hoje',
+  i: '/inbox',
   a: '/agenda',
   p: '/projetos',
   t: '/tarefas',
