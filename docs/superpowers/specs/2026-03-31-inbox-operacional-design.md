@@ -122,7 +122,7 @@ Todos os endpoints abaixo ficam sob o prefixo `/inbox`.
 
 ### Lembrete de "aguardando"
 
-Um worker/cron verifica diariamente itens com `status: 'aguardando'` cuja `waitingDate <= hoje` e reverte para `status: 'pendente'`, opcionalmente disparando uma notificação.
+Um worker/cron verifica diariamente itens com `status: 'aguardando'` cuja `waitingDate <= hoje` e reverte para `status: 'pendente'`. Nenhuma notificação push — o item simplesmente reaparece como pendente na próxima vez que o usuário abrir a Inbox.
 
 ---
 
@@ -209,7 +209,7 @@ Acessível por mouse (hover) ou teclado. Opções:
 ### Executar hoje
 
 1. Clica "Executar hoje" → bottom sheet com duas opções: **Agora** e **Agendar hora**
-2. **Agora** → navega para deep work com o item como contexto; `status → agenda`, `scheduledAt → now()`
+2. **Agora** → navega para `/hoje?deepwork=<itemId>` (reutiliza o fluxo de deep work existente, passando o conteúdo do item como contexto da sessão); `status → agenda`, `scheduledAt → now()`
 3. **Agendar hora** → time picker aparece → usuário seleciona horário → bloco criado na agenda; `status → agenda`, `scheduledAt → horário escolhido`
 
 ### Transformar em tarefa
@@ -246,7 +246,7 @@ Comportamento: mostra itens pendentes + itens com status feito/convertido/agenda
 
 ## Contextos — Regras
 
-- Um item tem contexto de **frente** (`workspaceId`) **OU** contexto de inbox (`inboxContextId`) — nunca os dois
+- Um item tem contexto de **frente** (`workspaceId`) **OU** contexto de inbox (`inboxContextId`) — nunca os dois. A exclusividade mútua é garantida na camada de serviço (validação antes de salvar), não via constraint no banco.
 - Frentes são as Workspaces existentes do sistema — aparecem como opções no `@` mas não são criadas aqui
 - InboxContexts são exclusivos da inbox — criados via `+ Novo contexto` ou automaticamente se o usuário digitar um nome não encontrado no `@` autocomplete
 - Ao deletar um InboxContext, os itens ficam sem contexto (não são deletados)
