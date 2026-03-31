@@ -17,7 +17,6 @@ import {
 import { axisProps, cartesianGridProps, chartTheme, tooltipStyle } from '../utils/chart-theme';
 import {
   api,
-  InboxItem,
   Project,
   Subtask,
   Task,
@@ -49,7 +48,6 @@ import { TaskIntelligenceTable } from '../components/task-intelligence-table';
 import { workspaceQuery } from '../utils/workspace';
 
 type TaskView = 'open' | 'done' | 'all' | 'restricted';
-type TaskPanel = 'tasks' | 'inbox';
 type DetailTab = 'overview' | 'checklist' | 'restrictions' | 'history';
 type TaskListMode = 'list' | 'table';
 const TASK_TYPE_PRIORITY_SUGGESTION: Record<TaskType, number> = {
@@ -197,12 +195,10 @@ export function TarefasPage() {
   const composeMode = searchParams.get('compose') === '1';
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [waitingRadar, setWaitingRadar] = useState<WaitingFollowupRadar | null>(null);
 
-  const [taskPanel, setTaskPanel] = useState<TaskPanel>('tasks');
   const [taskView, setTaskView] = useState<TaskView>('open');
   const [taskListMode, setTaskListMode] = useState<TaskListMode>('table');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
@@ -236,11 +232,6 @@ export function TarefasPage() {
   const [createRestrictionWaitingDueDate, setCreateRestrictionWaitingDueDate] = useState('');
   const [createWorkspaceId, setCreateWorkspaceId] = useState('');
   const [createProjectId, setCreateProjectId] = useState('');
-
-  const [captureText, setCaptureText] = useState('');
-  const [processingWorkspaceId, setProcessingWorkspaceId] = useState('');
-  const [processingProjectId, setProcessingProjectId] = useState('');
-  const [processingHorizon, setProcessingHorizon] = useState<TaskHorizon>('active');
 
   const [detailTitle, setDetailTitle] = useState('');
   const [detailDescription, setDetailDescription] = useState('');
@@ -278,9 +269,8 @@ export function TarefasPage() {
   async function load() {
     try {
       setError(null);
-      const [taskData, inboxData, workspaceData, projectData, waitingRadarData] = await Promise.all([
+      const [taskData, workspaceData, projectData, waitingRadarData] = await Promise.all([
         api.getTasks(scopedWorkspaceId ? { workspaceId: scopedWorkspaceId } : undefined),
-        api.getInbox(),
         api.getWorkspaces(),
         api.getProjects(),
         api.getWaitingFollowupRadar(scopedWorkspaceId ? { workspaceId: scopedWorkspaceId } : undefined)
@@ -297,7 +287,6 @@ export function TarefasPage() {
       const visibleTasks = taskData.filter((task) => task.status !== 'arquivado');
 
       setTasks(visibleTasks);
-      setInboxItems(inboxData);
       setWorkspaces(visibleWorkspaces);
       setProjects(projectData.filter((project) => visibleWorkspaceIds.has(project.workspaceId)));
       setWaitingRadar(waitingRadarData);
@@ -305,10 +294,6 @@ export function TarefasPage() {
       setCreateWorkspaceId((current) =>
         current && visibleWorkspaceIds.has(current) ? current : resolvedWorkspace
       );
-      setProcessingWorkspaceId((current) =>
-        current && visibleWorkspaceIds.has(current) ? current : resolvedWorkspace
-      );
-
       const hasSelected = visibleTasks.some((task) => task.id === selectedTaskId);
       if (!hasSelected) {
         setSelectedTaskId(visibleTasks.find((task) => task.status !== 'feito')?.id ?? visibleTasks[0]?.id ?? '');
@@ -324,28 +309,16 @@ export function TarefasPage() {
     load();
   }, [activeWorkspaceId, shellWorkspaces.length]);
 
-  useEffect(() => {
-    if (!composeMode) {
-      return;
-    }
-    if (taskPanel !== 'tasks') {
-      setTaskPanel('tasks');
-    }
-  }, [composeMode, taskPanel]);
 
   useEffect(() => {
     if (!focusMode) {
       return;
     }
 
-    if (taskPanel !== 'tasks') {
-      setTaskPanel('tasks');
-    }
-
     if (taskListMode !== 'table') {
       setTaskListMode('table');
     }
-  }, [focusMode, taskPanel, taskListMode]);
+  }, [focusMode, taskListMode]);
 
   function setTaskFocusMode(enabled: boolean) {
     const next = new URLSearchParams(searchParams);
@@ -566,14 +539,6 @@ export function TarefasPage() {
     () => projects.filter((project) => project.workspaceId === detailWorkspaceId),
     [projects, detailWorkspaceId]
   );
-
-  const processingProjects = useMemo(
-    () => projects.filter((project) => project.workspaceId === processingWorkspaceId),
-    [projects, processingWorkspaceId]
-  );
-
-  const pendingInbox = inboxItems.filter((item) => !item.processed);
-  const processedInbox = inboxItems.filter((item) => item.processed);
 
   const completedSubtasks = subtasks.filter((subtask) => subtask.status === 'feito').length;
   const subtaskProgress = subtasks.length ? Math.round((completedSubtasks / subtasks.length) * 100) : 0;
@@ -888,47 +853,6 @@ export function TarefasPage() {
     }
   }
 
-  async function captureToQueue(event: FormEvent) {
-    event.preventDefault();
-
-    if (!captureText.trim()) {
-      return;
-    }
-
-    try {
-      setBusy(true);
-      await api.createInboxItem(captureText.trim(), 'app');
-      setCaptureText('');
-      await load();
-    } catch (requestError) {
-      setError((requestError as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function processInboxItem(itemId: string, action: 'task' | 'project' | 'discard') {
-    if (action !== 'discard' && !processingWorkspaceId) {
-      setError('Selecione uma frente para processar itens.');
-      return;
-    }
-
-    try {
-      setBusy(true);
-      await api.processInboxItem(itemId, {
-        action,
-        workspaceId: action === 'discard' ? undefined : processingWorkspaceId,
-        projectId: action === 'task' && processingProjectId ? processingProjectId : undefined,
-        horizon: action === 'task' ? processingHorizon : undefined
-      });
-      await load();
-    } catch (requestError) {
-      setError((requestError as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function refreshSelectedTaskContext(taskId: string) {
     const [subtaskData, restrictionData, historyData, multiBlockData] = await Promise.all([
       api.getTaskSubtasks(taskId),
@@ -1151,30 +1075,12 @@ export function TarefasPage() {
           subtitle="Lista clara, contexto mínimo e execução por foco."
           actions={
             <div className="header-actions">
-              <button
-                type="button"
-                className={taskPanel === 'tasks' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                onClick={() => setTaskPanel('tasks')}
-              >
-                Tarefas
+              <button type="button" className="ghost-button" onClick={() => setTaskFocusMode(true)}>
+                Foco da lista (F)
               </button>
-              <button
-                type="button"
-                className={taskPanel === 'inbox' ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
-                onClick={() => setTaskPanel('inbox')}
-              >
-                Inbox ({pendingInbox.length})
+              <button type="button" onClick={() => setTaskComposeMode(true)}>
+                Criar
               </button>
-              {taskPanel === 'tasks' && (
-                <>
-                  <button type="button" className="ghost-button" onClick={() => setTaskFocusMode(true)}>
-                    Foco da lista (F)
-                  </button>
-                  <button type="button" onClick={() => setTaskComposeMode(true)}>
-                    Criar
-                  </button>
-                </>
-              )}
             </div>
           }
         />
@@ -1182,7 +1088,7 @@ export function TarefasPage() {
 
       {!focusMode && error && <p className="surface-error">{error}</p>}
 
-      {focusMode || taskPanel === 'tasks' ? (
+      <>
         <>
           {focusMode ? (
             <section className="task-table-focus-screen">
@@ -2471,126 +2377,7 @@ export function TarefasPage() {
           )}
           </Modal>
         </>
-      ) : (
-        <section className="two-col-grid large">
-          <article className="surface-card">
-            <div className="section-title">
-              <h4>Capturas pendentes</h4>
-              <small>{pendingInbox.length}</small>
-            </div>
-
-            <form className="capture-row" onSubmit={captureToQueue}>
-              <input
-                value={captureText}
-                onChange={(event) => setCaptureText(event.target.value)}
-                placeholder="capturar revisar proposta de parceria"
-              />
-              <button type="submit" disabled={busy}>
-                Capturar
-              </button>
-            </form>
-
-            <div className="process-settings-grid">
-              <label>
-                Frente
-                <select
-                  value={processingWorkspaceId}
-                  onChange={(event) => {
-                    setProcessingWorkspaceId(event.target.value);
-                    setProcessingProjectId('');
-                  }}
-                >
-                  <option value="">Selecione...</option>
-                  {workspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Projeto
-                <select value={processingProjectId} onChange={(event) => setProcessingProjectId(event.target.value)}>
-                  <option value="">Sem projeto</option>
-                  {processingProjects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Horizonte
-                <select
-                  value={processingHorizon}
-                  onChange={(event) => setProcessingHorizon(event.target.value as TaskHorizon)}
-                >
-                  <option value="active">Ativo</option>
-                  <option value="future">Futuro</option>
-                </select>
-              </label>
-            </div>
-
-            {pendingInbox.length === 0 ? (
-              <EmptyState
-                title="Inbox zerada"
-                description="Tudo processado. Capture novas entradas para não perder contexto."
-              />
-            ) : (
-              <div className="queue-list">
-                {pendingInbox.map((item) => (
-                  <article key={item.id} className="queue-item">
-                    <div>
-                      <strong>{item.content}</strong>
-                      <small>origem: {item.source}</small>
-                    </div>
-
-                    <div className="inline-actions">
-                      <button type="button" className="success-button" onClick={() => processInboxItem(item.id, 'task')}>
-                        Virar tarefa
-                      </button>
-                      <button type="button" className="ghost-button" onClick={() => processInboxItem(item.id, 'project')}>
-                        Virar projeto
-                      </button>
-                      <button type="button" className="warning-button" onClick={() => processInboxItem(item.id, 'discard')}>
-                        Descartar
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="surface-card">
-            <div className="section-title">
-              <h4>Processadas</h4>
-              <small>{processedInbox.length}</small>
-            </div>
-
-            {processedInbox.length === 0 ? (
-              <EmptyState
-                title="Sem histórico de processadas"
-                description="Quando você processar capturas, os últimos itens aparecem aqui."
-              />
-            ) : (
-              <ul className="task-list">
-                {processedInbox.slice(0, 20).map((item) => (
-                  <li key={item.id}>
-                    <div>
-                      <strong>{item.content}</strong>
-                      <small>{new Date(item.createdAt).toLocaleString('pt-BR')}</small>
-                    </div>
-                    <span className="status-tag feito">processado</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        </section>
-      )}
+      </>
 
       <TaskCompletionModal
         open={Boolean(completionTask)}
