@@ -369,7 +369,7 @@ export function Layout() {
     }
 
     try {
-      await api.createInboxItem(quickCapture.trim(), 'app');
+      await api.createInboxItem({ content: quickCapture.trim(), source: 'app' });
       setQuickCapture('');
       setCaptureExpanded(false);
       toast.success('Capturado na inbox.');
@@ -619,7 +619,7 @@ export function Layout() {
       keywords: `capturar inbox ${text}`.toLowerCase(),
       icon: Inbox,
       run: async () => {
-        await api.createInboxItem(text, 'app');
+        await api.createInboxItem({ content: text, source: 'app' });
         toast.success('Capturado via Command Palette.');
         closeCommandPalette();
       }

@@ -961,12 +961,49 @@ export type RecurringBlock = {
   active: boolean;
 };
 
+export type InboxItemStatus = 'pendente' | 'feito' | 'convertido' | 'agenda' | 'aguardando';
+
+export type InboxContextRef = {
+  id: string;
+  name: string;
+};
+
+export type WorkspaceRef = {
+  id: string;
+  name: string;
+  color: string;
+};
+
 export type InboxItem = {
   id: string;
   content: string;
   source: 'app' | 'whatsapp';
-  processed: boolean;
+  status: InboxItemStatus;
+  workspaceId: string | null;
+  inboxContextId: string | null;
+  position: number;
+  waitingDate: string | null;
+  waitingPerson: string | null;
+  waitingNote: string | null;
+  scheduledAt: string | null;
+  convertedTaskId: string | null;
   createdAt: string;
+  updatedAt: string;
+  workspace: WorkspaceRef | null;
+  inboxContext: InboxContextRef | null;
+};
+
+export type InboxContext = {
+  id: string;
+  clerkUserId: string;
+  name: string;
+  position: number;
+  createdAt: string;
+};
+
+export type InboxListResponse = {
+  items: InboxItem[];
+  contexts: InboxContext[];
 };
 
 export type Gamification = {
@@ -1807,26 +1844,73 @@ export const api = {
       method: 'POST'
     }),
 
-  getInbox: () => apiRequest<InboxItem[]>('/inbox'),
-  createInboxItem: (content: string, source: 'app' | 'whatsapp' = 'app') =>
+  // ── Inbox Operacional ──────────────────────────────────────────────────
+  getInbox: (filter: 'hoje' | 'ontem' | 'semana' | 'tudo' = 'hoje') =>
+    apiRequest<InboxListResponse>(`/inbox?filter=${filter}`),
+
+  createInboxItem: (payload: {
+    content: string;
+    source?: 'app' | 'whatsapp';
+    workspaceId?: string | null;
+    inboxContextId?: string | null;
+  }) =>
     apiRequest<InboxItem>('/inbox', {
       method: 'POST',
-      body: JSON.stringify({ content, source })
+      body: JSON.stringify({ source: 'app', ...payload })
     }),
-  processInboxItem: (
+
+  updateInboxItem: (
     id: string,
-    payload: {
-      action: 'task' | 'project' | 'discard';
-      workspaceId?: string;
-      projectId?: string;
-      horizon?: TaskHorizon;
-      title?: string;
-    }
+    patch: Partial<{
+      content: string;
+      status: InboxItemStatus;
+      workspaceId: string | null;
+      inboxContextId: string | null;
+      position: number;
+      waitingDate: string | null;
+      waitingPerson: string | null;
+      waitingNote: string | null;
+      scheduledAt: string | null;
+      convertedTaskId: string | null;
+    }>
   ) =>
-    apiRequest<{ ok: boolean }>(`/inbox/${id}/process`, {
+    apiRequest<InboxItem>(`/inbox/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+
+  deleteInboxItem: (id: string) =>
+    apiRequest<void>(`/inbox/${id}`, { method: 'DELETE' }),
+
+  convertInboxItem: (id: string, taskId: string) =>
+    apiRequest<InboxItem>(`/inbox/${id}/convert`, {
+      method: 'POST',
+      body: JSON.stringify({ taskId })
+    }),
+
+  scheduleInboxItem: (id: string, payload: { mode: 'now' | 'scheduled'; scheduledAt?: string }) =>
+    apiRequest<InboxItem>(`/inbox/${id}/schedule`, {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
+
+  getInboxContexts: () =>
+    apiRequest<InboxContext[]>('/inbox/contexts'),
+
+  createInboxContext: (name: string) =>
+    apiRequest<InboxContext>('/inbox/contexts', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    }),
+
+  updateInboxContext: (id: string, patch: { name?: string; position?: number }) =>
+    apiRequest<InboxContext>(`/inbox/contexts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+
+  deleteInboxContext: (id: string) =>
+    apiRequest<void>(`/inbox/contexts/${id}`, { method: 'DELETE' }),
 
   getGamification: () => apiRequest<Gamification>('/gamification'),
   getGamificationDetails: () => apiRequest<GamificationDetails>('/gamification/details'),
