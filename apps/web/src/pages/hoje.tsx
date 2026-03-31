@@ -11,6 +11,7 @@ import {
   ExecutionEvolution,
   ExecutionBriefing,
   FailureReason,
+  InboxItem,
   Task,
   TaskEnergy,
   TaskExecutionKind,
@@ -173,6 +174,7 @@ export function HojePage() {
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [todayCommitments, setTodayCommitments] = useState<Commitment[]>([]);
+  const [inboxAgendaItems, setInboxAgendaItems] = useState<InboxItem[]>([]);
   const [briefing, setBriefing] = useState<ExecutionBriefing | null>(null);
   const [deepWorkSummary, setDeepWorkSummary] = useState<DeepWorkSummary | null>(null);
   const [activeDeepWork, setActiveDeepWork] = useState<DeepWorkSession | null>(null);
@@ -226,7 +228,7 @@ export function HojePage() {
   async function load() {
     try {
       setError(null);
-      const [nextDayPlan, taskList, nextBriefing, nextDeepSummary, nextActiveDeepWork, nextEvolution, commitmentList] = await Promise.all([
+      const [nextDayPlan, taskList, nextBriefing, nextDeepSummary, nextActiveDeepWork, nextEvolution, commitmentList, inboxData] = await Promise.all([
         api.getDayPlan(date),
         api.getTasks(workspaceId ? { workspaceId } : undefined),
         api.getExecutionBriefing(date, {
@@ -243,7 +245,8 @@ export function HojePage() {
           workspaceId,
           windowDays: 30
         }),
-        api.getCommitments({ date, status: 'ativo' })
+        api.getCommitments({ date, status: 'ativo' }),
+        api.getInbox('hoje'),
       ]);
 
       setDayPlan(nextDayPlan);
@@ -253,6 +256,7 @@ export function HojePage() {
       setActiveDeepWork(nextActiveDeepWork);
       setEvolution(nextEvolution);
       setTodayCommitments(commitmentList);
+      setInboxAgendaItems(inboxData.items.filter((i) => i.status === 'agenda'));
     } catch (requestError) {
       setError((requestError as Error).message);
     } finally {
@@ -1250,6 +1254,37 @@ export function HojePage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Inbox agenda items */}
+          {inboxAgendaItems.length > 0 && (
+            <PremiumCard title="Captura de hoje" subtitle={`${inboxAgendaItems.length} item${inboxAgendaItems.length !== 1 ? 's' : ''} do inbox`}>
+              <div className="hoje-inbox-list">
+                {inboxAgendaItems.map((item) => (
+                  <div key={item.id} className="hoje-inbox-item">
+                    <button
+                      type="button"
+                      className="hoje-inbox-checkbox"
+                      onClick={async () => {
+                        try {
+                          await api.updateInboxItem(item.id, { status: 'feito' });
+                          setInboxAgendaItems((prev) => prev.filter((i) => i.id !== item.id));
+                        } catch {
+                          // silently ignore
+                        }
+                      }}
+                      aria-label="Marcar como feito"
+                    />
+                    <span className="hoje-inbox-text">{item.content}</span>
+                    {item.scheduledAt && (
+                      <span className="hoje-inbox-time">
+                        {new Date(item.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </PremiumCard>
           )}
 
           <PremiumCard title="Pool de execução" subtitle={`${taskPool.length} tarefas disponíveis`}>

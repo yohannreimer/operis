@@ -155,8 +155,8 @@ function readClosedWeeks() {
 }
 
 const links: NavItem[] = [
-  { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
   { to: '/inbox', label: 'Inbox', caption: 'Captura rápida', icon: Inbox },
+  { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
   { to: '/agenda', label: 'Agenda', caption: 'Compromissos', icon: CalendarClock },
   { to: '/habitos', label: 'Hábitos', caption: 'RPG de vida', icon: Target },
   { to: '/frentes', label: 'Frentes', caption: 'Estratégia e frentes', icon: Building2 },

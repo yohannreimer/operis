@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Check, Clock, Calendar, ArrowRight, Trash2, MoreHorizontal, Edit2, MoveRight } from 'lucide-react';
+import { Check, Clock, Calendar, ArrowRight, Trash2, MoveRight } from 'lucide-react';
 import { InboxItem as InboxItemType, InboxContext, Workspace } from '../api';
 
 type Props = {
@@ -37,14 +37,12 @@ export function InboxItem({
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(item.content);
-  const [showMenu, setShowMenu] = useState(false);
   const [showWaiting, setShowWaiting] = useState(false);
   const [showMoveContext, setShowMoveContext] = useState(false);
   const [waitingDate, setWaitingDate] = useState('');
   const [waitingPerson, setWaitingPerson] = useState('');
   const [waitingNote, setWaitingNote] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (editing) {
@@ -53,22 +51,9 @@ export function InboxItem({
     }
   }, [editing]);
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!showMenu) return;
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [showMenu]);
-
   function startEdit() {
     setEditValue(item.content);
     setEditing(true);
-    setShowMenu(false);
   }
 
   function commitEdit() {
@@ -137,7 +122,7 @@ export function InboxItem({
           {/* Badges */}
           <div className="inbox-item-badges">
             {item.source === 'whatsapp' && (
-              <span className="inbox-badge inbox-badge--whatsapp">📱 WhatsApp</span>
+              <span className="inbox-badge inbox-badge--whatsapp">WhatsApp</span>
             )}
             {isWaiting && item.waitingDate && (
               <span className="inbox-badge inbox-badge--waiting">
@@ -156,46 +141,62 @@ export function InboxItem({
           </div>
         </div>
 
-        {/* Actions menu */}
-        <div className="inbox-item-actions" ref={menuRef}>
+        {/* Inline action icons — revealed on hover */}
+        <div className="inbox-item-actions">
           <button
             type="button"
-            className="inbox-item-menu-trigger ghost-button"
-            onClick={() => setShowMenu((v) => !v)}
-            aria-label="Ações"
+            className="inbox-item-action-btn"
+            onClick={() => onToggleDone(item)}
+            title={isDone ? 'Desmarcar' : 'Marcar como feito'}
+            aria-label={isDone ? 'Desmarcar' : 'Marcar como feito'}
           >
-            <MoreHorizontal size={14} />
+            <Check size={13} />
           </button>
-
-          {showMenu && (
-            <div className="inbox-item-menu">
-              <button type="button" onClick={() => { onToggleDone(item); setShowMenu(false); }}>
-                <Check size={12} /> {isDone ? 'Desmarcar' : 'Marcar como feito'}
-              </button>
-              <button type="button" onClick={startEdit}>
-                <Edit2 size={12} /> Editar
-              </button>
-              <button type="button" onClick={() => { setShowWaiting((v) => !v); setShowMenu(false); }}>
-                <Clock size={12} /> Aguardando...
-              </button>
-              <button type="button" onClick={() => { onSchedule(item); setShowMenu(false); }}>
-                <Calendar size={12} /> Executar hoje
-              </button>
-              <button type="button" onClick={() => { onConvert(item); setShowMenu(false); }}>
-                <ArrowRight size={12} /> Transformar em tarefa
-              </button>
-              <button type="button" onClick={() => { setShowMoveContext((v) => !v); setShowMenu(false); }}>
-                <MoveRight size={12} /> Mover para contexto
-              </button>
-              <button
-                type="button"
-                className="inbox-item-menu-danger"
-                onClick={() => { onDelete(item); setShowMenu(false); }}
-              >
-                <Trash2 size={12} /> Deletar
-              </button>
-            </div>
-          )}
+          <button
+            type="button"
+            className={`inbox-item-action-btn${showWaiting ? ' active' : ''}`}
+            onClick={() => { setShowWaiting((v) => !v); setShowMoveContext(false); }}
+            title="Aguardando"
+            aria-label="Aguardando"
+          >
+            <Clock size={13} />
+          </button>
+          <button
+            type="button"
+            className="inbox-item-action-btn"
+            onClick={() => onSchedule(item)}
+            title="Executar hoje"
+            aria-label="Executar hoje"
+          >
+            <Calendar size={13} />
+          </button>
+          <button
+            type="button"
+            className="inbox-item-action-btn"
+            onClick={() => onConvert(item)}
+            title="Transformar em tarefa"
+            aria-label="Transformar em tarefa"
+          >
+            <ArrowRight size={13} />
+          </button>
+          <button
+            type="button"
+            className={`inbox-item-action-btn${showMoveContext ? ' active' : ''}`}
+            onClick={() => { setShowMoveContext((v) => !v); setShowWaiting(false); }}
+            title="Mover contexto"
+            aria-label="Mover contexto"
+          >
+            <MoveRight size={13} />
+          </button>
+          <button
+            type="button"
+            className="inbox-item-action-btn inbox-item-action-btn--danger"
+            onClick={() => onDelete(item)}
+            title="Deletar"
+            aria-label="Deletar"
+          >
+            <Trash2 size={13} />
+          </button>
         </div>
       </div>
 
@@ -247,7 +248,7 @@ export function InboxItem({
               className="ghost-button"
               onClick={() => { onMoveContext(item, w.id, null); setShowMoveContext(false); }}
             >
-              🏢 {w.name}
+              {w.name}
             </button>
           ))}
           {contexts.map((c) => (
@@ -257,7 +258,7 @@ export function InboxItem({
               className="ghost-button"
               onClick={() => { onMoveContext(item, null, c.id); setShowMoveContext(false); }}
             >
-              📁 {c.name}
+              {c.name}
             </button>
           ))}
         </div>

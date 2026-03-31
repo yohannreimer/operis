@@ -201,23 +201,24 @@ export function InboxPage() {
         title="Inbox Operacional"
         subtitle={`${pendingCount} pendente${pendingCount !== 1 ? 's' : ''}`}
         actions={
-          <div className="header-actions">
-            <select
-              className="ghost-button"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as Filter)}
-              style={{ paddingRight: '8px' }}
-            >
-              <option value="hoje">Hoje</option>
-              <option value="ontem">Ontem</option>
-              <option value="semana">Semana</option>
-              <option value="tudo">Tudo</option>
-            </select>
+          <div className="inbox-header-controls">
+            <div className="inbox-filter-tabs">
+              {(['hoje', 'ontem', 'semana', 'tudo'] as Filter[]).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={`inbox-filter-tab${filter === f ? ' active' : ''}`}
+                  onClick={() => setFilter(f)}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
-              className={bruteMode ? 'ghost-button task-filter active' : 'ghost-button task-filter'}
+              className={`inbox-bruto-btn${bruteMode ? ' active' : ''}`}
               onClick={() => setBruteMode((v) => !v)}
-              title="Modo bruto — lista cronológica sem agrupamento"
+              title="Lista cronológica sem agrupamento"
             >
               Bruto
             </button>
