@@ -403,7 +403,7 @@ export class WhatsappCommandService {
         data: {
           content,
           source: 'whatsapp',
-          processed: false,
+          status: 'pendente',
           clerkUserId: 'legacy'
         }
       });
@@ -741,7 +741,7 @@ export class WhatsappCommandService {
 
     if (/^inbox$/i.test(text)) {
       const items = await this.prisma.inboxItem.findMany({
-        where: { processed: false },
+        where: { status: 'pendente' },
         orderBy: { createdAt: 'desc' },
         take: 10
       });

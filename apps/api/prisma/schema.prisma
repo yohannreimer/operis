@@ -129,6 +129,14 @@ enum InboxSource {
   app
 }
 
+enum InboxItemStatus {
+  pendente
+  feito
+  convertido
+  agenda
+  aguardando
+}
+
 enum WhatsappDirection {
   in
   out
@@ -204,6 +212,7 @@ model Workspace {
   weeklyEnergyPlans WeeklyEnergyPlan[]
   strategicReviews StrategicReview[]
   strategicDecisionEvents StrategicDecisionEvent[]
+  inboxItems InboxItem[]
 
   @@index([clerkUserId])
   @@map("workspaces")
@@ -503,15 +512,44 @@ model DayPlanItem {
 }
 
 model InboxItem {
+  id              String          @id @default(uuid())
+  clerkUserId     String          @map("clerk_user_id")
+  content         String
+  source          InboxSource     @default(app)
+  status          InboxItemStatus @default(pendente)
+
+  workspaceId     String?         @map("workspace_id")
+  inboxContextId  String?         @map("inbox_context_id")
+  position        Int             @default(0)
+
+  waitingDate     DateTime?       @map("waiting_date")
+  waitingPerson   String?         @map("waiting_person")
+  waitingNote     String?         @map("waiting_note")
+
+  scheduledAt     DateTime?       @map("scheduled_at")
+  convertedTaskId String?         @map("converted_task_id")
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt      @map("updated_at")
+
+  workspace       Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  inboxContext    InboxContext?   @relation(fields: [inboxContextId], references: [id], onDelete: SetNull)
+
+  @@index([clerkUserId, status])
+  @@map("inbox_items")
+}
+
+model InboxContext {
   id          String      @id @default(uuid())
   clerkUserId String      @map("clerk_user_id")
-  content     String
-  source      InboxSource
-  processed   Boolean     @default(false)
+  name        String
+  position    Int         @default(0)
   createdAt   DateTime    @default(now()) @map("created_at")
 
-  @@index([clerkUserId, processed])
-  @@map("inbox_items")
+  items       InboxItem[]
+
+  @@index([clerkUserId])
+  @@map("inbox_contexts")
 }
 
 model WhatsappEvent {
