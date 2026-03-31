@@ -39,7 +39,7 @@ export function App() {
             <Routes>
               <Route path="/notas/*" element={<NotasPage />} />
               <Route path="/" element={<Layout />}>
-                <Route index element={<DashboardPage />} />
+                <Route index element={<Navigate to="/inbox" replace />} />
                 <Route path="hoje" element={<HojePage />} />
                 <Route path="amanha" element={<Navigate to="/hoje" replace />} />
                 <Route path="ritual" element={<Navigate to="/" replace />} />
