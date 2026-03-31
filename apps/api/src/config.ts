@@ -35,6 +35,7 @@ const envSchema = z.object({
   WHATSAPP_WEBHOOK_SECRET: optionalString(),
   DEFAULT_PHONE_NUMBER: z.string().min(8),
   OPENAI_API_KEY: optionalString(),
+  ANTHROPIC_API_KEY: optionalString(),
   WHATSAPP_AUTO_DISPATCH_ENABLED: z.coerce.boolean().default(true),
   WHATSAPP_TIMEZONE: z.string().default('America/Sao_Paulo'),
   WHATSAPP_MORNING_TIME: optionalTime('08:00').default('08:00'),
