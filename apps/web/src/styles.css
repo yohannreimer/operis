@@ -15194,6 +15194,17 @@ h4 {
   color: var(--danger);
 }
 
+.inbox-item-action-btn--execute:hover {
+  background: var(--success-soft);
+  border-color: rgba(91,185,140,0.3);
+  color: var(--success);
+}
+
+.inbox-item-action-btn:disabled {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
 /* Waiting form inline */
 .inbox-item-waiting-form {
   display: flex;
@@ -15368,6 +15379,135 @@ h4 {
   white-space: nowrap;
   font-size: 0.88rem;
   padding: 9px 16px;
+}
+
+/* ── Execution banner (floating bottom bar) ──────────────────────────────── */
+
+.inbox-execution-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(560px, calc(100vw - 32px));
+  animation: slide-up 200ms var(--ease-out);
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.inbox-execution-banner-inner {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(91,185,140,0.15);
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inbox-execution-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inbox-execution-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px var(--success-soft);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--success-soft); }
+  50% { box-shadow: 0 0 0 6px rgba(91,185,140,0.08); }
+}
+
+.inbox-execution-title {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-execution-timer {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--success);
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+
+.inbox-execution-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.inbox-execution-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--success), #5bb98c);
+  transition: width 1s linear;
+}
+
+.inbox-execution-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.inbox-execution-btn {
+  flex: 1;
+  text-align: center;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  box-shadow: none;
+  min-height: unset;
+  line-height: 1;
+  transition: background 120ms ease, transform 80ms ease;
+}
+
+.inbox-execution-btn.success {
+  background: var(--success);
+  color: #fff;
+}
+.inbox-execution-btn.success:hover {
+  background: #4aa87c;
+  transform: none;
+}
+.inbox-execution-btn.warning {
+  background: var(--warning-soft);
+  border-color: rgba(212,168,67,0.3);
+  color: var(--warning);
+}
+.inbox-execution-btn.warning:hover {
+  background: rgba(212,168,67,0.2);
+  transform: none;
+}
+.inbox-execution-btn.ghost {
+  background: var(--surface-soft);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+.inbox-execution-btn.ghost:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+  transform: none;
 }
 
 /* ── Hoje page: inbox agenda items ───────────────────────────────────────── */

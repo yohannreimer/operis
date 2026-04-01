@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   api,
+  DeepWorkSession,
   InboxContext,
   InboxItem,
   InboxItemStatus,
@@ -13,22 +13,33 @@ import { useShellContext } from '../components/shell-context';
 import { PremiumHeader, PremiumPage, SkeletonBlock } from '../components/premium-ui';
 import { InboxInput } from '../components/inbox-input';
 import { InboxGroup } from '../components/inbox-group';
-import { InboxScheduleSheet } from '../components/inbox-schedule-sheet';
 import { CreateTaskModal } from '../components/create-task-modal';
+
+function formatDuration(totalSeconds: number) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
 
 type Filter = 'hoje' | 'ontem' | 'semana' | 'tudo';
 
 export function InboxPage() {
   const { workspaces } = useShellContext();
-  const navigate = useNavigate();
 
   const [items, setItems] = useState<InboxItem[]>([]);
   const [contexts, setContexts] = useState<InboxContext[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>('hoje');
   const [bruteMode, setBruteMode] = useState(false);
 
-  const [schedulingItem, setSchedulingItem] = useState<InboxItem | null>(null);
+  // Deep work execution state
+  const [activeSession, setActiveSession] = useState<DeepWorkSession | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const [convertingItem, setConvertingItem] = useState<InboxItem | null>(null);
 
   async function load() {
@@ -48,6 +59,98 @@ export function InboxPage() {
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
+
+  // ── Deep work timer ───────────────────────────────────────────────────────
+
+  // Poll for active session on mount
+  useEffect(() => {
+    api.getActiveDeepWork().then((s) => setActiveSession(s)).catch(() => {});
+  }, []);
+
+  // Tick timer while session is active
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (activeSession?.state === 'active') {
+      timerRef.current = setInterval(() => setNowMs(Date.now()), 1000);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [activeSession?.id, activeSession?.state]);
+
+  const elapsedSeconds = useCallback(() => {
+    if (!activeSession || activeSession.state !== 'active') return 0;
+    return Math.max(0, Math.floor((nowMs - new Date(activeSession.startedAt).getTime()) / 1000));
+  }, [activeSession, nowMs])();
+
+  const progressPct = activeSession
+    ? Math.min(100, Math.round((elapsedSeconds / (activeSession.targetMinutes * 60)) * 100))
+    : 0;
+
+  async function handleExecute(item: InboxItem) {
+    if (!item.workspaceId) {
+      toast.error('Atribua uma frente ao item antes de executar.');
+      return;
+    }
+    if (activeSession?.state === 'active') {
+      toast.error('Já há uma sessão de execução ativa.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { session, task } = await api.executeInboxItem(item.id);
+      setActiveSession(session);
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: 'convertido' as InboxItemStatus, convertedTaskId: task.id } : i)));
+      toast.success(`Executando: ${task.title}`);
+    } catch (e) {
+      toast.error((e as Error).message || 'Erro ao iniciar execução.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSessionStop() {
+    if (!activeSession) return;
+    setBusy(true);
+    try {
+      await api.stopDeepWork(activeSession.id, { switchedTask: false, notes: 'Encerrado pelo inbox.' });
+      setActiveSession(null);
+      toast.success('Sessão encerrada.');
+    } catch {
+      toast.error('Erro ao encerrar sessão.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSessionInterrupt() {
+    if (!activeSession) return;
+    setBusy(true);
+    try {
+      const updated = await api.registerDeepWorkInterruption(activeSession.id);
+      setActiveSession(updated);
+      toast('Interrupção registrada.');
+    } catch {
+      toast.error('Erro ao registrar interrupção.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSessionDone() {
+    if (!activeSession) return;
+    setBusy(true);
+    try {
+      await api.stopDeepWork(activeSession.id, { switchedTask: false, notes: 'Concluído pelo inbox.' });
+      if (activeSession.taskId) {
+        await api.completeTask(activeSession.taskId, { strictMode: false, completionMode: 'no_note' });
+      }
+      setActiveSession(null);
+      toast.success('Tarefa concluída! Tempo contabilizado.');
+    } catch {
+      toast.error('Erro ao concluir tarefa.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // ── Item actions ──────────────────────────────────────────────────────────
 
@@ -102,25 +205,7 @@ export function InboxPage() {
     }
   }
 
-  async function handleScheduleNow(item: InboxItem) {
-    try {
-      const updated = await api.scheduleInboxItem(item.id, { mode: 'now' });
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
-      navigate('/hoje');
-    } catch {
-      toast.error('Erro ao agendar item.');
-    }
-  }
 
-  async function handleScheduleTime(item: InboxItem, isoTime: string) {
-    try {
-      const updated = await api.scheduleInboxItem(item.id, { mode: 'scheduled', scheduledAt: isoTime });
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
-      toast.success('Agendado.');
-    } catch {
-      toast.error('Erro ao agendar item.');
-    }
-  }
 
   async function handleMoveContext(item: InboxItem, workspaceId: string | null, inboxContextId: string | null) {
     try {
@@ -190,7 +275,7 @@ export function InboxPage() {
     onEdit: handleEdit,
     onDelete: handleDelete,
     onWaiting: handleWaiting,
-    onSchedule: (item: InboxItem) => setSchedulingItem(item),
+    onExecute: handleExecute,
     onConvert: (item: InboxItem) => setConvertingItem(item),
     onMoveContext: handleMoveContext,
   };
@@ -282,14 +367,6 @@ export function InboxPage() {
         </div>
       )}
 
-      {/* Schedule sheet */}
-      <InboxScheduleSheet
-        open={Boolean(schedulingItem)}
-        onClose={() => setSchedulingItem(null)}
-        onNow={() => schedulingItem && handleScheduleNow(schedulingItem)}
-        onScheduled={(isoTime) => schedulingItem && handleScheduleTime(schedulingItem, isoTime)}
-      />
-
       {/* Convert to task modal */}
       <CreateTaskModal
         open={Boolean(convertingItem)}
@@ -301,6 +378,48 @@ export function InboxPage() {
         }}
         onCreated={handleTaskCreated}
       />
+
+      {/* Active execution banner */}
+      {activeSession?.state === 'active' && (
+        <div className="inbox-execution-banner">
+          <div className="inbox-execution-banner-inner">
+            <div className="inbox-execution-info">
+              <span className="inbox-execution-dot" />
+              <span className="inbox-execution-title">{activeSession.task?.title ?? 'Executando...'}</span>
+              <strong className="inbox-execution-timer">{formatDuration(elapsedSeconds)}</strong>
+            </div>
+            <div className="inbox-execution-progress">
+              <div className="inbox-execution-progress-fill" style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="inbox-execution-actions">
+              <button
+                type="button"
+                className="inbox-execution-btn success"
+                disabled={busy}
+                onClick={handleSessionDone}
+              >
+                ✓ Concluir
+              </button>
+              <button
+                type="button"
+                className="inbox-execution-btn warning"
+                disabled={busy}
+                onClick={handleSessionInterrupt}
+              >
+                ⚡ Interrupção
+              </button>
+              <button
+                type="button"
+                className="inbox-execution-btn ghost"
+                disabled={busy}
+                onClick={handleSessionStop}
+              >
+                Encerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PremiumPage>
   );
 }

@@ -7,7 +7,7 @@ type ItemCallbacks = {
   onEdit: (item: InboxItemType, newContent: string) => void;
   onDelete: (item: InboxItemType) => void;
   onWaiting: (item: InboxItemType, date: string, person?: string, note?: string) => void;
-  onSchedule: (item: InboxItemType) => void;
+  onExecute: (item: InboxItemType) => void;
   onConvert: (item: InboxItemType) => void;
   onMoveContext: (item: InboxItemType, workspaceId: string | null, inboxContextId: string | null) => void;
 };

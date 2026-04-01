@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Check, Clock, Calendar, ArrowRight, Trash2, MoveRight } from 'lucide-react';
+import { Check, Clock, Play, Calendar, ArrowRight, Trash2, MoveRight } from 'lucide-react';
 import { InboxItem as InboxItemType, InboxContext, Workspace } from '../api';
 
 type Props = {
@@ -10,7 +10,7 @@ type Props = {
   onEdit: (item: InboxItemType, newContent: string) => void;
   onDelete: (item: InboxItemType) => void;
   onWaiting: (item: InboxItemType, date: string, person?: string, note?: string) => void;
-  onSchedule: (item: InboxItemType) => void;
+  onExecute: (item: InboxItemType) => void;
   onConvert: (item: InboxItemType) => void;
   onMoveContext: (item: InboxItemType, workspaceId: string | null, inboxContextId: string | null) => void;
 };
@@ -31,7 +31,7 @@ export function InboxItem({
   onEdit,
   onDelete,
   onWaiting,
-  onSchedule,
+  onExecute,
   onConvert,
   onMoveContext,
 }: Props) {
@@ -163,12 +163,13 @@ export function InboxItem({
           </button>
           <button
             type="button"
-            className="inbox-item-action-btn"
-            onClick={() => onSchedule(item)}
-            title="Executar hoje"
-            aria-label="Executar hoje"
+            className="inbox-item-action-btn inbox-item-action-btn--execute"
+            onClick={() => onExecute(item)}
+            title={item.workspaceId ? 'Executar agora' : 'Atribua uma frente para executar'}
+            aria-label="Executar agora"
+            disabled={!item.workspaceId}
           >
-            <Calendar size={13} />
+            <Play size={13} />
           </button>
           <button
             type="button"

@@ -2,8 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { getUserId } from '../middleware/auth.js';
+import { DeepWorkService } from '../services/deep-work-service.js';
 
-export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient) {
+export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, deepWorkService?: DeepWorkService) {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -192,6 +193,50 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient) 
         scheduledAt: mode === 'now' ? new Date() : scheduledAt ? new Date(scheduledAt) : new Date(),
       },
     });
+  });
+
+  // POST /inbox/:id/execute — create task + start deep work session
+  app.post('/inbox/:id/execute', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { targetMinutes } = z.object({
+      targetMinutes: z.number().int().min(1).max(360).optional(),
+    }).parse(request.body ?? {});
+
+    const item = await prisma.inboxItem.findUniqueOrThrow({ where: { id } });
+    assertOwnership(clerkUserId, item.clerkUserId);
+
+    if (!item.workspaceId) {
+      return reply.code(400).send({ error: 'Atribua uma frente ao item antes de executar.' });
+    }
+
+    // Create a real task so deep work can track time
+    const task = await prisma.task.create({
+      data: {
+        workspaceId: item.workspaceId,
+        title: item.content,
+        definitionOfDone: item.content,
+        taskType: 'a',
+        status: 'andamento',
+        horizon: 'active',
+        estimatedMinutes: targetMinutes ?? 45,
+      },
+    });
+
+    // Mark inbox item as converted
+    await prisma.inboxItem.update({
+      where: { id },
+      data: { status: 'convertido', convertedTaskId: task.id },
+    });
+
+    // Start deep work session on the new task
+    const service = deepWorkService ?? new DeepWorkService(prisma);
+    const session = await service.start({
+      taskId: task.id,
+      targetMinutes: Math.max(15, targetMinutes ?? 45),
+    });
+
+    return reply.code(201).send({ session, task });
   });
 
   // ── Contexts ─────────────────────────────────────────────────────────────

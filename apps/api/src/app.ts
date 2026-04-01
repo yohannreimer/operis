@@ -82,7 +82,7 @@ export async function buildApp() {
   registerExecutionRoutes(app, executionInsightsService);
   registerStrategyRoutes(app, strategyService);
   registerRecurringBlockRoutes(app, prisma, dayPlanService);
-  registerInboxRoutes(app, prisma);
+  registerInboxRoutes(app, prisma, deepWorkService);
   registerNoteRoutes(app, prisma);
   registerGamificationRoutes(app, gamificationService);
   registerWebhookRoutes(app, whatsappCommandService, whatsappConversationService, prisma);

@@ -1894,6 +1894,12 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  executeInboxItem: (id: string, payload?: { targetMinutes?: number }) =>
+    apiRequest<{ session: DeepWorkSession; task: Task }>(`/inbox/${id}/execute`, {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {})
+    }),
+
   getInboxContexts: () =>
     apiRequest<InboxContext[]>('/inbox/contexts'),
 
