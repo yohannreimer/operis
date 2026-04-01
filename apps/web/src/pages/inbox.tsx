@@ -303,26 +303,26 @@ export function InboxPage() {
 
   async function handleMoveItem(item: InboxItem, direction: 'up' | 'down') {
     // Find all items in the same group, in current display order
-    const groupItems = items.filter((i) => {
+    const sameGroup = (i: InboxItem) => {
       if (item.workspaceId) return i.workspaceId === item.workspaceId;
       if (item.inboxContextId) return i.inboxContextId === item.inboxContextId;
       return !i.workspaceId && !i.inboxContextId;
-    });
+    };
+    const groupItems = items.filter(sameGroup);
     const idx = groupItems.findIndex((i) => i.id === item.id);
     if (idx === -1) return;
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
     if (swapIdx < 0 || swapIdx >= groupItems.length) return;
 
-    // Optimistic update: swap in items array
     const swapItem = groupItems[swapIdx];
+
+    // Optimistic: physically swap the two elements in the flat items array
     setItems((prev) => {
       const next = [...prev];
-      const idxA = next.findIndex((i) => i.id === item.id);
-      const idxB = next.findIndex((i) => i.id === swapItem.id);
-      if (idxA === -1 || idxB === -1) return prev;
-      // Give them explicit positions based on their new indices
-      next[idxA] = { ...next[idxA], position: idxB };
-      next[idxB] = { ...next[idxB], position: idxA };
+      const posA = next.findIndex((i) => i.id === item.id);
+      const posB = next.findIndex((i) => i.id === swapItem.id);
+      if (posA === -1 || posB === -1) return prev;
+      [next[posA], next[posB]] = [next[posB], next[posA]];
       return next;
     });
 
