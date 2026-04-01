@@ -15220,9 +15220,15 @@ h4 {
   border-radius: var(--radius-sm);
   padding: 4px 8px;
   font-size: 0.92rem;
+  line-height: 1.5;
   color: var(--text);
   outline: none;
   box-shadow: 0 0 0 3px var(--primary-soft);
+  /* Override global textarea defaults */
+  min-height: unset;
+  resize: none;
+  overflow: hidden;
+  display: block;
 }
 
 /* Badges */

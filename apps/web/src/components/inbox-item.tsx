@@ -42,12 +42,16 @@ export function InboxItem({
   const [waitingDate, setWaitingDate] = useState('');
   const [waitingPerson, setWaitingPerson] = useState('');
   const [waitingNote, setWaitingNote] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+    if (editing && inputRef.current) {
+      const el = inputRef.current;
+      el.focus();
+      el.select();
+      // Auto-size to content on open
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
     }
   }, [editing]);
 
@@ -64,9 +68,16 @@ export function InboxItem({
     setEditing(false);
   }
 
-  function handleEditKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') commitEdit();
+  function handleEditKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(); }
     if (e.key === 'Escape') { setEditing(false); setEditValue(item.content); }
+  }
+
+  function handleEditChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setEditValue(e.target.value);
+    // Auto-resize
+    e.target.style.height = 'auto';
+    e.target.style.height = `${e.target.scrollHeight}px`;
   }
 
   function handleWaitingSave() {
@@ -99,13 +110,14 @@ export function InboxItem({
         {/* Content */}
         <div className="inbox-item-content">
           {editing ? (
-            <input
+            <textarea
               ref={inputRef}
               className="inbox-item-edit-input"
               value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
+              onChange={handleEditChange}
               onBlur={commitEdit}
               onKeyDown={handleEditKeyDown}
+              rows={1}
             />
           ) : (
             <span
