@@ -15153,6 +15153,50 @@ h4 {
   min-height: 44px;
 }
 
+/* Item reorder handle */
+.inbox-item-reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  flex-shrink: 0;
+}
+
+.inbox-item:hover .inbox-item-reorder,
+.inbox-item:focus-within .inbox-item-reorder {
+  opacity: 1;
+}
+
+.inbox-item-reorder-btn {
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  min-height: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--muted);
+  box-shadow: none;
+  line-height: 1;
+  transition: background 80ms ease, color 80ms ease;
+}
+
+.inbox-item-reorder-btn:hover:not(:disabled) {
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  transform: none;
+  box-shadow: none;
+}
+
+.inbox-item-reorder-btn:disabled {
+  opacity: 0.2;
+  pointer-events: none;
+}
+
 /* Checkbox */
 .inbox-item-checkbox {
   width: 18px;

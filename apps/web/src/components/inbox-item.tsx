@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Check, Clock, Play, Calendar, ArrowRight, Trash2, MoveRight } from 'lucide-react';
+import { Check, Clock, Play, Calendar, ArrowRight, Trash2, MoveRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { InboxItem as InboxItemType, InboxContext, Workspace } from '../api';
 
 type Props = {
@@ -13,6 +13,10 @@ type Props = {
   onExecute: (item: InboxItemType) => void;
   onConvert: (item: InboxItemType) => void;
   onMoveContext: (item: InboxItemType, workspaceId: string | null, inboxContextId: string | null) => void;
+  onMoveItemUp?: (item: InboxItemType) => void;
+  onMoveItemDown?: (item: InboxItemType) => void;
+  canMoveItemUp?: (item: InboxItemType) => boolean;
+  canMoveItemDown?: (item: InboxItemType) => boolean;
 };
 
 function formatWaitingDate(dateStr: string) {
@@ -34,6 +38,10 @@ export function InboxItem({
   onExecute,
   onConvert,
   onMoveContext,
+  onMoveItemUp,
+  onMoveItemDown,
+  canMoveItemUp,
+  canMoveItemDown,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(item.content);
@@ -97,6 +105,30 @@ export function InboxItem({
   return (
     <div className={`inbox-item${isDone ? ' inbox-item--done' : ''}${isWaiting ? ' inbox-item--waiting' : ''}`}>
       <div className="inbox-item-row">
+        {/* Item reorder handle */}
+        {(onMoveItemUp || onMoveItemDown) && (
+          <div className="inbox-item-reorder">
+            <button
+              type="button"
+              className="inbox-item-reorder-btn"
+              onClick={() => onMoveItemUp?.(item)}
+              disabled={!canMoveItemUp?.(item)}
+              aria-label="Mover item acima"
+            >
+              <ChevronUp size={10} />
+            </button>
+            <button
+              type="button"
+              className="inbox-item-reorder-btn"
+              onClick={() => onMoveItemDown?.(item)}
+              disabled={!canMoveItemDown?.(item)}
+              aria-label="Mover item abaixo"
+            >
+              <ChevronDown size={10} />
+            </button>
+          </div>
+        )}
+
         {/* Checkbox */}
         <button
           type="button"

@@ -46,6 +46,16 @@ export function InboxPage() {
   // Collapse state — set of collapsed group IDs
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
+  // Group display order — persisted to localStorage (covers workspaces + contexts)
+  const [groupOrder, setGroupOrder] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('inbox.groupOrder') ?? '[]'); } catch { return []; }
+  });
+
+  function persistGroupOrder(order: string[]) {
+    setGroupOrder(order);
+    try { localStorage.setItem('inbox.groupOrder', JSON.stringify(order)); } catch { /* ignore */ }
+  }
+
   // Visibility filters
   const [showDone, setShowDone] = useState(false);
   const [showWaiting, setShowWaiting] = useState(true);
@@ -261,32 +271,69 @@ export function InboxPage() {
     }
   }
 
-  // ── Context reorder ───────────────────────────────────────────────────────
+  // ── Group reorder ─────────────────────────────────────────────────────────
 
-  async function handleMoveContextGroup(contextId: string, direction: 'up' | 'down') {
-    const idx = contexts.findIndex((c) => c.id === contextId);
+  function handleMoveGroup(groupId: string, direction: 'up' | 'down') {
+    // Work on the ordered visible group IDs
+    const visibleIds = orderedGroups.map((g) => g.id);
+    const idx = visibleIds.indexOf(groupId);
     if (idx === -1) return;
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= contexts.length) return;
+    if (swapIdx < 0 || swapIdx >= visibleIds.length) return;
 
-    // Swap positions
-    const newContexts = [...contexts];
-    const posA = newContexts[idx].position;
-    const posB = newContexts[swapIdx].position;
-    newContexts[idx] = { ...newContexts[idx], position: posB };
-    newContexts[swapIdx] = { ...newContexts[swapIdx], position: posA };
-    // Sort by position
-    newContexts.sort((a, b) => a.position - b.position);
-    setContexts(newContexts);
+    const newIds = [...visibleIds];
+    [newIds[idx], newIds[swapIdx]] = [newIds[swapIdx], newIds[idx]];
+    persistGroupOrder(newIds);
+
+    // Best-effort: persist context positions to backend
+    const aId = visibleIds[idx];
+    const bId = visibleIds[swapIdx];
+    const aCtx = contexts.find((c) => c.id === aId);
+    const bCtx = contexts.find((c) => c.id === bId);
+    if (aCtx && bCtx) {
+      // Assign index-based positions so they're always unique
+      Promise.all([
+        api.updateInboxContext(aId, { position: swapIdx }),
+        api.updateInboxContext(bId, { position: idx }),
+      ]).catch(() => {});
+    }
+  }
+
+  // ── Item reorder within group ─────────────────────────────────────────────
+
+  async function handleMoveItem(item: InboxItem, direction: 'up' | 'down') {
+    // Find all items in the same group, in current display order
+    const groupItems = items.filter((i) => {
+      if (item.workspaceId) return i.workspaceId === item.workspaceId;
+      if (item.inboxContextId) return i.inboxContextId === item.inboxContextId;
+      return !i.workspaceId && !i.inboxContextId;
+    });
+    const idx = groupItems.findIndex((i) => i.id === item.id);
+    if (idx === -1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= groupItems.length) return;
+
+    // Optimistic update: swap in items array
+    const swapItem = groupItems[swapIdx];
+    setItems((prev) => {
+      const next = [...prev];
+      const idxA = next.findIndex((i) => i.id === item.id);
+      const idxB = next.findIndex((i) => i.id === swapItem.id);
+      if (idxA === -1 || idxB === -1) return prev;
+      // Give them explicit positions based on their new indices
+      next[idxA] = { ...next[idxA], position: idxB };
+      next[idxB] = { ...next[idxB], position: idxA };
+      return next;
+    });
 
     try {
       await Promise.all([
-        api.updateInboxContext(contexts[idx].id, { position: posB }),
-        api.updateInboxContext(contexts[swapIdx].id, { position: posA }),
+        api.updateInboxItem(item.id, { position: swapIdx }),
+        api.updateInboxItem(swapItem.id, { position: idx }),
       ]);
     } catch {
-      toast.error('Erro ao reordenar contexto.');
-      setContexts(contexts); // revert
+      toast.error('Erro ao reordenar item.');
+      await load();
     }
   }
 
@@ -302,7 +349,7 @@ export function InboxPage() {
     [items, showDone, showWaiting]
   );
 
-  const groups = useMemo(() => {
+  const rawGroups = useMemo(() => {
     const workspaceGroups = (workspaces as Workspace[]).map((w) => ({
       id: w.id,
       label: w.name,
@@ -327,18 +374,43 @@ export function InboxPage() {
     return [...workspaceGroups, ...contextGroups, noContext].filter((g) => g.items.length > 0);
   }, [filteredItems, workspaces, contexts]);
 
-  // Only context-type groups that are actually visible (have items)
-  const visibleContextGroupIds = useMemo(
-    () => groups.filter((g) => g.type === 'context').map((g) => g.id),
-    [groups]
-  );
+  // Apply groupOrder: known IDs first (in saved order), new IDs appended at end
+  const orderedGroups = useMemo(() => {
+    const byId = new Map(rawGroups.map((g) => [g.id, g]));
+    const known = groupOrder.flatMap((id) => { const g = byId.get(id); return g ? [g] : []; });
+    const newOnes = rawGroups.filter((g) => !groupOrder.includes(g.id));
+    return [...known, ...newOnes];
+  }, [rawGroups, groupOrder]);
 
   const bruteItems = useMemo(
     () => [...filteredItems].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [filteredItems]
   );
 
+  const itemCallbacksWithReorder = (groupItems: InboxItem[]) => ({
+    onMoveItemUp: (item: InboxItem) => {
+      const idx = groupItems.findIndex((i) => i.id === item.id);
+      if (idx > 0) handleMoveItem(item, 'up');
+    },
+    onMoveItemDown: (item: InboxItem) => {
+      const idx = groupItems.findIndex((i) => i.id === item.id);
+      if (idx < groupItems.length - 1) handleMoveItem(item, 'down');
+    },
+    canMoveItemUp: (item: InboxItem) => groupItems.findIndex((i) => i.id === item.id) > 0,
+    canMoveItemDown: (item: InboxItem) => {
+      const idx = groupItems.findIndex((i) => i.id === item.id);
+      return idx < groupItems.length - 1 && idx !== -1;
+    },
+  });
+
   const pendingCount = items.filter((i) => i.status === 'pendente' || i.status === 'aguardando').length;
+
+  // Sync new group IDs into order on first appearance
+  useEffect(() => {
+    const newIds = rawGroups.map((g) => g.id).filter((id) => !groupOrder.includes(id));
+    if (newIds.length > 0) persistGroupOrder([...groupOrder, ...newIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawGroups]);
 
   function toggleCollapse(groupId: string) {
     setCollapsedGroups((prev) => {
@@ -452,31 +524,28 @@ export function InboxPage() {
       ) : (
         /* Modo agrupado */
         <div className="inbox-groups">
-          {groups.length === 0 ? (
+          {orderedGroups.length === 0 ? (
             <div className="inbox-empty">
               Nenhum item {filter === 'hoje' ? 'hoje' : 'nesse período'}. Use o campo acima para capturar.
             </div>
           ) : (
-            groups.map((group) => {
-              const isContext = group.type === 'context';
-              const ctxIdx = isContext ? visibleContextGroupIds.indexOf(group.id) : -1;
-              return (
-                <InboxGroup
-                  key={group.id}
-                  label={group.label}
-                  items={group.items}
-                  contexts={contexts}
-                  workspaces={workspaces}
-                  collapsed={collapsedGroups.has(group.id)}
-                  onToggleCollapse={() => toggleCollapse(group.id)}
-                  canMoveUp={isContext && ctxIdx > 0}
-                  canMoveDown={isContext && ctxIdx < visibleContextGroupIds.length - 1}
-                  onMoveUp={isContext ? () => handleMoveContextGroup(group.id, 'up') : undefined}
-                  onMoveDown={isContext ? () => handleMoveContextGroup(group.id, 'down') : undefined}
-                  {...itemCallbacks}
-                />
-              );
-            })
+            orderedGroups.map((group, idx) => (
+              <InboxGroup
+                key={group.id}
+                label={group.label}
+                items={group.items}
+                contexts={contexts}
+                workspaces={workspaces}
+                collapsed={collapsedGroups.has(group.id)}
+                onToggleCollapse={() => toggleCollapse(group.id)}
+                canMoveUp={idx > 0}
+                canMoveDown={idx < orderedGroups.length - 1}
+                onMoveUp={() => handleMoveGroup(group.id, 'up')}
+                onMoveDown={() => handleMoveGroup(group.id, 'down')}
+                {...itemCallbacks}
+                {...itemCallbacksWithReorder(group.items)}
+              />
+            ))
           )}
 
           <button

@@ -10,6 +10,10 @@ type ItemCallbacks = {
   onExecute: (item: InboxItemType) => void;
   onConvert: (item: InboxItemType) => void;
   onMoveContext: (item: InboxItemType, workspaceId: string | null, inboxContextId: string | null) => void;
+  onMoveItemUp?: (item: InboxItemType) => void;
+  onMoveItemDown?: (item: InboxItemType) => void;
+  canMoveItemUp?: (item: InboxItemType) => boolean;
+  canMoveItemDown?: (item: InboxItemType) => boolean;
 };
 
 type Props = ItemCallbacks & {
