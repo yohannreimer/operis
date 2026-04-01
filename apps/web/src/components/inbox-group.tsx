@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, ArrowUp, ArrowDown } from 'lucide-react';
 import { InboxItem as InboxItemType, InboxContext, Workspace } from '../api';
 import { InboxItem } from './inbox-item';
 
@@ -18,6 +18,12 @@ type Props = ItemCallbacks & {
   contexts: InboxContext[];
   workspaces: Workspace[];
   onAddItem?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 };
 
 export function InboxGroup({
@@ -26,6 +32,12 @@ export function InboxGroup({
   contexts,
   workspaces,
   onAddItem,
+  collapsed = false,
+  onToggleCollapse,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   ...callbacks
 }: Props) {
   if (items.length === 0) return null;
@@ -34,8 +46,45 @@ export function InboxGroup({
     <div className="inbox-group">
       {label && (
         <div className="inbox-group-header">
+          {onToggleCollapse && (
+            <button
+              type="button"
+              className="inbox-group-collapse ghost-button"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? 'Expandir' : 'Recolher'}
+            >
+              {collapsed
+                ? <ChevronRight size={12} />
+                : <ChevronDown size={12} />}
+            </button>
+          )}
           <span className="inbox-group-label">{label}</span>
           <span className="inbox-group-count">{items.length}</span>
+
+          {/* Reorder buttons — only for context groups */}
+          {(onMoveUp || onMoveDown) && (
+            <div className="inbox-group-reorder">
+              <button
+                type="button"
+                className="inbox-group-reorder-btn ghost-button"
+                onClick={onMoveUp}
+                disabled={!canMoveUp}
+                aria-label="Mover grupo para cima"
+              >
+                <ArrowUp size={11} />
+              </button>
+              <button
+                type="button"
+                className="inbox-group-reorder-btn ghost-button"
+                onClick={onMoveDown}
+                disabled={!canMoveDown}
+                aria-label="Mover grupo para baixo"
+              >
+                <ArrowDown size={11} />
+              </button>
+            </div>
+          )}
+
           {onAddItem && (
             <button
               type="button"
@@ -48,17 +97,20 @@ export function InboxGroup({
           )}
         </div>
       )}
-      <div className="inbox-group-items">
-        {items.map((item) => (
-          <InboxItem
-            key={item.id}
-            item={item}
-            contexts={contexts}
-            workspaces={workspaces}
-            {...callbacks}
-          />
-        ))}
-      </div>
+
+      {!collapsed && (
+        <div className="inbox-group-items">
+          {items.map((item) => (
+            <InboxItem
+              key={item.id}
+              item={item}
+              contexts={contexts}
+              workspaces={workspaces}
+              {...callbacks}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

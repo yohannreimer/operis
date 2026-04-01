@@ -1846,7 +1846,7 @@ export const api = {
 
   // ── Inbox Operacional ──────────────────────────────────────────────────
   getInbox: (filter: 'hoje' | 'ontem' | 'semana' | 'tudo' = 'hoje') =>
-    apiRequest<InboxListResponse>(`/inbox?filter=${filter}`),
+    apiRequest<InboxListResponse>(`/inbox?filter=${filter}&utcOffset=${-new Date().getTimezoneOffset()}`),
 
   createInboxItem: (payload: {
     content: string;

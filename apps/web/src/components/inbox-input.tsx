@@ -38,7 +38,9 @@ export function InboxInput({ workspaces, contexts, inputRef: externalRef, onSubm
     ];
 
     const filtered = query
-      ? allOptions.filter((o) => o.name.toLowerCase().includes(query))
+      ? allOptions.filter((o) =>
+          o.name.toLowerCase().split(/\s+/).some((word) => word.startsWith(query))
+        )
       : allOptions;
 
     setAutocomplete(filtered);

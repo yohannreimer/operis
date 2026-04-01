@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   api,
@@ -42,6 +43,15 @@ export function InboxPage() {
 
   const [convertingItem, setConvertingItem] = useState<InboxItem | null>(null);
 
+  // Collapse state — set of collapsed group IDs
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // Visibility filters
+  const [showDone, setShowDone] = useState(false);
+  const [showWaiting, setShowWaiting] = useState(true);
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+
   async function load() {
     try {
       const data = await api.getInbox(filter);
@@ -59,6 +69,18 @@ export function InboxPage() {
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
+
+  // Close filter menu on outside click
+  useEffect(() => {
+    if (!showFilterMenu) return;
+    function handle(e: MouseEvent) {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
+        setShowFilterMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showFilterMenu]);
 
   // ── Deep work timer ───────────────────────────────────────────────────────
 
@@ -239,36 +261,93 @@ export function InboxPage() {
     }
   }
 
+  // ── Context reorder ───────────────────────────────────────────────────────
+
+  async function handleMoveContextGroup(contextId: string, direction: 'up' | 'down') {
+    const idx = contexts.findIndex((c) => c.id === contextId);
+    if (idx === -1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= contexts.length) return;
+
+    // Swap positions
+    const newContexts = [...contexts];
+    const posA = newContexts[idx].position;
+    const posB = newContexts[swapIdx].position;
+    newContexts[idx] = { ...newContexts[idx], position: posB };
+    newContexts[swapIdx] = { ...newContexts[swapIdx], position: posA };
+    // Sort by position
+    newContexts.sort((a, b) => a.position - b.position);
+    setContexts(newContexts);
+
+    try {
+      await Promise.all([
+        api.updateInboxContext(contexts[idx].id, { position: posB }),
+        api.updateInboxContext(contexts[swapIdx].id, { position: posA }),
+      ]);
+    } catch {
+      toast.error('Erro ao reordenar contexto.');
+      setContexts(contexts); // revert
+    }
+  }
+
   // ── Grouping ──────────────────────────────────────────────────────────────
+
+  // Client-side visibility filter
+  const filteredItems = useMemo(
+    () => items.filter((i) => {
+      if (!showDone && i.status === 'feito') return false;
+      if (!showWaiting && i.status === 'aguardando') return false;
+      return true;
+    }),
+    [items, showDone, showWaiting]
+  );
 
   const groups = useMemo(() => {
     const workspaceGroups = (workspaces as Workspace[]).map((w) => ({
       id: w.id,
       label: w.name,
-      items: items.filter((i) => i.workspaceId === w.id),
+      type: 'workspace' as const,
+      items: filteredItems.filter((i) => i.workspaceId === w.id),
     }));
 
     const contextGroups = contexts.map((c) => ({
       id: c.id,
       label: c.name,
-      items: items.filter((i) => i.inboxContextId === c.id),
+      type: 'context' as const,
+      items: filteredItems.filter((i) => i.inboxContextId === c.id),
     }));
 
     const noContext = {
       id: 'no-context',
       label: 'Sem contexto',
-      items: items.filter((i) => !i.workspaceId && !i.inboxContextId),
+      type: 'noContext' as const,
+      items: filteredItems.filter((i) => !i.workspaceId && !i.inboxContextId),
     };
 
     return [...workspaceGroups, ...contextGroups, noContext].filter((g) => g.items.length > 0);
-  }, [items, workspaces, contexts]);
+  }, [filteredItems, workspaces, contexts]);
+
+  // Only context-type groups that are actually visible (have items)
+  const visibleContextGroupIds = useMemo(
+    () => groups.filter((g) => g.type === 'context').map((g) => g.id),
+    [groups]
+  );
 
   const bruteItems = useMemo(
-    () => [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [items]
+    () => [...filteredItems].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [filteredItems]
   );
 
   const pendingCount = items.filter((i) => i.status === 'pendente' || i.status === 'aguardando').length;
+
+  function toggleCollapse(groupId: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }
 
   const itemCallbacks = {
     onToggleDone: handleToggleDone,
@@ -307,6 +386,39 @@ export function InboxPage() {
             >
               Bruto
             </button>
+
+            {/* Visibility filter popover */}
+            <div className="inbox-vis-filter-wrapper" ref={filterMenuRef}>
+              <button
+                type="button"
+                className={`inbox-vis-filter-btn${showFilterMenu || !showDone || !showWaiting ? ' active' : ''}`}
+                onClick={() => setShowFilterMenu((v) => !v)}
+                aria-label="Filtros de visibilidade"
+                title="Filtros de visibilidade"
+              >
+                <SlidersHorizontal size={13} />
+              </button>
+              {showFilterMenu && (
+                <div className="inbox-vis-filter-menu">
+                  <label className="inbox-vis-filter-item">
+                    <input
+                      type="checkbox"
+                      checked={showDone}
+                      onChange={(e) => setShowDone(e.target.checked)}
+                    />
+                    Mostrar concluídos
+                  </label>
+                  <label className="inbox-vis-filter-item">
+                    <input
+                      type="checkbox"
+                      checked={showWaiting}
+                      onChange={(e) => setShowWaiting(e.target.checked)}
+                    />
+                    Mostrar aguardando
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
         }
       />
@@ -345,16 +457,26 @@ export function InboxPage() {
               Nenhum item {filter === 'hoje' ? 'hoje' : 'nesse período'}. Use o campo acima para capturar.
             </div>
           ) : (
-            groups.map((group) => (
-              <InboxGroup
-                key={group.id}
-                label={group.label}
-                items={group.items}
-                contexts={contexts}
-                workspaces={workspaces}
-                {...itemCallbacks}
-              />
-            ))
+            groups.map((group) => {
+              const isContext = group.type === 'context';
+              const ctxIdx = isContext ? visibleContextGroupIds.indexOf(group.id) : -1;
+              return (
+                <InboxGroup
+                  key={group.id}
+                  label={group.label}
+                  items={group.items}
+                  contexts={contexts}
+                  workspaces={workspaces}
+                  collapsed={collapsedGroups.has(group.id)}
+                  onToggleCollapse={() => toggleCollapse(group.id)}
+                  canMoveUp={isContext && ctxIdx > 0}
+                  canMoveDown={isContext && ctxIdx < visibleContextGroupIds.length - 1}
+                  onMoveUp={isContext ? () => handleMoveContextGroup(group.id, 'up') : undefined}
+                  onMoveDown={isContext ? () => handleMoveContextGroup(group.id, 'down') : undefined}
+                  {...itemCallbacks}
+                />
+              );
+            })
           )}
 
           <button

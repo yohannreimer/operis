@@ -8,21 +8,27 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
-  function dateRangeForFilter(filter: string) {
+  function dateRangeForFilter(filter: string, utcOffsetMinutes: number = 0) {
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(todayStart.getTime() + 86400000);
+    // Shift now by client's UTC offset to find their local calendar date
+    const clientMs = now.getTime() + utcOffsetMinutes * 60000;
+    const clientDate = new Date(clientMs);
+    // Midnight in client's timezone expressed as UTC
+    const clientMidnightUTC =
+      Date.UTC(clientDate.getUTCFullYear(), clientDate.getUTCMonth(), clientDate.getUTCDate()) -
+      utcOffsetMinutes * 60000;
+
+    const todayStart = new Date(clientMidnightUTC);
+    const todayEnd   = new Date(clientMidnightUTC + 86400000);
 
     if (filter === 'hoje') {
       return { gte: todayStart, lt: todayEnd };
     }
     if (filter === 'ontem') {
-      const start = new Date(todayStart.getTime() - 86400000);
-      return { gte: start, lt: todayStart };
+      return { gte: new Date(clientMidnightUTC - 86400000), lt: todayStart };
     }
     if (filter === 'semana') {
-      const start = new Date(todayStart.getTime() - 6 * 86400000);
-      return { gte: start, lt: todayEnd };
+      return { gte: new Date(clientMidnightUTC - 6 * 86400000), lt: todayEnd };
     }
     return undefined; // 'tudo'
   }
@@ -46,9 +52,10 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     const clerkUserId = getUserId(request);
     const query = z.object({
       filter: z.enum(['hoje', 'ontem', 'semana', 'tudo']).default('hoje'),
+      utcOffset: z.coerce.number().int().min(-840).max(840).default(0),
     }).parse(request.query);
 
-    const dateRange = dateRangeForFilter(query.filter);
+    const dateRange = dateRangeForFilter(query.filter, query.utcOffset);
 
     const [items, contexts] = await Promise.all([
       prisma.inboxItem.findMany({
