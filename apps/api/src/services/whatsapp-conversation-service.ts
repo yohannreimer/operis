@@ -781,7 +781,7 @@ export class WhatsappConversationService {
       const tasks = await this.runCommand('tarefas');
       await this.setSession(phoneNumber, 'menu');
       return {
-        reply: `${this.joinReply(this.prettifyReply(tasks.reply))}\n\n${this.menuText()}`,
+        reply: this.joinReply(this.prettifyReply(tasks.reply)),
         relatedTaskId: tasks.relatedTaskId
       };
     }
@@ -805,7 +805,7 @@ export class WhatsappConversationService {
       const followups = await this.runCommand('followups');
       await this.setSession(phoneNumber, 'menu');
       return {
-        reply: `${this.joinReply(this.prettifyReply(due.reply))}\n\n${this.joinReply(this.prettifyReply(followups.reply))}\n\n${this.menuText()}`
+        reply: `${this.joinReply(this.prettifyReply(due.reply))}\n\n${this.joinReply(this.prettifyReply(followups.reply))}`
       };
     }
 
@@ -819,7 +819,7 @@ export class WhatsappConversationService {
     if (numericChoice === 6 || normalized === 'AJUDA') {
       await this.setSession(phoneNumber, 'menu');
       return {
-        reply: `${this.helpText()}\n\n${this.menuText()}`
+        reply: this.helpText()
       };
     }
 
