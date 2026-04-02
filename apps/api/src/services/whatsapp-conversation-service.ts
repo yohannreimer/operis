@@ -527,6 +527,13 @@ export class WhatsappConversationService {
     ].join('\n');
   }
 
+  private joinReply(reply: string | string[]): string {
+    return Array.isArray(reply) ? reply.join('\n\n') : reply;
+  }
+
+  private prettifyReply(reply: string): string;
+  private prettifyReply(reply: string[]): string[];
+  private prettifyReply(reply: string | string[]): string | string[];
   private prettifyReply(reply: string | string[]): string | string[] {
     if (Array.isArray(reply)) {
       return reply.map((r) => this.prettifyReply(r) as string);
@@ -783,7 +790,7 @@ export class WhatsappConversationService {
         LONG_SESSION_TTL_MINUTES
       );
       return {
-        reply: `${this.prettifyReply(focus.reply)}\n\n${this.focusMenuText()}`,
+        reply: `${this.joinReply(this.prettifyReply(focus.reply))}\n\n${this.focusMenuText()}`,
         relatedTaskId: focus.relatedTaskId
       };
     }
@@ -792,7 +799,7 @@ export class WhatsappConversationService {
       const tasks = await this.runCommand('tarefas');
       await this.setSession(phoneNumber, 'menu');
       return {
-        reply: `${this.prettifyReply(tasks.reply)}\n\n${this.menuText()}`,
+        reply: `${this.joinReply(this.prettifyReply(tasks.reply))}\n\n${this.menuText()}`,
         relatedTaskId: tasks.relatedTaskId
       };
     }
@@ -816,7 +823,7 @@ export class WhatsappConversationService {
       const followups = await this.runCommand('followups');
       await this.setSession(phoneNumber, 'menu');
       return {
-        reply: `${this.prettifyReply(due.reply)}\n\n${this.prettifyReply(followups.reply)}\n\n${this.menuText()}`
+        reply: `${this.joinReply(this.prettifyReply(due.reply))}\n\n${this.joinReply(this.prettifyReply(followups.reply))}\n\n${this.menuText()}`
       };
     }
 
@@ -885,7 +892,7 @@ export class WhatsappConversationService {
           LONG_SESSION_TTL_MINUTES
         );
         return {
-          reply: `${this.prettifyReply(result.reply)}\n\n${this.focusMenuText()}`,
+          reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.focusMenuText()}`,
           relatedTaskId: result.relatedTaskId
         };
       }
@@ -1010,7 +1017,7 @@ export class WhatsappConversationService {
         LONG_SESSION_TTL_MINUTES
       );
       return {
-        reply: `${this.prettifyReply(result.reply)}\n\n${this.focusMenuText()}`,
+        reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.focusMenuText()}`,
         relatedTaskId: result.relatedTaskId
       };
     }
@@ -1063,7 +1070,7 @@ export class WhatsappConversationService {
         LONG_SESSION_TTL_MINUTES
       );
       return {
-        reply: `${this.prettifyReply(result.reply)}\n\n${this.focusMenuText()}`,
+        reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.focusMenuText()}`,
         relatedTaskId: result.relatedTaskId
       };
     }
@@ -1107,7 +1114,7 @@ export class WhatsappConversationService {
           LONG_SESSION_TTL_MINUTES
         );
         return {
-          reply: `${this.prettifyReply(result.reply)}\n\n${this.deepMenuText()}`,
+          reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.deepMenuText()}`,
           relatedTaskId: result.relatedTaskId
         };
       }
@@ -1123,7 +1130,7 @@ export class WhatsappConversationService {
           LONG_SESSION_TTL_MINUTES
         );
         return {
-          reply: `${this.prettifyReply(result.reply)}\n\n${this.deepMenuText()}`,
+          reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.deepMenuText()}`,
           relatedTaskId: result.relatedTaskId
         };
       }
@@ -1131,7 +1138,7 @@ export class WhatsappConversationService {
       if (numericChoice === 4 || normalized === 'STATUS') {
         const result = await this.runCommand('status');
         return {
-          reply: `${this.prettifyReply(result.reply)}\n\n${this.deepMenuText()}`
+          reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.deepMenuText()}`
         };
       }
 
@@ -1186,7 +1193,7 @@ export class WhatsappConversationService {
         LONG_SESSION_TTL_MINUTES
       );
       return {
-        reply: `${this.prettifyReply(result.reply)}\n\n${this.deepMenuText()}`,
+        reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.deepMenuText()}`,
         relatedTaskId: result.relatedTaskId
       };
     }
@@ -1272,7 +1279,7 @@ export class WhatsappConversationService {
           LONG_SESSION_TTL_MINUTES
         );
         return {
-          reply: `${this.prettifyReply(result.reply)}\n\n${this.deepMenuText()}`,
+          reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.deepMenuText()}`,
           relatedTaskId: result.relatedTaskId
         };
       }
@@ -1282,7 +1289,7 @@ export class WhatsappConversationService {
         const refreshed = await this.listTaskChoices(18);
         await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
         return {
-          reply: `${this.prettifyReply(result.reply)}\n\n${this.renderOpenTaskList(refreshed)}`
+          reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.renderOpenTaskList(refreshed)}`
         };
       }
 
@@ -1835,7 +1842,7 @@ export class WhatsappConversationService {
         LONG_SESSION_TTL_MINUTES
       );
       return {
-        reply: `${this.prettifyReply(focus.reply)}\n\n${this.focusMenuText()}`,
+        reply: `${this.joinReply(this.prettifyReply(focus.reply))}\n\n${this.focusMenuText()}`,
         relatedTaskId: focus.relatedTaskId
       };
     }
@@ -1913,7 +1920,7 @@ export class WhatsappConversationService {
       const captured = await this.runCommand(`inbox: ${text}`);
       await this.setSession(phoneNumber, 'menu');
       return {
-        reply: `${this.prettifyReply(captured.reply)}\n\n${this.menuText()}`,
+        reply: `${this.joinReply(this.prettifyReply(captured.reply))}\n\n${this.menuText()}`,
         relatedTaskId: captured.relatedTaskId
       };
     }

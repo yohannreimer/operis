@@ -22,6 +22,7 @@ type DispatchRequestBody = {
 };
 
 const INBOUND_DEDUP_TTL_MS = 5 * 60 * 1000;
+const MULTI_REPLY_DELAY_MS = 300;
 const INBOUND_SEMANTIC_DEDUP_TTL_MS = 10 * 1000;
 const inboundDedupCache = new Map<string, number>();
 const inboundSemanticDedupCache = new Map<string, number>();
@@ -398,10 +399,10 @@ export function registerWebhookRoutes(
       await publishEvent(queueNames.sendWhatsappMessage, {
         to: payload.from,
         message: replies[i],
-        relatedTaskId: i === 0 ? commandResult.relatedTaskId : undefined
+        relatedTaskId: i === 0 ? commandResult.relatedTaskId : undefined // only first message carries the task link
       });
       if (i < replies.length - 1) {
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, MULTI_REPLY_DELAY_MS));
       }
     }
 
