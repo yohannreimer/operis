@@ -33,7 +33,7 @@ export function InboxPage() {
   const [contexts, setContexts] = useState<InboxContext[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [filter, setFilter] = useState<Filter>('hoje');
+  const [filter, setFilter] = useState<Filter>('tudo');
   const [bruteMode, setBruteMode] = useState(false);
 
   // Deep work execution state
