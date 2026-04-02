@@ -3,7 +3,7 @@ import { HabitService } from './habit-service.js';
 
 import { CommandResult, WhatsappCommandService } from './whatsapp-command-service.js';
 import { WhatsappLLMService, LLMIntent, LLMContext } from './whatsapp-llm-service.js';
-import { WhatsappBriefingService, DayHumor } from './whatsapp-briefing-service.js';
+import { WhatsappBriefingService } from './whatsapp-briefing-service.js';
 
 type ConversationState =
   | 'idle'
@@ -123,30 +123,12 @@ type NoteChoice = {
   updatedAt: string;
 };
 
-// Callback called when user declares their humor so auto-dispatch can calibrate
-type OnHumorDeclared = (humor: DayHumor, dateKey: string) => void;
-
 export class WhatsappConversationService {
-  private onHumorDeclared: OnHumorDeclared | null = null;
-
   constructor(
     private readonly prisma: PrismaClient,
     private readonly commandService: WhatsappCommandService,
     private readonly llmService?: WhatsappLLMService
   ) {}
-
-  /**
-   * Register a callback so the auto-dispatch service is notified when the
-   * user declares their day humor via the morning briefing question.
-   */
-  setOnHumorDeclared(callback: OnHumorDeclared) {
-    this.onHumorDeclared = callback;
-  }
-
-  private notifyHumor(humor: DayHumor) {
-    const dateKey = this.todayDateKey();
-    this.onHumorDeclared?.(humor, dateKey);
-  }
 
   private stateModule(state: ConversationState) {
     if (state.startsWith('focus_')) {
@@ -1767,18 +1749,6 @@ export class WhatsappConversationService {
     }
 
     const session = await this.getSession(phoneNumber);
-
-    // ── Humor declaration (briefing reply: "1", "2" ou "3") ──────────────────
-    const humorReply = WhatsappBriefingService.parseHumorReply(text);
-    if (humorReply) {
-      this.notifyHumor(humorReply);
-      const humorMessages: Record<DayHumor, string> = {
-        focado: '💪 Ótimo! Foco total hoje. Vamos nessa.',
-        cansado: '🤝 Entendido — dia leve. Vou manter 2 prioridades e não te interromper muito.',
-        sobrecarregado: '🧘 Ok, 1 prioridade só hoje. Faz o que puder — isso já é suficiente.'
-      };
-      return { reply: humorMessages[humorReply] };
-    }
 
     // ── LLM intent extraction (when idle or session is not mid-flow) ──────────
     const isInFlow = session && session.state !== 'idle' && session.state !== 'menu';

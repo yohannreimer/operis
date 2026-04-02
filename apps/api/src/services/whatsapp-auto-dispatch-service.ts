@@ -5,7 +5,7 @@ import { queueNames } from '@execution-os/shared';
 import { env } from '../config.js';
 import { publishEvent } from '../infra/rabbit.js';
 import { WhatsappCommandService } from './whatsapp-command-service.js';
-import { WhatsappBriefingService, DayHumor } from './whatsapp-briefing-service.js';
+import { WhatsappBriefingService } from './whatsapp-briefing-service.js';
 import { WhatsappProactivityEngine } from './whatsapp-proactivity-engine.js';
 import { PrismaClient } from '@prisma/client';
 import { HabitService } from './habit-service.js';
@@ -74,10 +74,6 @@ export class WhatsappAutoDispatchService {
   private readonly upcomingEveryMinutes = Math.max(5, Math.min(120, env.WHATSAPP_UPCOMING_EVERY_MINUTES));
   private readonly upcomingWithinMinutes = Math.max(5, Math.min(120, env.WHATSAPP_UPCOMING_WITHIN_MINUTES));
 
-  // Humor do dia declarado pelo usuário no briefing
-  private currentHumor: DayHumor | null = null;
-  private humorDateKey = '';
-
   private readonly briefingService: WhatsappBriefingService;
   private readonly proactivityEngine: WhatsappProactivityEngine;
 
@@ -88,19 +84,6 @@ export class WhatsappAutoDispatchService {
   ) {
     this.briefingService = new WhatsappBriefingService(prisma);
     this.proactivityEngine = new WhatsappProactivityEngine(prisma);
-  }
-
-  /**
-   * Called from conversation service when user replies to humor question.
-   */
-  setHumor(humor: DayHumor, dateKey: string) {
-    this.currentHumor = humor;
-    this.humorDateKey = dateKey;
-    this.logger.info({ humor, dateKey }, 'Humor do usuário atualizado.');
-  }
-
-  private getHumorForDate(dateKey: string): DayHumor | null {
-    return this.humorDateKey === dateKey ? this.currentHumor : null;
   }
 
   start() {
@@ -189,10 +172,8 @@ export class WhatsappAutoDispatchService {
 
         // Try intelligent briefing first, fallback to legacy
         try {
-          const humor = this.getHumorForDate(clock.dateKey);
           const intelligentBriefing = await this.briefingService.buildIntelligentBriefing(
-            clock.dateKey,
-            humor ?? undefined
+            clock.dateKey
           );
           messages.push(intelligentBriefing);
         } catch {
@@ -257,8 +238,7 @@ export class WhatsappAutoDispatchService {
       }
 
       // ── Proactivity engine ─────────────────────────────────────────────────
-      const humor = this.getHumorForDate(clock.dateKey);
-      const proactiveMessage = await this.proactivityEngine.evaluate(clock, humor);
+      const proactiveMessage = await this.proactivityEngine.evaluate(clock, null);
 
       if (proactiveMessage) {
         await this.enqueueMessage(proactiveMessage.message);

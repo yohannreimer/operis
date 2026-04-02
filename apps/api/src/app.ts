@@ -67,11 +67,6 @@ export async function buildApp() {
     prisma
   );
 
-  // Wire humor declarations from conversation → auto-dispatch for briefing calibration
-  whatsappConversationService.setOnHumorDeclared((humor, dateKey) => {
-    whatsappAutoDispatchService.setHumor(humor, dateKey);
-  });
-
   app.get('/health', async () => ({ ok: true }));
 
   registerWorkspaceRoutes(app, prisma);
