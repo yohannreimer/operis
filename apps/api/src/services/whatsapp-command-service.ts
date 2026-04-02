@@ -6,7 +6,7 @@ import { ExecutionInsightsService } from './execution-insights-service.js';
 import { TaskService } from './task-service.js';
 
 export type CommandResult = {
-  reply: string;
+  reply: string | string[];
   relatedTaskId?: string;
 };
 

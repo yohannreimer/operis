@@ -527,7 +527,10 @@ export class WhatsappConversationService {
     ].join('\n');
   }
 
-  private prettifyReply(reply: string) {
+  private prettifyReply(reply: string | string[]): string | string[] {
+    if (Array.isArray(reply)) {
+      return reply.map((r) => this.prettifyReply(r) as string);
+    }
     const formatIsoToBr = (value: string) => {
       const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!match) {
@@ -1859,7 +1862,8 @@ export class WhatsappConversationService {
 
     if (!session || session.state === 'idle') {
       const directAttempt = await this.runCommand(text);
-      if (!/^Comando não reconhecido\./i.test(directAttempt.reply)) {
+      const directReplyText = Array.isArray(directAttempt.reply) ? directAttempt.reply[0] : directAttempt.reply;
+      if (!/^Comando não reconhecido\./i.test(directReplyText)) {
         return {
           ...directAttempt,
           reply: this.prettifyReply(directAttempt.reply)

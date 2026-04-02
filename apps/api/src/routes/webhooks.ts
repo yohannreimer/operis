@@ -390,11 +390,20 @@ export function registerWebhookRoutes(
       });
     }
 
-    await publishEvent(queueNames.sendWhatsappMessage, {
-      to: payload.from,
-      message: commandResult.reply,
-      relatedTaskId: commandResult.relatedTaskId
-    });
+    const replies = Array.isArray(commandResult.reply)
+      ? commandResult.reply
+      : [commandResult.reply];
+
+    for (let i = 0; i < replies.length; i++) {
+      await publishEvent(queueNames.sendWhatsappMessage, {
+        to: payload.from,
+        message: replies[i],
+        relatedTaskId: i === 0 ? commandResult.relatedTaskId : undefined
+      });
+      if (i < replies.length - 1) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
 
     return reply.code(202).send({
       ok: true,
