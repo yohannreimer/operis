@@ -324,7 +324,8 @@ export function registerWebhookRoutes(
 
     // When upstream provides a unique external message id, semantic dedup is unnecessary
     // and can wrongly block legitimate short replies like "1", "2" or "menu".
-    if (!payload.externalMessageId && isDuplicateInboundSemantic(semanticDedupKey)) {
+    const isShortMessage = payload.message.trim().length <= 3;
+    if (!payload.externalMessageId && !isShortMessage && isDuplicateInboundSemantic(semanticDedupKey)) {
       return reply.code(200).send({ ok: true, duplicate: true, reason: 'semantic' });
     }
 
