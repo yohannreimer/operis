@@ -1,16 +1,10 @@
 /**
- * WhatsApp Briefing Service — Briefing matinal inteligente em 5 blocos
+ * WhatsApp Briefing Service — Briefing matinal inteligente em até 4 mensagens
  *
- * Bloco 1 — Leitura situacional (LLM quando disponível, fallback estruturado)
- * Bloco 2 — Compromissos do dia com janelas livres calculadas
- * Bloco 3 — Top 3 sugerido (rankeado por atraso + prazo + impacto)
- * Bloco 4 — Alerta cirúrgico (máx 1)
- * Bloco 5 — Pergunta de humor
- *
- * Calibração por humor (armazenado na sessão):
- *   focado       → proatividade normal, Top 3 completo
- *   cansado      → Top 2 apenas, max 1 proativa no dia
- *   sobrecarregado → Top 1 apenas, zero proativas extras
+ * Mensagem 1 — Leitura situacional (LLM quando disponível, fallback estruturado)
+ * Mensagem 2 — Compromissos do dia com janelas livres calculadas (só se houver)
+ * Mensagem 3 — Alerta cirúrgico (máx 1, só se houver tarefa A atrasada)
+ * Mensagem 4 — Top 3 sugerido + pergunta de confirmação de foco (sempre)
  */
 
 import OpenAI from 'openai';
@@ -358,18 +352,14 @@ Retorne APENAS as 2-3 linhas. Sem introdução, sem explicação.`.trim();
     return lines.join('\n');
   }
 
-  // ─── Bloco 3: Top 3 sugerido ──────────────────────────────────────────────
+  // ─── Bloco 4 / Mensagem 4: Top 3 sugerido ────────────────────────────────
 
   private buildTop3Block(ctx: BriefingContext): string {
     if (ctx.top3Candidates.length === 0) {
       return '🎯 *Foco sugerido:*\nNenhuma tarefa A encontrada. Envie "tarefas" para ver abertas.';
     }
 
-    const label = ctx.humor === 'sobrecarregado'
-      ? '🎯 *1 prioridade só — dia difícil:*'
-      : ctx.humor === 'cansado'
-        ? '🎯 *2 prioridades (dia leve):*'
-        : '🎯 *Foco sugerido:*';
+    const label = '🎯 *Foco sugerido:*';
 
     const lines = [label];
     ctx.top3Candidates.forEach((t, i) => {
@@ -382,7 +372,7 @@ Retorne APENAS as 2-3 linhas. Sem introdução, sem explicação.`.trim();
     return lines.join('\n');
   }
 
-  // ─── Bloco 4: Alerta cirúrgico ────────────────────────────────────────────
+  // ─── Bloco 3 / Mensagem 3: Alerta cirúrgico ─────────────────────────────
 
   private buildAlertBlock(ctx: BriefingContext): string | null {
     if (ctx.overdueTasks.length === 0) return null;
