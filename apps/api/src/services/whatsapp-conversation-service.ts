@@ -8,6 +8,9 @@ import { WhatsappBriefingService } from './whatsapp-briefing-service.js';
 type ConversationState =
   | 'idle'
   | 'menu'
+  | 'awaiting_focus_confirmation'
+  | 'habit_checkin'
+  | 'inbox_complete_pick'
   | 'capture_inbox'
   | 'focus_menu'
   | 'focus_swap_slot'
@@ -741,6 +744,19 @@ export class WhatsappConversationService {
         lastInteractionAt: new Date()
       }
     });
+  }
+
+  /**
+   * Método público para que serviços externos (ex: WhatsappAutoDispatchService)
+   * possam criar sessões após enviar mensagens proativas ou o briefing matinal.
+   */
+  async setSessionPublic(
+    phoneNumber: string,
+    state: ConversationState,
+    payload?: Prisma.JsonObject | null,
+    ttlMinutes?: number
+  ): Promise<void> {
+    return this.setSession(phoneNumber, state, payload, ttlMinutes);
   }
 
   private async runCommand(text: string): Promise<CommandResult> {
