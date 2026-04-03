@@ -7,7 +7,7 @@ import { publishEvent } from '../infra/rabbit.js';
 import { WhatsappCommandService } from './whatsapp-command-service.js';
 import { WhatsappBriefingService } from './whatsapp-briefing-service.js';
 import { WhatsappProactivityEngine } from './whatsapp-proactivity-engine.js';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { HabitService } from './habit-service.js';
 
 type LocalClock = {
@@ -66,6 +66,11 @@ function formatNowToClock(now: Date, timezone: string): LocalClock {
 
 export class WhatsappAutoDispatchService {
   private timer: NodeJS.Timeout | null = null;
+  private conversationService: { setSessionPublic: (phone: string, state: 'awaiting_focus_confirmation', payload: any, ttl?: number) => Promise<void> } | null = null;
+
+  setConversationService(svc: { setSessionPublic: (phone: string, state: 'awaiting_focus_confirmation', payload: any, ttl?: number) => Promise<void> }) {
+    this.conversationService = svc;
+  }
   private readonly sentKeys = new Set<string>();
   private readonly timezone = env.WHATSAPP_TIMEZONE;
   private readonly morningTime = parseTimeToken(env.WHATSAPP_MORNING_TIME, 8, 0);
@@ -197,6 +202,22 @@ export class WhatsappAutoDispatchService {
 
         for (const message of messages) {
           await this.enqueueMessage(message);
+        }
+
+        // Criar sessão awaiting_focus_confirmation para capturar resposta ao foco sugerido
+        if (this.conversationService) {
+          try {
+            const top3 = await this.briefingService.getTop3ForDate(clock.dateKey);
+            await this.conversationService.setSessionPublic(
+              env.DEFAULT_PHONE_NUMBER,
+              'awaiting_focus_confirmation',
+              { top3 } as Prisma.JsonObject,
+              60
+            );
+            this.logger.info({ date: clock.dateKey }, 'Sessão awaiting_focus_confirmation criada após briefing.');
+          } catch (err) {
+            this.logger.warn({ err }, 'Falha ao criar sessão pós-briefing.');
+          }
         }
 
         this.rememberSent(morningKey);

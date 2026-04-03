@@ -66,6 +66,7 @@ export async function buildApp() {
     whatsappCommandService,
     prisma
   );
+  whatsappAutoDispatchService.setConversationService(whatsappConversationService);
 
   app.get('/health', async () => ({ ok: true }));
 

@@ -408,6 +408,19 @@ Retorne APENAS as 2-3 linhas. Sem introdução, sem explicação.`.trim();
     return messages;
   }
 
+  /**
+   * Retorna o top 3 candidatos do dia para o payload da sessão do briefing.
+   * Reutiliza buildContext() internamente — não faz queries extras.
+   */
+  async getTop3ForDate(dateKey: string): Promise<{ id: string; title: string; index: number }[]> {
+    const ctx = await this.buildContext(dateKey);
+    return ctx.top3Candidates.map((t, i) => ({
+      id: t.id,
+      title: t.title,
+      index: i + 1
+    }));
+  }
+
   // ─── Parse resposta de humor do usuário ───────────────────────────────────
 
   static parseHumorReply(text: string): DayHumor | null {
