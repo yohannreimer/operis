@@ -1773,7 +1773,7 @@ export class WhatsappConversationService {
     let replaceText = '';
 
     try {
-      const raw = (await this.llmService.chatCompletion(prompt, 80)) ?? '{}';
+      const raw = (await this.llmService.chatCompletion(prompt, 150)) ?? '{}';
       const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
       action = parsed.action ?? 'confirm_all';
       indices = Array.isArray(parsed.indices) ? parsed.indices : [];
@@ -1782,8 +1782,6 @@ export class WhatsappConversationService {
       // Falha do LLM — confirmar tudo por padrão
       action = 'confirm_all';
     }
-
-    await this.setSession(phoneNumber, 'idle');
 
     if (action === 'show_all_tasks') {
       const choices = await this.listTaskChoices(18);
@@ -1812,8 +1810,11 @@ export class WhatsappConversationService {
       }
 
       if (tasks.length === 1) {
-        const result = await this.runCommand(`foco confirmar`);
-        return { reply: `✅ Foco definido: ${tasks[0].title}\n\n${this.prettifyReply(result.reply)}` };
+        // Found exactly 1 match — confirm with user
+        await this.setSession(phoneNumber, 'awaiting_focus_confirmation', {
+          top3: [{ id: tasks[0].id, title: tasks[0].title, index: 1 }]
+        } as unknown as Prisma.JsonObject, 30);
+        return { reply: `Encontrei: *${tasks[0].title}*\n\nConfirmar esse como foco? Responda sim ou não.` };
       }
 
       // Múltiplos resultados — abrir lista para escolha
@@ -1831,12 +1832,19 @@ export class WhatsappConversationService {
 
     if (action === 'confirm_subset' && indices.length > 0) {
       const selected = top3.filter((t) => indices.includes(t.index));
-      const titles = selected.map((t) => `${t.index}. ${t.title}`).join('\n');
-      // Confirmar apenas os selecionados (outros ficam no backlog sem alteração)
-      return { reply: `✅ Foco definido:\n${titles}` };
+      if (selected.length === 0) {
+        // indices didn't match anything — fall through to confirm_all
+      } else {
+        const titles = selected.map((t) => `${t.index}. ${t.title}`).join('\n');
+        // Note: no backend command available for subset focus — display confirmation only
+        // Using "✅ Foco de hoje:" (not "Foco definido") to avoid asserting persistence that didn't happen
+        await this.setSession(phoneNumber, 'idle');
+        return { reply: `✅ Foco de hoje:\n${titles}` };
+      }
     }
 
     // confirm_all (default)
+    await this.setSession(phoneNumber, 'idle');
     const result = await this.runCommand('foco confirmar');
     return { reply: this.prettifyReply(result.reply) };
   }
@@ -1881,6 +1889,12 @@ export class WhatsappConversationService {
       } catch {
         // LLM extraction failed — continue with regex inference below
       }
+    }
+
+    // Session-first routing: states that expect free-form input must be checked
+    // before inferNaturalCommand/isDirectCommand to prevent interception
+    if (session?.state === 'awaiting_focus_confirmation') {
+      return this.processFocusConfirmation(phoneNumber, session, text);
     }
 
     const inferredCommand = this.inferNaturalCommand(text, session);
@@ -1967,11 +1981,6 @@ export class WhatsappConversationService {
       return {
         reply: `Não entendi essa mensagem.\n\n${this.menuText()}`
       };
-    }
-
-    // ── Estado: awaiting_focus_confirmation ──────────────────────────────────
-    if (session.state === 'awaiting_focus_confirmation') {
-      return this.processFocusConfirmation(phoneNumber, session, text);
     }
 
     if (session.state === 'menu') {
