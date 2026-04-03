@@ -394,43 +394,28 @@ Retorne APENAS as 2-3 linhas. Sem introdução, sem explicação.`.trim();
     return `🚨 *"${worst.title}"*${detail}. Quer agendar ou arquivar?`;
   }
 
-  // ─── Bloco 5: Pergunta de humor ────────────────────────────────────────────
-
-  private buildHumorBlock(): string {
-    return [
-      'Como você chega hoje?',
-      '1️⃣ Focado',
-      '2️⃣ Cansado',
-      '3️⃣ Sobrecarregado'
-    ].join('\n');
-  }
-
   // ─── Briefing completo ────────────────────────────────────────────────────
 
-  async buildIntelligentBriefing(dateKey: string, humor?: DayHumor): Promise<string> {
-    const ctx = await this.buildContext(dateKey, humor);
+  async buildIntelligentBriefing(dateKey: string): Promise<string[]> {
+    const ctx = await this.buildContext(dateKey);
+    const messages: string[] = [];
 
-    const sections: string[] = [];
-
-    // Bloco 1
+    // Mensagem 1 — Leitura situacional (sempre)
     const situational = await this.buildSituationalRead(ctx);
-    sections.push(situational);
+    messages.push(situational);
 
-    // Bloco 2
+    // Mensagem 2 — Compromissos do dia (só se houver)
     const commitmentsBlock = this.buildCommitmentsBlock(ctx);
-    if (commitmentsBlock) sections.push(commitmentsBlock);
+    if (commitmentsBlock) messages.push(commitmentsBlock);
 
-    // Bloco 3
-    sections.push(this.buildTop3Block(ctx));
-
-    // Bloco 4 (só se há alerta)
+    // Mensagem 3 — Alerta informativo (só se houver tarefa A atrasada, sem pergunta)
     const alert = this.buildAlertBlock(ctx);
-    if (alert) sections.push(alert);
+    if (alert) messages.push(alert);
 
-    // Bloco 5 (humor)
-    sections.push(this.buildHumorBlock());
+    // Mensagem 4 — Foco sugerido + 1 pergunta (sempre, cria sessão no dispatcher)
+    messages.push(this.buildTop3Block(ctx));
 
-    return sections.join('\n\n');
+    return messages;
   }
 
   // ─── Parse resposta de humor do usuário ───────────────────────────────────

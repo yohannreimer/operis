@@ -172,10 +172,10 @@ export class WhatsappAutoDispatchService {
 
         // Try intelligent briefing first, fallback to legacy
         try {
-          const intelligentBriefing = await this.briefingService.buildIntelligentBriefing(
+          const intelligentMessages = await this.briefingService.buildIntelligentBriefing(
             clock.dateKey
           );
-          messages.push(intelligentBriefing);
+          messages.push(...intelligentMessages);
         } catch {
           // Fallback to legacy briefing
           const morning = await this.commandService.buildMorningBriefing({
