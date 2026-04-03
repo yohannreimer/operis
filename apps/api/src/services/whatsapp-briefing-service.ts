@@ -410,7 +410,7 @@ Retorne APENAS as 2-3 linhas. Sem introdução, sem explicação.`.trim();
 
   /**
    * Retorna o top 3 candidatos do dia para o payload da sessão do briefing.
-   * Reutiliza buildContext() internamente — não faz queries extras.
+   * Nota: chama buildContext() diretamente — faz queries ao DB.
    */
   async getTop3ForDate(dateKey: string): Promise<{ id: string; title: string; index: number }[]> {
     const ctx = await this.buildContext(dateKey);
