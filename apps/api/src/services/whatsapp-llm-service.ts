@@ -209,4 +209,23 @@ export class WhatsappLLMService {
       return null;
     }
   }
+
+  /**
+   * Generic chat completion for simple prompt → string responses.
+   * Returns null if LLM unavailable or on error.
+   */
+  async chatCompletion(prompt: string, maxTokens = 100): Promise<string | null> {
+    if (!this.client) return null;
+    try {
+      const response = await this.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: maxTokens
+      });
+      return response.choices[0]?.message?.content?.trim() ?? null;
+    } catch {
+      return null;
+    }
+  }
 }

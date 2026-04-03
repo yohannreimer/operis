@@ -1741,6 +1741,106 @@ export class WhatsappConversationService {
     }
   }
 
+  private async processFocusConfirmation(
+    phoneNumber: string,
+    session: WhatsappConversationSession,
+    text: string
+  ): Promise<CommandResult> {
+    const payload = this.readSessionPayload(session);
+    const top3 = Array.isArray(payload.top3)
+      ? (payload.top3 as Array<{ id: string; title: string; index: number }>)
+      : [];
+
+    // Sem LLM disponível: fallback para confirmar tudo
+    if (!this.llmService?.isAvailable || top3.length === 0) {
+      await this.setSession(phoneNumber, 'idle');
+      if (top3.length === 0) {
+        const choices = await this.listTaskChoices(8);
+        await this.setSession(phoneNumber, 'open_tasks_list', { choices }, LONG_SESSION_TTL_MINUTES);
+        return { reply: this.renderOpenTaskList(choices) };
+      }
+      const result = await this.runCommand('foco confirmar');
+      return { reply: this.prettifyReply(result.reply) };
+    }
+
+    // Formatar top3 para o prompt
+    const top3Lines = top3.map((t) => `${t.index}. ${t.title}`).join('\n');
+
+    const prompt = `Você é o assistente do Operis. O usuário recebeu estas sugestões de foco para hoje:\n${top3Lines}\n\nO usuário respondeu: "${text}"\n\nClassifique a intenção e retorne JSON válido:\n{ "action": "confirm_all" | "confirm_subset" | "replace_with_text" | "show_all_tasks", "indices": [1,2,3], "text": "" }\n\nRegras:\n- confirm_all: usuário confirmou tudo (sim, pode, fechado, ok)\n- confirm_subset: usuário quer apenas alguns itens (ex: "só o 1", "1 e 2")\n- replace_with_text: usuário mencionou outra tarefa por nome\n- show_all_tasks: usuário quer ver todas as tarefas disponíveis\n\nRetorne APENAS o JSON, sem explicações.`;
+
+    let action: string = 'confirm_all';
+    let indices: number[] = [];
+    let replaceText = '';
+
+    try {
+      const raw = (await this.llmService.chatCompletion(prompt, 80)) ?? '{}';
+      const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      action = parsed.action ?? 'confirm_all';
+      indices = Array.isArray(parsed.indices) ? parsed.indices : [];
+      replaceText = typeof parsed.text === 'string' ? parsed.text : '';
+    } catch {
+      // Falha do LLM — confirmar tudo por padrão
+      action = 'confirm_all';
+    }
+
+    await this.setSession(phoneNumber, 'idle');
+
+    if (action === 'show_all_tasks') {
+      const choices = await this.listTaskChoices(18);
+      await this.setSession(phoneNumber, 'open_tasks_list', { choices }, LONG_SESSION_TTL_MINUTES);
+      return { reply: this.renderOpenTaskList(choices) };
+    }
+
+    if (action === 'replace_with_text' && replaceText) {
+      const tasks = await this.prisma.task.findMany({
+        where: {
+          archivedAt: null,
+          status: { in: ['hoje', 'andamento', 'backlog'] },
+          title: { contains: replaceText, mode: 'insensitive' }
+        },
+        take: 5,
+        include: { workspace: { select: { name: true } } }
+      });
+
+      if (tasks.length === 0) {
+        // Sem match — reenviar sugestões originais mantendo o estado
+        await this.setSession(phoneNumber, 'awaiting_focus_confirmation', payload as Prisma.JsonObject, 60);
+        const replyLines = ['Não encontrei nenhuma tarefa com esse nome. Aqui estão as sugestões originais:', ''];
+        top3.forEach((t) => replyLines.push(`${t.index}. ${t.title}`));
+        replyLines.push('', 'Confirmar? Responda sim, troque ou mande áudio.');
+        return { reply: replyLines.join('\n') };
+      }
+
+      if (tasks.length === 1) {
+        const result = await this.runCommand(`foco confirmar`);
+        return { reply: `✅ Foco definido: ${tasks[0].title}\n\n${this.prettifyReply(result.reply)}` };
+      }
+
+      // Múltiplos resultados — abrir lista para escolha
+      const choices = tasks.map((t, i) => ({
+        index: i + 1,
+        id: t.id,
+        title: t.title,
+        workspaceName: t.workspace?.name ?? null,
+        status: t.status,
+        priority: t.priority
+      }));
+      await this.setSession(phoneNumber, 'open_tasks_list', { choices }, LONG_SESSION_TTL_MINUTES);
+      return { reply: this.renderOpenTaskList(choices) };
+    }
+
+    if (action === 'confirm_subset' && indices.length > 0) {
+      const selected = top3.filter((t) => indices.includes(t.index));
+      const titles = selected.map((t) => `${t.index}. ${t.title}`).join('\n');
+      // Confirmar apenas os selecionados (outros ficam no backlog sem alteração)
+      return { reply: `✅ Foco definido:\n${titles}` };
+    }
+
+    // confirm_all (default)
+    const result = await this.runCommand('foco confirmar');
+    return { reply: this.prettifyReply(result.reply) };
+  }
+
   async handleInbound(phoneNumber: string, message: string): Promise<CommandResult> {
     const text = sanitizeTransportPrefix(message);
     if (!text) {
@@ -1867,6 +1967,11 @@ export class WhatsappConversationService {
       return {
         reply: `Não entendi essa mensagem.\n\n${this.menuText()}`
       };
+    }
+
+    // ── Estado: awaiting_focus_confirmation ──────────────────────────────────
+    if (session.state === 'awaiting_focus_confirmation') {
+      return this.processFocusConfirmation(phoneNumber, session, text);
     }
 
     if (session.state === 'menu') {
