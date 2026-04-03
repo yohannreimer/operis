@@ -76,7 +76,7 @@ export class WhatsappProactivityEngine {
     const candidates: ProactiveMessage[] = [];
 
     // Run all triggers
-    const [t1, t2, t3, t4, t5, t6, t7, t8, t9] = await Promise.all([
+    const [t1, t2, t3, t4, t5, t6, t7, t8] = await Promise.all([
       this.triggerTop3Unconfirmed(clock),
       this.triggerDeepWorkWindow(clock),
       this.triggerBlockedTaskA(clock),
@@ -84,11 +84,10 @@ export class WhatsappProactivityEngine {
       this.triggerTop3Complete(clock),
       this.triggerLongSilence(clock),
       this.triggerWeeklyReview(clock),
-      this.triggerHabitNightReminder(clock),
       this.triggerStreakCelebration(),
     ]);
 
-    for (const t of [t1, t2, t3, t4, t5, t6, t7, t8, t9]) {
+    for (const t of [t1, t2, t3, t4, t5, t6, t7, t8]) {
       if (t) candidates.push(t);
     }
 
@@ -470,43 +469,7 @@ export class WhatsappProactivityEngine {
     }
   }
 
-  // ─── Trigger 8 — Lembrete noturno de hábitos (21h) ───────────────────────
-
-  private async triggerHabitNightReminder(clock: LocalClock): Promise<ProactiveMessage | null> {
-    if (!this.atMinute(clock, 21, 0)) return null;
-    const key = `habit_night_reminder:${clock.dateKey}`;
-    if (!this.isCooledDown(key)) return null;
-
-    try {
-      const habitService = new HabitService(this.prisma);
-      const todayStats = await habitService.getTodayStats(clock.dateKey, 'legacy');
-      if (!todayStats.length) return null;
-
-      const incomplete = todayStats.filter(h => !h.isCompletedToday && h.type !== 'vice');
-      if (!incomplete.length) return null; // todos completos, não perturba
-
-      const done = todayStats.filter(h => h.isCompletedToday).length;
-      const total = todayStats.length;
-
-      const lines = [`🌙 Hábitos de hoje (${done} de ${total}):`];
-      const doneHabits = todayStats.filter(h => h.isCompletedToday);
-      if (doneHabits.length) lines.push('✓ ' + doneHabits.map(h => h.title).join(' · '));
-      for (const h of incomplete) {
-        if (h.type === 'quantitative' && h.currentLog && h.dailyTarget) {
-          lines.push(`○ ${h.title} (${h.currentLog.value}/${h.dailyTarget} ${h.unit ?? ''})`);
-        } else {
-          lines.push(`○ ${h.title}`);
-        }
-      }
-      lines.push('Ainda dá tempo de fechar o dia forte! 💪');
-
-      return { triggerId: key, priority: 8, message: lines.join('\n') };
-    } catch {
-      return null;
-    }
-  }
-
-  // ─── Trigger 9 — Celebração de streak (verifica a cada tick) ─────────────
+  // ─── Trigger 8 (was 9) — Celebração de streak (verifica a cada tick) ──────
 
   private readonly STREAK_CELEBRATION_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6h
   private lastStreakCelebration = 0;

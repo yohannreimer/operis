@@ -41,6 +41,7 @@ const envSchema = z.object({
   WHATSAPP_MORNING_TIME: optionalTime('08:00').default('08:00'),
   WHATSAPP_ACTIVE_WINDOW_START: optionalTime('08:00').default('08:00'),
   WHATSAPP_ACTIVE_WINDOW_END: optionalTime('21:00').default('21:00'),
+  WHATSAPP_EVENING_TIME: optionalTime('21:00').default('21:00'),
   WHATSAPP_UPCOMING_EVERY_MINUTES: z.coerce.number().int().min(5).max(120).default(20),
   WHATSAPP_UPCOMING_WITHIN_MINUTES: z.coerce.number().int().min(5).max(120).default(20)
 });
