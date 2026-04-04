@@ -2118,7 +2118,8 @@ export class WhatsappConversationService {
 
     if (inferredCommand === 'resumo') {
       const todayKey = this.todayDateKey();
-      const todayStart = new Date(`${todayKey}T00:00:00.000Z`);
+      // UTC-3 (Brasília): local midnight = UTC 03:00
+      const todayStart = new Date(`${todayKey}T03:00:00.000Z`);
       const result = await this.commandService.handleResumo(todayKey, todayStart);
       await this.setSession(phoneNumber, 'idle');
       return { reply: this.prettifyReply(result.reply) };

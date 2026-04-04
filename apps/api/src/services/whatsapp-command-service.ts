@@ -936,7 +936,7 @@ export class WhatsappCommandService {
         where: {
           status: 'feito',
           taskType: 'a',
-          updatedAt: { gte: todayStart }
+          completedAt: { gte: todayStart }
         }
       }),
       this.prisma.deepWorkSession.aggregate({
