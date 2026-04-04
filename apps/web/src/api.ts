@@ -228,6 +228,12 @@ export type NotesAudioTranscriptionResult = {
   durationMs?: number | null;
 };
 
+// ── Phone ─────────────────────────────────────────────────────────────────
+
+export type UserPhone = {
+  phoneNumber: string | null;
+};
+
 // ── Canvas ────────────────────────────────────────────────────────────────
 
 export interface DiagramData {
@@ -2035,4 +2041,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ overwrite }),
     }),
+  getUserPhone: () =>
+    apiRequest<UserPhone>('/user/phone'),
+  linkPhone: (phoneNumber: string) =>
+    apiRequest<{ ok: boolean }>('/user/phone', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber }),
+    }),
+  unlinkPhone: () =>
+    apiRequest<{ ok: boolean }>('/user/phone', { method: 'DELETE' }),
 };

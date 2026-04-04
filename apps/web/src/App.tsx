@@ -13,6 +13,7 @@ const InboxPage = lazy(() => import('./pages/inbox').then((module) => ({ default
 const NotasPage = lazy(() => import('./pages/notas').then((module) => ({ default: module.NotasPage })));
 const AgendaPage = lazy(() => import('./pages/agenda').then((module) => ({ default: module.AgendaPage })));
 const HabitosPage = lazy(() => import('./pages/habitos').then((module) => ({ default: module.HabitosPage })));
+const ConfiguracoesPage = lazy(() => import('./pages/configuracoes').then((module) => ({ default: module.ConfiguracoesPage })));
 
 function RouteFallback() {
   return (
@@ -54,6 +55,7 @@ export function App() {
                 <Route path="habitos" element={<HabitosPage />} />
                 <Route path="inbox" element={<InboxPage />} />
                 <Route path="gamificacao" element={<Navigate to="/" replace />} />
+                <Route path="configuracoes" element={<ConfiguracoesPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
