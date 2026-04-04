@@ -297,6 +297,10 @@ export class WhatsappConversationService {
       return '__open_habit_checkin__';
     }
 
+    if (/(fiz[\s-]?inbox|inbox[\s-]?feito|concluir[\s-]?inbox)/.test(normalized)) {
+      return '__open_inbox_complete__';
+    }
+
     return null;
   }
 
@@ -1913,6 +1917,36 @@ export class WhatsappConversationService {
     return { reply: streakLines.join('\n') };
   }
 
+  private async processInboxCompletePick(
+    phoneNumber: string,
+    session: WhatsappConversationSession,
+    text: string
+  ): Promise<CommandResult> {
+    const payload = this.readSessionPayload(session);
+    const items = Array.isArray(payload.items)
+      ? (payload.items as Array<{ index: number; id: string; content: string }>)
+      : [];
+
+    const choice = extractNumericChoice(text, 1, items.length);
+    const selected = items.find((item) => item.index === choice);
+
+    await this.setSession(phoneNumber, 'idle');
+
+    if (!selected) {
+      return { reply: 'Número inválido. Digite *inbox feito* para tentar novamente.' };
+    }
+
+    try {
+      await this.prisma.inboxItem.update({
+        where: { id: selected.id },
+        data: { status: 'feito' }
+      });
+      return { reply: `✅ *"${selected.content}"* marcado como feito na inbox!` };
+    } catch {
+      return { reply: 'Erro ao atualizar o item. Tente novamente.' };
+    }
+  }
+
   async handleInbound(phoneNumber: string, message: string): Promise<CommandResult> {
     const text = sanitizeTransportPrefix(message);
     if (!text) {
@@ -1963,6 +1997,10 @@ export class WhatsappConversationService {
 
     if (session?.state === 'habit_checkin') {
       return this.processHabitCheckin(phoneNumber, session, text);
+    }
+
+    if (session?.state === 'inbox_complete_pick') {
+      return this.processInboxCompletePick(phoneNumber, session, text);
     }
 
     const inferredCommand = this.inferNaturalCommand(text, session);
@@ -2028,6 +2066,38 @@ export class WhatsappConversationService {
       } catch {
         return { reply: 'Erro ao carregar hábitos. Tente novamente.' };
       }
+    }
+
+    if (inferredCommand === '__open_inbox_complete__') {
+      const items = await this.prisma.inboxItem.findMany({
+        where: { status: { in: ['pendente', 'agenda', 'aguardando'] } },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      });
+
+      if (items.length === 0) {
+        return { reply: '📥 Nenhum item aberto na inbox no momento.' };
+      }
+
+      const itemPayload = items.map((item, i) => ({
+        index: i + 1,
+        id: item.id,
+        content: item.content
+      }));
+
+      const lines = ['📥 *Inbox — itens abertos:*', ''];
+      for (const item of itemPayload) {
+        lines.push(`${item.index}. ${item.content}`);
+      }
+      lines.push('', 'Responda com o *número* do item para marcar como feito.');
+
+      await this.setSession(
+        phoneNumber,
+        'inbox_complete_pick',
+        { items: itemPayload } as Prisma.JsonObject,
+        SESSION_TTL_MINUTES
+      );
+      return { reply: lines.join('\n') };
     }
 
     if (inferredCommand === 'foco') {
