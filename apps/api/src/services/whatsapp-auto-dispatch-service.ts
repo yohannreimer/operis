@@ -321,7 +321,7 @@ export class WhatsappAutoDispatchService {
             await this.conversationService.setSessionPublic(
               env.DEFAULT_PHONE_NUMBER,
               'idle',
-              { lastProactiveContext: proactiveMessage.triggerId } as Prisma.JsonObject,
+              null,
               45
             );
           } catch {
