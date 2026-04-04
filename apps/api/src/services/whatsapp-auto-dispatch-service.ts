@@ -226,6 +226,56 @@ export class WhatsappAutoDispatchService {
         this.logger.info({ date: clock.dateKey, sent: messages.length }, 'WhatsApp briefing matinal enviado.');
       }
 
+      // ── Check-in noturno de hábitos (scheduled, before active window guard) ──
+      const eveningMinutes = this.eveningTime.hour * 60 + this.eveningTime.minute;
+      const eveningKey = `habit_checkin:${clock.dateKey}`;
+      if (clock.totalMinutes >= eveningMinutes && clock.totalMinutes <= eveningMinutes + 5 && !this.wasSent(eveningKey)) {
+        try {
+          const habitService = new HabitService(this.prisma);
+          const todayStats = await habitService.getTodayStats(clock.dateKey, 'legacy');
+
+          if (todayStats.length > 0) {
+            // Montar lista com status
+            const habitPayload = todayStats
+              .filter((h) => h.type !== 'vice')
+              .map((h, i) => ({
+                index: i + 1,
+                id: h.id,
+                title: h.title,
+                alreadyDone: h.isCompletedToday ?? false
+              }));
+
+            if (habitPayload.length > 0) {
+              const lines = ['🌙 *Fim de dia. Quais hábitos você fez hoje?*', ''];
+              for (const h of habitPayload) {
+                lines.push(`${h.index}. ${h.alreadyDone ? '✅' : '☐'} ${h.title}`);
+              }
+              lines.push('', 'Responda com os números. Ex: *1 3*');
+              lines.push('Ou *todos* para marcar todos, *nenhum* para pular.');
+
+              await this.enqueueMessage(lines.join('\n'));
+              this.rememberSent(eveningKey);
+              this.logger.info({ date: clock.dateKey }, 'Check-in noturno de hábitos enviado.');
+
+              if (this.conversationService) {
+                try {
+                  await this.conversationService.setSessionPublic(
+                    env.DEFAULT_PHONE_NUMBER,
+                    'habit_checkin',
+                    { habits: habitPayload, date: clock.dateKey } as Prisma.JsonObject,
+                    120
+                  );
+                } catch (err) {
+                  this.logger.warn({ err }, 'Falha ao criar sessão habit_checkin pós check-in.');
+                }
+              }
+            }
+          }
+        } catch (err) {
+          this.logger.warn({ err }, 'Falha ao enviar check-in noturno de hábitos.');
+        }
+      }
+
       if (!this.isInsideActiveWindow(clock)) {
         return;
       }
@@ -257,53 +307,6 @@ export class WhatsappAutoDispatchService {
           this.logger.info({ date: clock.dateKey }, 'XP de vícios (dias limpos) processado.');
         } catch (err) {
           this.logger.warn({ err }, 'Falha ao processar XP de vícios.');
-        }
-      }
-
-      // ── Check-in noturno de hábitos ──────────────────────────────────────────
-      const eveningMinutes = this.eveningTime.hour * 60 + this.eveningTime.minute;
-      const eveningKey = `habit_checkin:${clock.dateKey}`;
-      if (clock.totalMinutes >= eveningMinutes && clock.totalMinutes <= eveningMinutes + 5 && !this.wasSent(eveningKey)) {
-        try {
-          const habitService = new HabitService(this.prisma);
-          const todayStats = await habitService.getTodayStats(clock.dateKey, 'legacy');
-
-          if (todayStats.length > 0) {
-            // Montar lista com status
-            const habitPayload = todayStats
-              .filter((h) => h.type !== 'vice')
-              .map((h, i) => ({
-                index: i + 1,
-                id: h.id,
-                title: h.title,
-                alreadyDone: h.isCompletedToday ?? false
-              }));
-
-            if (habitPayload.length > 0) {
-              const lines = ['🌙 *Fim de dia. Quais hábitos você fez hoje?*', ''];
-              for (const h of habitPayload) {
-                lines.push(`${h.index}. ${h.alreadyDone ? '✅' : '☐'} ${h.title}`);
-              }
-              lines.push('', 'Responda com os números. Ex: *1 3*');
-              lines.push('Ou *todos* para marcar todos, *nenhum* para pular.');
-
-              await this.enqueueMessage(lines.join('\n'));
-
-              if (this.conversationService) {
-                await this.conversationService.setSessionPublic(
-                  env.DEFAULT_PHONE_NUMBER,
-                  'habit_checkin',
-                  { habits: habitPayload, date: clock.dateKey } as Prisma.JsonObject,
-                  120
-                );
-              }
-
-              this.rememberSent(eveningKey);
-              this.logger.info({ date: clock.dateKey }, 'Check-in noturno de hábitos enviado.');
-            }
-          }
-        } catch (err) {
-          this.logger.warn({ err }, 'Falha ao enviar check-in noturno de hábitos.');
         }
       }
 
