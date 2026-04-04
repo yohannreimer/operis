@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient, WhatsappConversationSession } from '@prisma/client';
+import { env } from '../config.js';
 import { HabitService } from './habit-service.js';
 
 import { CommandResult, WhatsappCommandService } from './whatsapp-command-service.js';
@@ -310,37 +311,36 @@ export class WhatsappConversationService {
 
   private menuText() {
     return [
-      '🚀 *Execution OS*',
+      '🚀 *Operis*',
       '',
-      '*Menu rápido*',
       '1) 🎯 Foco do dia',
       '2) ✅ Tarefas de hoje',
       '3) 🧠 Deep Work',
       '4) ⏰ Prazos e follow-ups',
       '5) 📥 Capturar inbox',
-      '6) ❓ Como usar',
+      '6) 🌱 Hábitos',
       '7) 📋 Tarefas abertas',
       '8) 🗂️ Notas',
       '',
-      'Responda com *1-8* ou digite *sair*.'
+      'resumo • fiz inbox • sair'
     ].join('\n');
   }
 
   private helpText() {
     return [
-      '❓ *Como usar (rápido)*',
+      '❓ *Como usar*',
       '',
-      '• *menu* -> abre o painel',
-      '• *foco* -> mostra prioridade do dia',
-      '• *tarefas* -> lista tarefas de hoje',
-      '• *abertas* -> tarefas abertas (visão geral)',
-      '• *deep iniciar <id>* -> inicia deep work',
-      '• *deep parar* -> encerra sessão ativa',
-      '• *deep concluir* -> encerra e conclui tarefa',
-      '• *capturar <texto>* -> manda para inbox',
-      '• *notas* -> abre notas no WhatsApp',
+      '• *foco* → prioridade do dia',
+      '• *tarefas* → tarefas de hoje',
+      '• *abertas* → todas as tarefas abertas',
+      '• *hábitos* → check-in de hábitos',
+      '• *resumo* → resumo do dia (tarefas, deep work, streak)',
+      '• *capturar <texto>* → manda para inbox',
+      '• *fiz inbox* → marca item da inbox como feito',
+      '• *notas* → abre notas',
+      '• *deep iniciar/parar/concluir* → sessão de deep work',
       '',
-      '💡 Dica: no fluxo guiado você pode escolher por *número*.'
+      '💡 No fluxo guiado você pode escolher por número.'
     ].join('\n');
   }
 
@@ -844,11 +844,36 @@ export class WhatsappConversationService {
       };
     }
 
-    if (numericChoice === 6 || normalized === 'AJUDA') {
-      await this.setSession(phoneNumber, 'menu');
-      return {
-        reply: this.helpText()
-      };
+    if (numericChoice === 6 || normalized === 'HABITOS' || normalized === 'HABITO') {
+      try {
+        const habitService = new HabitService(this.prisma);
+        const todayKey = this.todayDateKey();
+        const todayStats = await habitService.getTodayStats(todayKey, env.WHATSAPP_CLERK_USER_ID);
+        const habitPayload = todayStats
+          .filter((h) => h.type !== 'vice')
+          .map((h, i) => ({
+            index: i + 1,
+            id: h.id,
+            title: h.title,
+            alreadyDone: h.isCompletedToday ?? false
+          }));
+
+        if (habitPayload.length === 0) {
+          return { reply: '📋 Nenhum hábito configurado ainda. Acesse /habitos no app para criar.' };
+        }
+
+        const lines = ['🌱 *Seus hábitos de hoje:*', ''];
+        for (const h of habitPayload) {
+          lines.push(`${h.index}. ${h.alreadyDone ? '✅' : '☐'} ${h.title}`);
+        }
+        lines.push('', 'Responda com os números. Ex: *1 3*');
+        lines.push('Ou *todos* para marcar todos, *nenhum* para pular.');
+
+        await this.setSession(phoneNumber, 'habit_checkin', { habits: habitPayload, date: todayKey } as Prisma.JsonObject, 120);
+        return { reply: lines.join('\n') };
+      } catch {
+        return { reply: 'Erro ao carregar hábitos. Tente novamente.' };
+      }
     }
 
     if (numericChoice === 7 || normalized === 'ABERTAS') {
@@ -1975,7 +2000,7 @@ export class WhatsappConversationService {
     if (this.isGreeting(text)) {
       await this.setSession(phoneNumber, 'menu');
       return {
-        reply: `🤝 Bem-vindo ao assistente do Execution OS.\n\n${this.menuText()}`
+        reply: `👋 Olá! Aqui é o Operis.\n\n${this.menuText()}`
       };
     }
 
@@ -2056,7 +2081,7 @@ export class WhatsappConversationService {
       try {
         const habitService = new HabitService(this.prisma);
         const todayKey = this.todayDateKey();
-        const todayStats = await habitService.getTodayStats(todayKey, 'legacy');
+        const todayStats = await habitService.getTodayStats(todayKey, env.WHATSAPP_CLERK_USER_ID);
         const habitPayload = todayStats
           .filter((h) => h.type !== 'vice')
           .map((h, i) => ({

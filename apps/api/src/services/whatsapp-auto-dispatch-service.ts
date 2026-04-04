@@ -232,7 +232,7 @@ export class WhatsappAutoDispatchService {
       if (clock.totalMinutes >= eveningMinutes && clock.totalMinutes <= eveningMinutes + 5 && !this.wasSent(eveningKey)) {
         try {
           const habitService = new HabitService(this.prisma);
-          const todayStats = await habitService.getTodayStats(clock.dateKey, 'legacy');
+          const todayStats = await habitService.getTodayStats(clock.dateKey, env.WHATSAPP_CLERK_USER_ID);
 
           if (todayStats.length > 0) {
             // Montar lista com status
