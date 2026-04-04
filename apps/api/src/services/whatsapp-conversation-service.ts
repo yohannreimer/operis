@@ -1231,6 +1231,18 @@ export class WhatsappConversationService {
         return { reply: this.menuText() };
       }
 
+      // fiz N dentro de lista de tarefas — marca tarefa pelo índice
+      const fizMatch = text.trim().match(/^fiz\s+(\d+)$/i);
+      if (fizMatch) {
+        const idx = Number(fizMatch[1]);
+        const taskId = this.resolveChoiceToken(String(idx), payload);
+        if (taskId) {
+          const result = await this.runCommand(`fiz ${taskId}`);
+          await this.setSession(phoneNumber, 'idle');
+          return { reply: this.prettifyReply(result.reply) };
+        }
+      }
+
       const selectedNumber = extractLeadingInteger(text);
       const choices = Array.isArray(payload.choices) ? (payload.choices as TaskChoice[]) : [];
       const selected = selectedNumber
