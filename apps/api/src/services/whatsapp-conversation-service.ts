@@ -301,6 +301,10 @@ export class WhatsappConversationService {
       return '__open_inbox_complete__';
     }
 
+    if (/^resumo$/.test(normalized)) {
+      return 'resumo';
+    }
+
     return null;
   }
 
@@ -2098,6 +2102,14 @@ export class WhatsappConversationService {
         SESSION_TTL_MINUTES
       );
       return { reply: lines.join('\n') };
+    }
+
+    if (inferredCommand === 'resumo') {
+      const todayKey = this.todayDateKey();
+      const todayStart = new Date(`${todayKey}T00:00:00.000Z`);
+      const result = await this.commandService.handleResumo(todayKey, todayStart);
+      await this.setSession(phoneNumber, 'idle');
+      return { reply: this.prettifyReply(result.reply) };
     }
 
     if (inferredCommand === 'foco') {

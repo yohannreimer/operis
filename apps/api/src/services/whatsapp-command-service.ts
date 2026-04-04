@@ -929,4 +929,38 @@ export class WhatsappCommandService {
 
     return `✅ *${commitment.title}* remarcado — ${details.join(', ')}.`;
   }
+
+  async handleResumo(todayDateKey: string, todayStart: Date): Promise<CommandResult> {
+    const [taskCount, deepWork, habitLogs, totalHabits, gamification] = await Promise.all([
+      this.prisma.task.count({
+        where: {
+          status: 'feito',
+          taskType: 'a',
+          updatedAt: { gte: todayStart }
+        }
+      }),
+      this.prisma.deepWorkSession.aggregate({
+        _sum: { actualMinutes: true },
+        where: { startedAt: { gte: todayStart } }
+      }),
+      this.prisma.habitLog.findMany({
+        where: { date: todayDateKey }
+      }),
+      this.prisma.habit.count({ where: { status: 'ativo' } }),
+      this.prisma.gamificationState.findFirst({ orderBy: { lastUpdate: 'desc' } })
+    ]);
+
+    const deepMinutes = deepWork._sum.actualMinutes ?? 0;
+    const streakDays = gamification?.streakDays ?? 0;
+
+    const lines = [
+      '📊 *Resumo de hoje*',
+      `✅ Tarefas A concluídas: ${taskCount}`,
+      `🧠 Deep Work: ${deepMinutes}min`,
+      `🌱 Hábitos: ${habitLogs.length}/${totalHabits}`,
+      `🔥 Streak: ${streakDays} dias`
+    ];
+
+    return { reply: lines.join('\n') };
+  }
 }
