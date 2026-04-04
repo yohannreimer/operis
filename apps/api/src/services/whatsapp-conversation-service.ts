@@ -5,7 +5,7 @@ import { CommandResult, WhatsappCommandService } from './whatsapp-command-servic
 import { WhatsappLLMService, LLMIntent, LLMContext } from './whatsapp-llm-service.js';
 import { WhatsappBriefingService } from './whatsapp-briefing-service.js';
 
-type ConversationState =
+export type ConversationState =
   | 'idle'
   | 'menu'
   | 'awaiting_focus_confirmation'
@@ -291,6 +291,10 @@ export class WhatsappConversationService {
     const reagendarMatch = normalized.match(/(reagendar|remarcar)\s+([a-z0-9-]{4,})\s+(\d{1,2}:\d{2})/i);
     if (reagendarMatch) {
       return `reagendar ${reagendarMatch[2]} ${reagendarMatch[3]}`;
+    }
+
+    if (/(habitos?|check[\s-]?habitos?|registrar[\s-]?habitos?|fiz[\s-]?habitos?)/.test(normalized)) {
+      return '__open_habit_checkin__';
     }
 
     return null;
@@ -1849,6 +1853,66 @@ export class WhatsappConversationService {
     return { reply: this.prettifyReply(result.reply) };
   }
 
+  private async processHabitCheckin(
+    phoneNumber: string,
+    session: WhatsappConversationSession,
+    text: string
+  ): Promise<CommandResult> {
+    const payload = this.readSessionPayload(session);
+    const habits = Array.isArray(payload.habits)
+      ? (payload.habits as Array<{ index: number; id: string; title: string; alreadyDone: boolean }>)
+      : [];
+    const dateKey = typeof payload.date === 'string' ? payload.date : this.todayDateKey();
+
+    if (habits.length === 0) {
+      await this.setSession(phoneNumber, 'idle');
+      return { reply: 'Não consegui carregar seus hábitos. Digite *hábitos* para tentar novamente.' };
+    }
+
+    const normalized = normalizeLower(text);
+
+    if (normalized === 'nenhum' || normalized === '0') {
+      await this.setSession(phoneNumber, 'idle');
+      return { reply: 'Ok, até amanhã! 🌙' };
+    }
+
+    const habitsToMark = normalized === 'todos'
+      ? habits.filter((h) => !h.alreadyDone)
+      : habits.filter((h) =>
+          extractChoiceNumbers(text, 1, habits.length).includes(h.index)
+        );
+
+    if (habitsToMark.length === 0) {
+      await this.setSession(phoneNumber, 'idle');
+      return { reply: 'Nenhum hábito válido selecionado. Até amanhã! 🌙' };
+    }
+
+    const habitService = new HabitService(this.prisma);
+    const streakLines: string[] = ['✅ Registrado!'];
+
+    for (const habit of habitsToMark) {
+      await this.prisma.habitLog.upsert({
+        where: { habitId_date: { habitId: habit.id, date: dateKey } },
+        create: { habitId: habit.id, date: dateKey, value: 1 },
+        update: { value: 1 }
+      });
+
+      try {
+        const streak = await habitService.calculateStreak(habit.id, dateKey, 'binary');
+        if (streak >= 2) {
+          streakLines.push(`• ${habit.title} — ${streak} dias seguidos 🔥`);
+        } else {
+          streakLines.push(`• ${habit.title} — 1º dia, continue!`);
+        }
+      } catch {
+        streakLines.push(`• ${habit.title} ✓`);
+      }
+    }
+
+    await this.setSession(phoneNumber, 'idle');
+    return { reply: streakLines.join('\n') };
+  }
+
   async handleInbound(phoneNumber: string, message: string): Promise<CommandResult> {
     const text = sanitizeTransportPrefix(message);
     if (!text) {
@@ -1897,6 +1961,10 @@ export class WhatsappConversationService {
       return this.processFocusConfirmation(phoneNumber, session, text);
     }
 
+    if (session?.state === 'habit_checkin') {
+      return this.processHabitCheckin(phoneNumber, session, text);
+    }
+
     const inferredCommand = this.inferNaturalCommand(text, session);
 
     if (inferredCommand === '__open_menu__') {
@@ -1928,6 +1996,38 @@ export class WhatsappConversationService {
           'Responda com: *<número> [min]*. Exemplo: 1 45\nPara voltar: *menu* ou *cancelar*.'
         )
       };
+    }
+
+    if (inferredCommand === '__open_habit_checkin__') {
+      try {
+        const habitService = new HabitService(this.prisma);
+        const todayKey = this.todayDateKey();
+        const todayStats = await habitService.getTodayStats(todayKey, 'legacy');
+        const habitPayload = todayStats
+          .filter((h) => h.type !== 'vice')
+          .map((h, i) => ({
+            index: i + 1,
+            id: h.id,
+            title: h.title,
+            alreadyDone: h.isCompletedToday ?? false
+          }));
+
+        if (habitPayload.length === 0) {
+          return { reply: '📋 Nenhum hábito configurado ainda. Acesse /habitos no app para criar.' };
+        }
+
+        const lines = ['🌙 *Seus hábitos de hoje:*', ''];
+        for (const h of habitPayload) {
+          lines.push(`${h.index}. ${h.alreadyDone ? '✅' : '☐'} ${h.title}`);
+        }
+        lines.push('', 'Responda com os números. Ex: *1 3*');
+        lines.push('Ou *todos* para marcar todos, *nenhum* para pular.');
+
+        await this.setSession(phoneNumber, 'habit_checkin', { habits: habitPayload, date: todayKey } as Prisma.JsonObject, 120);
+        return { reply: lines.join('\n') };
+      } catch {
+        return { reply: 'Erro ao carregar hábitos. Tente novamente.' };
+      }
     }
 
     if (inferredCommand === 'foco') {
