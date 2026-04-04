@@ -29,6 +29,8 @@ import { WhatsappConversationService } from './services/whatsapp-conversation-se
 import { WhatsappAutoDispatchService } from './services/whatsapp-auto-dispatch-service.js';
 import { WhatsappLLMService } from './services/whatsapp-llm-service.js';
 import { InboxWatcherService } from './services/inbox-watcher-service.js';
+import { UserPhoneService } from './services/user-phone-service.js';
+import { registerUserPhoneRoutes } from './routes/user-phone.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -85,6 +87,9 @@ export async function buildApp() {
   app.register(commitmentsRoutes, { prisma });
   registerHabitRoutes(app, prisma);
   registerCanvasRoutes(app, prisma);
+
+  const userPhoneService = new UserPhoneService(prisma);
+  registerUserPhoneRoutes(app, userPhoneService);
 
   const inboxWatcherService = new InboxWatcherService(prisma);
   inboxWatcherService.start();

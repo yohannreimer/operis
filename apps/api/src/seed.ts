@@ -34,6 +34,25 @@ async function main() {
     });
   }
 
+  // Seed UserPhone from environment variables
+  const defaultPhone = process.env.DEFAULT_PHONE_NUMBER;
+  const whatsappClerkUserId = process.env.WHATSAPP_CLERK_USER_ID;
+
+  if (defaultPhone && whatsappClerkUserId) {
+    const normalizedPhone = defaultPhone.replace(/\D/g, '');
+    await prisma.userPhone.upsert({
+      where: { clerkUserId: whatsappClerkUserId },
+      update: { phoneNumber: normalizedPhone },
+      create: {
+        clerkUserId: whatsappClerkUserId,
+        phoneNumber: normalizedPhone,
+      },
+    });
+    console.log(`UserPhone seeded: ${normalizedPhone} → ${whatsappClerkUserId}`);
+  } else {
+    console.log('Skipping UserPhone seed: DEFAULT_PHONE_NUMBER or WHATSAPP_CLERK_USER_ID not set.');
+  }
+
   console.log('Seed concluído com workspaces padrão.');
 }
 
