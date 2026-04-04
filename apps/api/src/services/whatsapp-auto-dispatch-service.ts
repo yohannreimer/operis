@@ -315,6 +315,20 @@ export class WhatsappAutoDispatchService {
 
       if (proactiveMessage) {
         await this.enqueueMessage(proactiveMessage.message);
+
+        if (this.conversationService) {
+          try {
+            await this.conversationService.setSessionPublic(
+              env.DEFAULT_PHONE_NUMBER,
+              'idle',
+              { lastProactiveContext: proactiveMessage.triggerId } as Prisma.JsonObject,
+              45
+            );
+          } catch {
+            // Falha silenciosa — não crítico
+          }
+        }
+
         this.logger.info(
           { triggerId: proactiveMessage.triggerId, date: clock.dateKey },
           'WhatsApp proactive trigger disparado.'
