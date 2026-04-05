@@ -83,12 +83,12 @@ export async function buildApp() {
   registerInboxRoutes(app, prisma, deepWorkService);
   registerNoteRoutes(app, prisma);
   registerGamificationRoutes(app, gamificationService);
-  registerWebhookRoutes(app, whatsappCommandService, whatsappConversationService, prisma);
+  const userPhoneService = new UserPhoneService(prisma);
+  registerWebhookRoutes(app, whatsappCommandService, whatsappConversationService, prisma, userPhoneService);
   app.register(commitmentsRoutes, { prisma });
   registerHabitRoutes(app, prisma);
   registerCanvasRoutes(app, prisma);
 
-  const userPhoneService = new UserPhoneService(prisma);
   registerUserPhoneRoutes(app, userPhoneService);
 
   const inboxWatcherService = new InboxWatcherService(prisma);

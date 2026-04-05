@@ -9,6 +9,7 @@ import { WhatsappCommandService } from '../services/whatsapp-command-service.js'
 import { WhatsappConversationService } from '../services/whatsapp-conversation-service.js';
 import { WhatsappAudioService } from '../services/whatsapp-audio-service.js';
 import { PrismaClient } from '@prisma/client';
+import { UserPhoneService } from '../services/user-phone-service.js';
 
 type NormalizedWebhookPayload = {
   from: string;
@@ -254,7 +255,8 @@ export function registerWebhookRoutes(
   app: FastifyInstance,
   commandService: WhatsappCommandService,
   conversationService: WhatsappConversationService,
-  prisma: PrismaClient
+  prisma: PrismaClient,
+  userPhoneService: UserPhoneService
 ) {
   const optionalNonEmptyString = z.preprocess((value) => {
     if (typeof value === 'string') {
@@ -371,9 +373,16 @@ export function registerWebhookRoutes(
       return reply.code(202).send({ ok: true, queued: true });
     }
 
+    // ── Resolve user from phone number ────────────────────────────────────────
+    const clerkUserId = await userPhoneService.findUserByPhone(payload.from);
+    if (!clerkUserId) {
+      // Unknown number — silently acknowledge to WhatsApp provider, no reply
+      return reply.code(200).send({ ok: true, skipped: 'unknown_phone' });
+    }
+
     let commandResult: Awaited<ReturnType<typeof conversationService.handleInbound>>;
     try {
-      commandResult = await conversationService.handleInbound(payload.from, finalMessage);
+      commandResult = await conversationService.handleInbound(payload.from, finalMessage, clerkUserId);
     } catch (error) {
       const message =
         error instanceof Error && error.message.trim().length > 0
