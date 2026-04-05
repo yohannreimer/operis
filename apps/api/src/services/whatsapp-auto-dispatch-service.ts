@@ -158,9 +158,9 @@ export class WhatsappAutoDispatchService {
     }
   }
 
-  private async enqueueMessage(message: string) {
+  private async enqueueMessage(message: string, phoneNumber: string) {
     await publishEvent(queueNames.sendWhatsappMessage, {
-      to: env.DEFAULT_PHONE_NUMBER,
+      to: phoneNumber,
       message
     });
   }
@@ -170,134 +170,19 @@ export class WhatsappAutoDispatchService {
       const clock = formatNowToClock(new Date(), this.timezone);
       this.compactSentKeys(clock.dateKey);
 
-      const morningMinutes = this.morningTime.hour * 60 + this.morningTime.minute;
-      const morningKey = `morning:${clock.dateKey}`;
+      // Fan-out: one iteration per registered user
+      const users = await this.prisma.userPhone.findMany();
 
-      // ── Morning briefing ───────────────────────────────────────────────────
-      if (clock.totalMinutes >= morningMinutes && !this.wasSent(morningKey)) {
-        const messages: string[] = [];
-
-        // Try intelligent briefing first, fallback to legacy
+      for (const user of users) {
         try {
-          const intelligentMessages = await this.briefingService.buildIntelligentBriefing(
-            clock.dateKey
-          );
-          messages.push(...intelligentMessages);
-        } catch {
-          // Fallback to legacy briefing
-          const morning = await this.commandService.buildMorningBriefing({
-            date: clock.dateKey
-          });
-          messages.push(morning);
-        }
-
-        // Add due/followup digests
-        const dueDigest = await this.commandService.buildDueReminderDigest({
-          date: clock.dateKey
-        });
-        if (dueDigest) messages.push(dueDigest);
-
-        const followupDigest = await this.commandService.buildWaitingFollowupDigest({
-          date: clock.dateKey
-        });
-        if (followupDigest) messages.push(followupDigest);
-
-        for (const message of messages) {
-          await this.enqueueMessage(message);
-        }
-
-        // Criar sessão awaiting_focus_confirmation para capturar resposta ao foco sugerido
-        if (this.conversationService) {
-          try {
-            const top3 = await this.briefingService.getTop3ForDate(clock.dateKey);
-            await this.conversationService.setSessionPublic(
-              env.DEFAULT_PHONE_NUMBER,
-              'awaiting_focus_confirmation',
-              { top3 } as Prisma.JsonObject,
-              60
-            );
-            this.logger.info({ date: clock.dateKey }, 'Sessão awaiting_focus_confirmation criada após briefing.');
-          } catch (err) {
-            this.logger.warn({ err }, 'Falha ao criar sessão pós-briefing.');
-          }
-        }
-
-        this.rememberSent(morningKey);
-        this.logger.info({ date: clock.dateKey, sent: messages.length }, 'WhatsApp briefing matinal enviado.');
-      }
-
-      // ── Check-in noturno de hábitos (scheduled, before active window guard) ──
-      const eveningMinutes = this.eveningTime.hour * 60 + this.eveningTime.minute;
-      const eveningKey = `habit_checkin:${clock.dateKey}`;
-      if (clock.totalMinutes >= eveningMinutes && clock.totalMinutes <= eveningMinutes + 5 && !this.wasSent(eveningKey)) {
-        try {
-          const habitService = new HabitService(this.prisma);
-          const todayStats = await habitService.getTodayStats(clock.dateKey, env.WHATSAPP_CLERK_USER_ID);
-
-          if (todayStats.length > 0) {
-            // Montar lista com status
-            const habitPayload = todayStats
-              .filter((h) => h.type !== 'vice')
-              .map((h, i) => ({
-                index: i + 1,
-                id: h.id,
-                title: h.title,
-                alreadyDone: h.isCompletedToday ?? false
-              }));
-
-            if (habitPayload.length > 0) {
-              const lines = ['🌙 *Fim de dia. Quais hábitos você fez hoje?*', ''];
-              for (const h of habitPayload) {
-                lines.push(`${h.index}. ${h.alreadyDone ? '✅' : '☐'} ${h.title}`);
-              }
-              lines.push('', 'Responda com os números. Ex: *1 3*');
-              lines.push('Ou *todos* para marcar todos, *nenhum* para pular.');
-
-              await this.enqueueMessage(lines.join('\n'));
-              this.rememberSent(eveningKey);
-              this.logger.info({ date: clock.dateKey }, 'Check-in noturno de hábitos enviado.');
-
-              if (this.conversationService) {
-                try {
-                  await this.conversationService.setSessionPublic(
-                    env.DEFAULT_PHONE_NUMBER,
-                    'habit_checkin',
-                    { habits: habitPayload, date: clock.dateKey } as Prisma.JsonObject,
-                    120
-                  );
-                } catch (err) {
-                  this.logger.warn({ err }, 'Falha ao criar sessão habit_checkin pós check-in.');
-                }
-              }
-            }
-          }
+          await this.tickForUser(clock, user.phoneNumber, user.clerkUserId);
         } catch (err) {
-          this.logger.warn({ err }, 'Falha ao enviar check-in noturno de hábitos.');
+          this.logger.error({ err, phoneNumber: user.phoneNumber }, 'Falha no tickForUser.');
         }
       }
 
-      if (!this.isInsideActiveWindow(clock)) {
-        return;
-      }
-
-      // ── Upcoming block digest (existing behavior) ──────────────────────────
-      const upcomingBucket = Math.floor(clock.totalMinutes / this.upcomingEveryMinutes);
-      const upcomingKey = `upcoming:${clock.dateKey}:${upcomingBucket}`;
-      if (!this.wasSent(upcomingKey)) {
-        const upcomingDigest = await this.commandService.buildUpcomingBlockDigest({
-          date: clock.dateKey,
-          withinMinutes: this.upcomingWithinMinutes
-        });
-
-        if (upcomingDigest) {
-          await this.enqueueMessage(upcomingDigest);
-          this.logger.info({ date: clock.dateKey, bucket: upcomingBucket }, 'WhatsApp upcoming block enviado.');
-        }
-
-        this.rememberSent(upcomingKey);
-      }
-
-      // ── Job noturno 23h — XP de vícios (dias limpos) ──────────────────────
+      // ── Global operations (not per-user) ────────────────────────────────────
+      // Vice XP: runs once at 23h regardless of number of users.
       const viceXpKey = `vice_xp:${clock.dateKey}`;
       if (clock.hour === 23 && !this.wasSent(viceXpKey)) {
         try {
@@ -309,33 +194,147 @@ export class WhatsappAutoDispatchService {
           this.logger.warn({ err }, 'Falha ao processar XP de vícios.');
         }
       }
-
-      // ── Proactivity engine ─────────────────────────────────────────────────
-      const proactiveMessage = await this.proactivityEngine.evaluate(clock, null, env.WHATSAPP_CLERK_USER_ID);
-
-      if (proactiveMessage) {
-        await this.enqueueMessage(proactiveMessage.message);
-
-        if (this.conversationService) {
-          try {
-            await this.conversationService.setSessionPublic(
-              env.DEFAULT_PHONE_NUMBER,
-              'idle',
-              null,
-              45
-            );
-          } catch {
-            // Falha silenciosa — não crítico
-          }
-        }
-
-        this.logger.info(
-          { triggerId: proactiveMessage.triggerId, date: clock.dateKey },
-          'WhatsApp proactive trigger disparado.'
-        );
-      }
     } catch (error) {
       this.logger.error({ error }, 'Falha no tick de auto-dispatch WhatsApp.');
+    }
+  }
+
+  private async tickForUser(clock: LocalClock, phoneNumber: string, clerkUserId: string) {
+    const morningMinutes = this.morningTime.hour * 60 + this.morningTime.minute;
+    const morningKey = `morning:${clock.dateKey}:${clerkUserId}`;
+
+    // ── Morning briefing ─────────────────────────────────────────────────────
+    if (clock.totalMinutes >= morningMinutes && !this.wasSent(morningKey)) {
+      const messages: string[] = [];
+
+      try {
+        const intelligentMessages = await this.briefingService.buildIntelligentBriefing(clock.dateKey);
+        messages.push(...intelligentMessages);
+      } catch {
+        const morning = await this.commandService.buildMorningBriefing({ date: clock.dateKey });
+        messages.push(morning);
+      }
+
+      const dueDigest = await this.commandService.buildDueReminderDigest({ date: clock.dateKey });
+      if (dueDigest) messages.push(dueDigest);
+
+      const followupDigest = await this.commandService.buildWaitingFollowupDigest({ date: clock.dateKey });
+      if (followupDigest) messages.push(followupDigest);
+
+      for (const message of messages) {
+        await this.enqueueMessage(message, phoneNumber);
+      }
+
+      if (this.conversationService) {
+        try {
+          const top3 = await this.briefingService.getTop3ForDate(clock.dateKey);
+          await this.conversationService.setSessionPublic(
+            phoneNumber,
+            'awaiting_focus_confirmation',
+            { top3 } as Prisma.JsonObject,
+            60
+          );
+          this.logger.info({ date: clock.dateKey, phoneNumber }, 'Sessão awaiting_focus_confirmation criada após briefing.');
+        } catch (err) {
+          this.logger.warn({ err }, 'Falha ao criar sessão pós-briefing.');
+        }
+      }
+
+      this.rememberSent(morningKey);
+      this.logger.info({ date: clock.dateKey, phoneNumber, sent: messages.length }, 'WhatsApp briefing matinal enviado.');
+    }
+
+    // ── Check-in noturno de hábitos ──────────────────────────────────────────
+    const eveningMinutes = this.eveningTime.hour * 60 + this.eveningTime.minute;
+    const eveningKey = `habit_checkin:${clock.dateKey}:${clerkUserId}`;
+    if (clock.totalMinutes >= eveningMinutes && clock.totalMinutes <= eveningMinutes + 5 && !this.wasSent(eveningKey)) {
+      try {
+        const habitService = new HabitService(this.prisma);
+        const todayStats = await habitService.getTodayStats(clock.dateKey, clerkUserId);
+
+        if (todayStats.length > 0) {
+          const habitPayload = todayStats
+            .filter((h) => h.type !== 'vice')
+            .map((h, i) => ({
+              index: i + 1,
+              id: h.id,
+              title: h.title,
+              alreadyDone: h.isCompletedToday ?? false
+            }));
+
+          if (habitPayload.length > 0) {
+            const lines = ['🌙 *Fim de dia. Quais hábitos você fez hoje?*', ''];
+            for (const h of habitPayload) {
+              lines.push(`${h.index}. ${h.alreadyDone ? '✅' : '☐'} ${h.title}`);
+            }
+            lines.push('', 'Responda com os números. Ex: *1 3*');
+            lines.push('Ou *todos* para marcar todos, *nenhum* para pular.');
+
+            await this.enqueueMessage(lines.join('\n'), phoneNumber);
+            this.rememberSent(eveningKey);
+            this.logger.info({ date: clock.dateKey, phoneNumber }, 'Check-in noturno de hábitos enviado.');
+
+            if (this.conversationService) {
+              try {
+                await this.conversationService.setSessionPublic(
+                  phoneNumber,
+                  'habit_checkin',
+                  { habits: habitPayload, date: clock.dateKey } as Prisma.JsonObject,
+                  120
+                );
+              } catch (err) {
+                this.logger.warn({ err }, 'Falha ao criar sessão habit_checkin pós check-in.');
+              }
+            }
+          }
+        }
+      } catch (err) {
+        this.logger.warn({ err }, 'Falha ao enviar check-in noturno de hábitos.');
+      }
+    }
+
+    // The active-window check is based on the shared server clock — all users
+    // are gated together. Since all users share the same timezone/schedule by
+    // design (per spec), this is correct and intentional.
+    if (!this.isInsideActiveWindow(clock)) {
+      return;
+    }
+
+    // ── Upcoming block digest ────────────────────────────────────────────────
+    const upcomingBucket = Math.floor(clock.totalMinutes / this.upcomingEveryMinutes);
+    const upcomingKey = `upcoming:${clock.dateKey}:${upcomingBucket}:${clerkUserId}`;
+    if (!this.wasSent(upcomingKey)) {
+      const upcomingDigest = await this.commandService.buildUpcomingBlockDigest({
+        date: clock.dateKey,
+        withinMinutes: this.upcomingWithinMinutes
+      });
+
+      if (upcomingDigest) {
+        await this.enqueueMessage(upcomingDigest, phoneNumber);
+        this.logger.info({ date: clock.dateKey, bucket: upcomingBucket, phoneNumber }, 'WhatsApp upcoming block enviado.');
+      }
+
+      this.rememberSent(upcomingKey);
+    }
+
+    // ── Proactivity engine ───────────────────────────────────────────────────
+    const proactiveMessage = await this.proactivityEngine.evaluate(clock, null, clerkUserId);
+
+    if (proactiveMessage) {
+      await this.enqueueMessage(proactiveMessage.message, phoneNumber);
+
+      if (this.conversationService) {
+        try {
+          await this.conversationService.setSessionPublic(phoneNumber, 'idle', null, 45);
+        } catch {
+          // Falha silenciosa — não crítico
+        }
+      }
+
+      this.logger.info(
+        { triggerId: proactiveMessage.triggerId, date: clock.dateKey, phoneNumber },
+        'WhatsApp proactive trigger disparado.'
+      );
     }
   }
 }

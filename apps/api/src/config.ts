@@ -33,8 +33,6 @@ const envSchema = z.object({
   NOTES_TRANSCRIBE_WEBHOOK_SECRET: optionalString(),
   NOTES_TRANSCRIBE_TIMEOUT_MS: z.coerce.number().int().min(5000).max(180000).default(45000),
   WHATSAPP_WEBHOOK_SECRET: optionalString(),
-  DEFAULT_PHONE_NUMBER: z.string().min(8),
-  WHATSAPP_CLERK_USER_ID: z.string().default('legacy'),
   OPENAI_API_KEY: optionalString(),
   ANTHROPIC_API_KEY: optionalString(),
   WHATSAPP_AUTO_DISPATCH_ENABLED: z.coerce.boolean().default(true),

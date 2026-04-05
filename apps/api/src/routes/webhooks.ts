@@ -18,9 +18,6 @@ type NormalizedWebhookPayload = {
   audioUrl?: string;
 };
 
-type DispatchRequestBody = {
-  to?: string;
-};
 
 const INBOUND_DEDUP_TTL_MS = 5 * 60 * 1000;
 const MULTI_REPLY_DELAY_MS = 300;
@@ -240,14 +237,6 @@ function assertWebhookSecret(headerValue: string | string[] | undefined) {
   }
 }
 
-function resolveDispatchRecipient(body: DispatchRequestBody) {
-  const direct = typeof body.to === 'string' ? body.to.trim() : '';
-  if (direct.length >= 8) {
-    return normalizePhone(direct);
-  }
-
-  return normalizePhone(env.DEFAULT_PHONE_NUMBER);
-}
 
 const audioService = new WhatsappAudioService();
 
@@ -431,55 +420,43 @@ export function registerWebhookRoutes(
     }
 
     const parsed = morningDispatchSchema.parse(request.body ?? {});
-    const to = resolveDispatchRecipient(parsed);
-    const messages: string[] = [];
+    const users = await prisma.userPhone.findMany();
+    let totalSent = 0;
 
-    const morning = await commandService.buildMorningBriefing({
-      date: parsed.date,
-      workspaceId: parsed.workspaceId
-    });
-    messages.push(morning);
+    for (const user of users) {
+      const messages: string[] = [];
 
-    if (parsed.includeDueDigest) {
-      const dueDigest = await commandService.buildDueReminderDigest({
-        date: parsed.date
-      });
-      if (dueDigest) {
-        messages.push(dueDigest);
-      }
-    }
-
-    if (parsed.includeFollowupDigest) {
-      const followupDigest = await commandService.buildWaitingFollowupDigest({
-        date: parsed.date
-      });
-      if (followupDigest) {
-        messages.push(followupDigest);
-      }
-    }
-
-    if (parsed.includeUpcomingDigest) {
-      const upcomingDigest = await commandService.buildUpcomingBlockDigest({
+      const morning = await commandService.buildMorningBriefing({
         date: parsed.date,
-        withinMinutes: parsed.upcomingWithinMinutes
+        workspaceId: parsed.workspaceId
       });
-      if (upcomingDigest) {
-        messages.push(upcomingDigest);
+      messages.push(morning);
+
+      if (parsed.includeDueDigest) {
+        const dueDigest = await commandService.buildDueReminderDigest({ date: parsed.date });
+        if (dueDigest) messages.push(dueDigest);
       }
+
+      if (parsed.includeFollowupDigest) {
+        const followupDigest = await commandService.buildWaitingFollowupDigest({ date: parsed.date });
+        if (followupDigest) messages.push(followupDigest);
+      }
+
+      if (parsed.includeUpcomingDigest) {
+        const upcomingDigest = await commandService.buildUpcomingBlockDigest({
+          date: parsed.date,
+          withinMinutes: parsed.upcomingWithinMinutes
+        });
+        if (upcomingDigest) messages.push(upcomingDigest);
+      }
+
+      for (const message of messages) {
+        await publishEvent(queueNames.sendWhatsappMessage, { to: user.phoneNumber, message });
+      }
+      totalSent += messages.length;
     }
 
-    for (const message of messages) {
-      await publishEvent(queueNames.sendWhatsappMessage, {
-        to,
-        message
-      });
-    }
-
-    return reply.code(202).send({
-      ok: true,
-      to,
-      sent: messages.length
-    });
+    return reply.code(202).send({ ok: true, users: users.length, sent: totalSent });
   });
 
   app.post('/webhooks/whatsapp/dispatch/due-dates', async (request, reply) => {
@@ -490,31 +467,21 @@ export function registerWebhookRoutes(
     }
 
     const parsed = dueDispatchSchema.parse(request.body ?? {});
-    const to = resolveDispatchRecipient(parsed);
-    const digest = await commandService.buildDueReminderDigest({
-      date: parsed.date,
-      daysBefore: parsed.daysBefore
-    });
+    const users = await prisma.userPhone.findMany();
+    let totalSent = 0;
 
-    if (!digest) {
-      return reply.code(200).send({
-        ok: true,
-        to,
-        sent: 0,
-        skipped: 'no_due_reminders'
+    for (const user of users) {
+      const digest = await commandService.buildDueReminderDigest({
+        date: parsed.date,
+        daysBefore: parsed.daysBefore
       });
+      if (digest) {
+        await publishEvent(queueNames.sendWhatsappMessage, { to: user.phoneNumber, message: digest });
+        totalSent++;
+      }
     }
 
-    await publishEvent(queueNames.sendWhatsappMessage, {
-      to,
-      message: digest
-    });
-
-    return reply.code(202).send({
-      ok: true,
-      to,
-      sent: 1
-    });
+    return reply.code(202).send({ ok: true, users: users.length, sent: totalSent });
   });
 
   app.post('/webhooks/whatsapp/dispatch/followups', async (request, reply) => {
@@ -524,29 +491,18 @@ export function registerWebhookRoutes(
       return reply.code(401).send({ error: 'Unauthorized webhook secret' });
     }
 
-    const parsed = followupDispatchSchema.parse(request.body ?? {});
-    const to = resolveDispatchRecipient(parsed);
-    const digest = await commandService.buildWaitingFollowupDigest();
+    const users = await prisma.userPhone.findMany();
+    let totalSent = 0;
 
-    if (!digest) {
-      return reply.code(200).send({
-        ok: true,
-        to,
-        sent: 0,
-        skipped: 'no_followups'
-      });
+    for (const user of users) {
+      const digest = await commandService.buildWaitingFollowupDigest();
+      if (digest) {
+        await publishEvent(queueNames.sendWhatsappMessage, { to: user.phoneNumber, message: digest });
+        totalSent++;
+      }
     }
 
-    await publishEvent(queueNames.sendWhatsappMessage, {
-      to,
-      message: digest
-    });
-
-    return reply.code(202).send({
-      ok: true,
-      to,
-      sent: 1
-    });
+    return reply.code(202).send({ ok: true, users: users.length, sent: totalSent });
   });
 
   app.post('/webhooks/whatsapp/dispatch/upcoming-blocks', async (request, reply) => {
@@ -557,30 +513,20 @@ export function registerWebhookRoutes(
     }
 
     const parsed = upcomingDispatchSchema.parse(request.body ?? {});
-    const to = resolveDispatchRecipient(parsed);
-    const digest = await commandService.buildUpcomingBlockDigest({
-      date: parsed.date,
-      withinMinutes: parsed.withinMinutes
-    });
+    const users = await prisma.userPhone.findMany();
+    let totalSent = 0;
 
-    if (!digest) {
-      return reply.code(200).send({
-        ok: true,
-        to,
-        sent: 0,
-        skipped: 'no_upcoming_blocks'
+    for (const user of users) {
+      const digest = await commandService.buildUpcomingBlockDigest({
+        date: parsed.date,
+        withinMinutes: parsed.withinMinutes
       });
+      if (digest) {
+        await publishEvent(queueNames.sendWhatsappMessage, { to: user.phoneNumber, message: digest });
+        totalSent++;
+      }
     }
 
-    await publishEvent(queueNames.sendWhatsappMessage, {
-      to,
-      message: digest
-    });
-
-    return reply.code(202).send({
-      ok: true,
-      to,
-      sent: 1
-    });
+    return reply.code(202).send({ ok: true, users: users.length, sent: totalSent });
   });
 }
