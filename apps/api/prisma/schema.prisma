@@ -566,14 +566,15 @@ model WhatsappEvent {
 }
 
 model WhatsappConversationSession {
-  id               String   @id @default(uuid())
-  phoneNumber      String   @unique @map("phone_number")
-  state            String   @default("idle")
+  id               String    @id @default(uuid())
+  phoneNumber      String    @unique @map("phone_number")
+  clerkUserId      String?   @map("clerk_user_id")
+  state            String    @default("idle")
   payload          Json?
   expiresAt        DateTime? @map("expires_at")
-  lastInteractionAt DateTime @default(now()) @map("last_interaction_at")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  lastInteractionAt DateTime  @default(now()) @map("last_interaction_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   @@index([state, expiresAt])
   @@map("whatsapp_conversation_sessions")
