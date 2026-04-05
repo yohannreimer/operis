@@ -64,7 +64,8 @@ export class WhatsappProactivityEngine {
    */
   async evaluate(
     clock: LocalClock,
-    humor: DayHumor | null
+    humor: DayHumor | null,
+    clerkUserId = 'legacy'
   ): Promise<ProactiveMessage | null> {
     // Humor sobrecarregado = zero proativas
     if (humor === 'sobrecarregado') return null;
@@ -84,7 +85,7 @@ export class WhatsappProactivityEngine {
       this.triggerTop3Complete(clock),
       this.triggerLongSilence(clock),
       this.triggerWeeklyReview(clock),
-      this.triggerStreakCelebration(),
+      this.triggerStreakCelebration(clerkUserId),
     ]);
 
     for (const t of [t1, t2, t3, t4, t5, t6, t7, t8]) {
@@ -474,7 +475,7 @@ export class WhatsappProactivityEngine {
   private readonly STREAK_CELEBRATION_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6h
   private lastStreakCelebration = 0;
 
-  private async triggerStreakCelebration(): Promise<ProactiveMessage | null> {
+  private async triggerStreakCelebration(clerkUserId: string): Promise<ProactiveMessage | null> {
     if (Date.now() - this.lastStreakCelebration < this.STREAK_CELEBRATION_COOLDOWN_MS) return null;
 
     try {
@@ -483,7 +484,7 @@ export class WhatsappProactivityEngine {
       if (!event) return null;
 
       const streakDays = event.reason === 'streak_7' ? 7 : event.reason === 'streak_30' ? 30 : 100;
-      const levelInfo = (await habitService.getRadarStats('legacy'))[event.lifeArea];
+      const levelInfo = (await habitService.getRadarStats(clerkUserId))[event.lifeArea];
       const levelMsg = levelInfo ? ` Você está no Nível ${levelInfo.level} — ${levelInfo.name}!` : '';
 
       await habitService.markEventNotified(event.id);
