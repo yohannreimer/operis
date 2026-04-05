@@ -1907,7 +1907,8 @@ export class WhatsappConversationService {
   private async processHabitCheckin(
     phoneNumber: string,
     session: WhatsappConversationSession,
-    text: string
+    text: string,
+    clerkUserId: string
   ): Promise<CommandResult> {
     const payload = this.readSessionPayload(session);
     const habits = Array.isArray(payload.habits)
@@ -1967,7 +1968,8 @@ export class WhatsappConversationService {
   private async processInboxCompletePick(
     phoneNumber: string,
     session: WhatsappConversationSession,
-    text: string
+    text: string,
+    clerkUserId: string
   ): Promise<CommandResult> {
     const payload = this.readSessionPayload(session);
     const items = Array.isArray(payload.items)
@@ -2051,11 +2053,11 @@ export class WhatsappConversationService {
     }
 
     if (session?.state === 'habit_checkin') {
-      return this.processHabitCheckin(phoneNumber, session, text);
+      return this.processHabitCheckin(phoneNumber, session, text, clerkUserId);
     }
 
     if (session?.state === 'inbox_complete_pick') {
-      return this.processInboxCompletePick(phoneNumber, session, text);
+      return this.processInboxCompletePick(phoneNumber, session, text, clerkUserId);
     }
 
     const inferredCommand = this.inferNaturalCommand(text, session);
