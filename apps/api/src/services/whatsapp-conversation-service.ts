@@ -723,7 +723,8 @@ export class WhatsappConversationService {
     phoneNumber: string,
     state: ConversationState,
     payload?: Prisma.JsonObject | null,
-    ttlMinutes = SESSION_TTL_MINUTES
+    ttlMinutes = SESSION_TTL_MINUTES,
+    clerkUserId?: string
   ) {
     const expiresAt =
       state === 'idle'
@@ -747,7 +748,8 @@ export class WhatsappConversationService {
         state,
         payload: payloadObject,
         expiresAt,
-        lastInteractionAt: new Date()
+        lastInteractionAt: new Date(),
+        ...(clerkUserId ? { clerkUserId } : {})
       },
       update: {
         state,
@@ -1988,7 +1990,7 @@ export class WhatsappConversationService {
     }
   }
 
-  async handleInbound(phoneNumber: string, message: string): Promise<CommandResult> {
+  async handleInbound(phoneNumber: string, message: string, clerkUserId: string): Promise<CommandResult> {
     const text = sanitizeTransportPrefix(message);
     if (!text) {
       await this.setSession(phoneNumber, 'menu');
@@ -2012,6 +2014,14 @@ export class WhatsappConversationService {
     }
 
     const session = await this.getSession(phoneNumber);
+
+    // Backfill clerkUserId on sessions created before SP2
+    if (session && !session.clerkUserId) {
+      await this.prisma.whatsappConversationSession.update({
+        where: { phoneNumber },
+        data: { clerkUserId }
+      });
+    }
 
     // ── LLM intent extraction (when idle or session is not mid-flow) ──────────
     const isInFlow = session && session.state !== 'idle' && session.state !== 'menu';
