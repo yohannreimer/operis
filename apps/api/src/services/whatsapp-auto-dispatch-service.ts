@@ -311,7 +311,7 @@ export class WhatsappAutoDispatchService {
       }
 
       // ── Proactivity engine ─────────────────────────────────────────────────
-      const proactiveMessage = await this.proactivityEngine.evaluate(clock, null);
+      const proactiveMessage = await this.proactivityEngine.evaluate(clock, null, env.WHATSAPP_CLERK_USER_ID);
 
       if (proactiveMessage) {
         await this.enqueueMessage(proactiveMessage.message);
