@@ -1,5 +1,4 @@
 import { Prisma, PrismaClient, WhatsappConversationSession } from '@prisma/client';
-import { env } from '../config.js';
 import { HabitService } from './habit-service.js';
 
 import { CommandResult, WhatsappCommandService } from './whatsapp-command-service.js';
@@ -768,14 +767,15 @@ export class WhatsappConversationService {
     phoneNumber: string,
     state: ConversationState,
     payload?: Prisma.JsonObject | null,
-    ttlMinutes?: number
+    ttlMinutes?: number,
+    clerkUserId?: string
   ): Promise<void> {
-    return this.setSession(phoneNumber, state, payload, ttlMinutes);
+    return this.setSession(phoneNumber, state, payload, ttlMinutes, clerkUserId);
   }
 
-  private async runCommand(text: string): Promise<CommandResult> {
+  private async runCommand(text: string, clerkUserId: string): Promise<CommandResult> {
     try {
-      return await this.commandService.handle(text);
+      return await this.commandService.handle(text, clerkUserId);
     } catch (error) {
       const message =
         error instanceof Error && error.message.trim().length > 0
@@ -787,12 +787,12 @@ export class WhatsappConversationService {
     }
   }
 
-  private async processMenuInput(phoneNumber: string, text: string): Promise<CommandResult> {
+  private async processMenuInput(phoneNumber: string, text: string, clerkUserId: string): Promise<CommandResult> {
     const normalized = normalizeOptionToken(text);
     const numericChoice = extractNumericChoice(text, 1, 8);
 
     if (numericChoice === 1 || normalized === 'FOCO') {
-      const focus = await this.runCommand('foco');
+      const focus = await this.runCommand('foco', clerkUserId);
       await this.setSession(
         phoneNumber,
         'focus_menu',
@@ -808,7 +808,7 @@ export class WhatsappConversationService {
     }
 
     if (numericChoice === 2 || normalized === 'HOJE' || normalized === 'TAREFAS') {
-      const tasks = await this.runCommand('tarefas');
+      const tasks = await this.runCommand('tarefas', clerkUserId);
       await this.setSession(phoneNumber, 'menu');
       return {
         reply: this.joinReply(this.prettifyReply(tasks.reply)),
@@ -831,8 +831,8 @@ export class WhatsappConversationService {
     }
 
     if (numericChoice === 4 || normalized === 'PRAZOS' || normalized === 'FOLLOWUP' || normalized === 'FOLLOWUPS') {
-      const due = await this.runCommand('prazos');
-      const followups = await this.runCommand('followups');
+      const due = await this.runCommand('prazos', clerkUserId);
+      const followups = await this.runCommand('followups', clerkUserId);
       await this.setSession(phoneNumber, 'menu');
       return {
         reply: `${this.joinReply(this.prettifyReply(due.reply))}\n\n${this.joinReply(this.prettifyReply(followups.reply))}`
@@ -850,7 +850,7 @@ export class WhatsappConversationService {
       try {
         const habitService = new HabitService(this.prisma);
         const todayKey = this.todayDateKey();
-        const todayStats = await habitService.getTodayStats(todayKey, env.WHATSAPP_CLERK_USER_ID);
+        const todayStats = await habitService.getTodayStats(todayKey, clerkUserId);
         const habitPayload = todayStats
           .filter((h) => h.type !== 'vice')
           .map((h, i) => ({
@@ -908,7 +908,8 @@ export class WhatsappConversationService {
   private async processFocusInput(
     phoneNumber: string,
     session: WhatsappConversationSession,
-    text: string
+    text: string,
+    clerkUserId: string
   ): Promise<CommandResult> {
     const normalized = normalizeOptionToken(text);
     const numericChoice = extractNumericChoice(text, 1, 4);
@@ -919,7 +920,7 @@ export class WhatsappConversationService {
 
     if (session.state === 'focus_menu') {
       if (normalized === 'A' || hasOptionLetter(text, 'A') || numericChoice === 1 || normalized === 'CONFIRMAR') {
-        const result = await this.runCommand('foco confirmar');
+        const result = await this.runCommand('foco confirmar', clerkUserId);
         await this.setSession(
           phoneNumber,
           'focus_menu',
@@ -1043,7 +1044,7 @@ export class WhatsappConversationService {
         };
       }
 
-      const result = await this.runCommand(`foco trocar ${slot} ${token}`);
+      const result = await this.runCommand(`foco trocar ${slot} ${token}`, clerkUserId);
       await this.setSession(
         phoneNumber,
         'focus_menu',
@@ -1097,7 +1098,7 @@ export class WhatsappConversationService {
         };
       }
 
-      const result = await this.runCommand(`foco confirmar ${taskIds.join(' ')}`);
+      const result = await this.runCommand(`foco confirmar ${taskIds.join(' ')}`, clerkUserId);
       await this.setSession(
         phoneNumber,
         'focus_menu',
@@ -1118,7 +1119,7 @@ export class WhatsappConversationService {
     };
   }
 
-  private async processDeepInput(phoneNumber: string, session: WhatsappConversationSession, text: string) {
+  private async processDeepInput(phoneNumber: string, session: WhatsappConversationSession, text: string, clerkUserId: string) {
     const normalized = normalizeOptionToken(text);
     const numericChoice = extractNumericChoice(text, 1, 5);
 
@@ -1141,7 +1142,7 @@ export class WhatsappConversationService {
       }
 
       if (numericChoice === 2 || normalized === 'PARAR') {
-        const result = await this.runCommand('deep parar');
+        const result = await this.runCommand('deep parar', clerkUserId);
         await this.setSession(
           phoneNumber,
           'deep_menu',
@@ -1157,7 +1158,7 @@ export class WhatsappConversationService {
       }
 
       if (numericChoice === 3 || normalized === 'CONCLUIR') {
-        const result = await this.runCommand('deep concluir');
+        const result = await this.runCommand('deep concluir', clerkUserId);
         await this.setSession(
           phoneNumber,
           'deep_menu',
@@ -1173,7 +1174,7 @@ export class WhatsappConversationService {
       }
 
       if (numericChoice === 4 || normalized === 'STATUS') {
-        const result = await this.runCommand('status');
+        const result = await this.runCommand('status', clerkUserId);
         return {
           reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.deepMenuText()}`
         };
@@ -1219,7 +1220,7 @@ export class WhatsappConversationService {
 
       const minuteMatch = text.match(/\s(\d{1,3})$/);
       const minutesPart = minuteMatch ? ` ${minuteMatch[1]}` : '';
-      const result = await this.runCommand(`deep iniciar ${candidateToken}${minutesPart}`);
+      const result = await this.runCommand(`deep iniciar ${candidateToken}${minutesPart}`, clerkUserId);
       await this.setSession(
         phoneNumber,
         'deep_menu',
@@ -1244,7 +1245,8 @@ export class WhatsappConversationService {
   private async processOpenTasksInput(
     phoneNumber: string,
     session: WhatsappConversationSession,
-    text: string
+    text: string,
+    clerkUserId: string
   ): Promise<CommandResult> {
     const normalized = normalizeOptionToken(text);
     const payload =
@@ -1264,7 +1266,7 @@ export class WhatsappConversationService {
         const idx = Number(fizMatch[1]);
         const taskId = this.resolveChoiceToken(String(idx), payload);
         if (taskId) {
-          const result = await this.runCommand(`fiz ${taskId}`);
+          const result = await this.runCommand(`fiz ${taskId}`, clerkUserId);
           await this.setSession(phoneNumber, 'idle');
           return { reply: this.prettifyReply(result.reply) };
         }
@@ -1317,7 +1319,7 @@ export class WhatsappConversationService {
 
       const numericChoice = extractNumericChoice(text, 1, 4) ?? extractLeadingInteger(text);
       if (numericChoice === 1 || hasAnyIntent(text, ['deep'])) {
-        const result = await this.runCommand(`deep iniciar ${selectedTaskId}`);
+        const result = await this.runCommand(`deep iniciar ${selectedTaskId}`, clerkUserId);
         await this.setSession(
           phoneNumber,
           'deep_menu',
@@ -1334,7 +1336,7 @@ export class WhatsappConversationService {
       }
 
       if (numericChoice === 2 || hasAnyIntent(text, ['concluir', 'conclui', 'fiz', 'feito'])) {
-        const result = await this.runCommand(`fiz ${selectedTaskId}`);
+        const result = await this.runCommand(`fiz ${selectedTaskId}`, clerkUserId);
         const refreshed = await this.listTaskChoices(18);
         await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
         return {
@@ -1604,7 +1606,8 @@ export class WhatsappConversationService {
   private async handleLLMIntent(
     phoneNumber: string,
     intent: LLMIntent,
-    rawText: string
+    rawText: string,
+    clerkUserId: string
   ): Promise<CommandResult | null> {
     switch (intent.action) {
       case 'open_menu': {
@@ -1618,12 +1621,12 @@ export class WhatsappConversationService {
 
       case 'morning_briefing':
       case 'status': {
-        const result = await this.runCommand('foco');
+        const result = await this.runCommand('foco', clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
       case 'list_tasks': {
-        const result = await this.runCommand('tarefas');
+        const result = await this.runCommand('tarefas', clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
@@ -1640,30 +1643,30 @@ export class WhatsappConversationService {
         const i = intent as Extract<LLMIntent, { action: 'create_task' }>;
         const typeFlag = i.taskType ? ` tipo:${i.taskType}` : '';
         const dueFlag = i.dueDate ? ` prazo:${i.dueDate}` : '';
-        const result = await this.runCommand(`criar tarefa ${i.title}${typeFlag}${dueFlag}`);
+        const result = await this.runCommand(`criar tarefa ${i.title}${typeFlag}${dueFlag}`, clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
       case 'capture_inbox': {
         const i = intent as Extract<LLMIntent, { action: 'capture_inbox' }>;
-        const result = await this.runCommand(`inbox: ${i.content}`);
+        const result = await this.runCommand(`inbox: ${i.content}`, clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
       case 'complete_task': {
         const i = intent as Extract<LLMIntent, { action: 'complete_task' }>;
-        const result = await this.runCommand(`fiz ${i.titleHint}`);
+        const result = await this.runCommand(`fiz ${i.titleHint}`, clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
       case 'start_deep_work': {
         const i = intent as Extract<LLMIntent, { action: 'start_deep_work' }>;
-        const result = await this.runCommand(`deep iniciar ${i.titleHint}`);
+        const result = await this.runCommand(`deep iniciar ${i.titleHint}`, clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
       case 'top3_lock': {
-        const result = await this.runCommand('foco confirmar');
+        const result = await this.runCommand('foco confirmar', clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
@@ -1672,12 +1675,12 @@ export class WhatsappConversationService {
         if (!i.titleHints.length) {
           return { reply: 'Qual tarefa você quer colocar no foco? Envie o nome ou parte do título.' };
         }
-        const result = await this.runCommand(`foco confirmar ${i.titleHints.join(' ')}`);
+        const result = await this.runCommand(`foco confirmar ${i.titleHints.join(' ')}`, clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
       case 'list_projects': {
-        const result = await this.runCommand('projetos');
+        const result = await this.runCommand('projetos', clerkUserId);
         return { ...result, reply: this.prettifyReply(result.reply) };
       }
 
@@ -1795,7 +1798,8 @@ export class WhatsappConversationService {
   private async processFocusConfirmation(
     phoneNumber: string,
     session: WhatsappConversationSession,
-    text: string
+    text: string,
+    clerkUserId: string
   ): Promise<CommandResult> {
     const payload = this.readSessionPayload(session);
     const top3 = Array.isArray(payload.top3)
@@ -1810,7 +1814,7 @@ export class WhatsappConversationService {
         await this.setSession(phoneNumber, 'open_tasks_list', { choices }, LONG_SESSION_TTL_MINUTES);
         return { reply: this.renderOpenTaskList(choices) };
       }
-      const result = await this.runCommand('foco confirmar');
+      const result = await this.runCommand('foco confirmar', clerkUserId);
       return { reply: this.prettifyReply(result.reply) };
     }
 
@@ -1896,7 +1900,7 @@ export class WhatsappConversationService {
 
     // confirm_all (default)
     await this.setSession(phoneNumber, 'idle');
-    const result = await this.runCommand('foco confirmar');
+    const result = await this.runCommand('foco confirmar', clerkUserId);
     return { reply: this.prettifyReply(result.reply) };
   }
 
@@ -2030,7 +2034,7 @@ export class WhatsappConversationService {
         const context = await this.buildLLMContext();
         const intent = await this.llmService.extractIntent(text, context);
         if (intent && intent.action !== 'unknown') {
-          const llmResult = await this.handleLLMIntent(phoneNumber, intent, text);
+          const llmResult = await this.handleLLMIntent(phoneNumber, intent, text, clerkUserId);
           if (llmResult) {
             return llmResult;
           }
@@ -2043,7 +2047,7 @@ export class WhatsappConversationService {
     // Session-first routing: states that expect free-form input must be checked
     // before inferNaturalCommand/isDirectCommand to prevent interception
     if (session?.state === 'awaiting_focus_confirmation') {
-      return this.processFocusConfirmation(phoneNumber, session, text);
+      return this.processFocusConfirmation(phoneNumber, session, text, clerkUserId);
     }
 
     if (session?.state === 'habit_checkin') {
@@ -2091,7 +2095,7 @@ export class WhatsappConversationService {
       try {
         const habitService = new HabitService(this.prisma);
         const todayKey = this.todayDateKey();
-        const todayStats = await habitService.getTodayStats(todayKey, env.WHATSAPP_CLERK_USER_ID);
+        const todayStats = await habitService.getTodayStats(todayKey, clerkUserId);
         const habitPayload = todayStats
           .filter((h) => h.type !== 'vice')
           .map((h, i) => ({
@@ -2161,7 +2165,7 @@ export class WhatsappConversationService {
     }
 
     if (inferredCommand === 'foco') {
-      const focus = await this.runCommand('foco');
+      const focus = await this.runCommand('foco', clerkUserId);
       await this.setSession(
         phoneNumber,
         'focus_menu',
@@ -2179,7 +2183,7 @@ export class WhatsappConversationService {
 
     if (this.isDirectCommand(text)) {
       await this.setSession(phoneNumber, 'idle');
-      const result = await this.runCommand(text);
+      const result = await this.runCommand(text, clerkUserId);
       return {
         ...result,
         reply: /^(ajuda|help|\?)$/i.test(text.trim())
@@ -2190,7 +2194,7 @@ export class WhatsappConversationService {
 
     if (inferredCommand) {
       await this.setSession(phoneNumber, 'idle');
-      const result = await this.runCommand(inferredCommand);
+      const result = await this.runCommand(inferredCommand, clerkUserId);
       return {
         ...result,
         reply: this.prettifyReply(result.reply)
@@ -2198,7 +2202,7 @@ export class WhatsappConversationService {
     }
 
     if (!session || session.state === 'idle') {
-      const directAttempt = await this.runCommand(text);
+      const directAttempt = await this.runCommand(text, clerkUserId);
       const directReplyText = Array.isArray(directAttempt.reply) ? directAttempt.reply[0] : directAttempt.reply;
       if (!/^Comando não reconhecido\./i.test(directReplyText)) {
         return {
@@ -2214,19 +2218,19 @@ export class WhatsappConversationService {
     }
 
     if (session.state === 'menu') {
-      return this.processMenuInput(phoneNumber, text);
+      return this.processMenuInput(phoneNumber, text, clerkUserId);
     }
 
     if (session.state.startsWith('focus_')) {
-      return this.processFocusInput(phoneNumber, session, text);
+      return this.processFocusInput(phoneNumber, session, text, clerkUserId);
     }
 
     if (session.state.startsWith('deep_')) {
-      return this.processDeepInput(phoneNumber, session, text);
+      return this.processDeepInput(phoneNumber, session, text, clerkUserId);
     }
 
     if (session.state.startsWith('open_tasks_')) {
-      return this.processOpenTasksInput(phoneNumber, session, text);
+      return this.processOpenTasksInput(phoneNumber, session, text, clerkUserId);
     }
 
     if (session.state.startsWith('notes_')) {
@@ -2247,7 +2251,7 @@ export class WhatsappConversationService {
           reply: this.menuText()
         };
       }
-      const captured = await this.runCommand(`inbox: ${text}`);
+      const captured = await this.runCommand(`inbox: ${text}`, clerkUserId);
       await this.setSession(phoneNumber, 'menu');
       return {
         reply: `${this.joinReply(this.prettifyReply(captured.reply))}\n\n${this.menuText()}`,
