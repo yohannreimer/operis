@@ -21,6 +21,7 @@ type DueReminderOptions = ReminderDigestOptions & {
 
 type UpcomingDigestOptions = ReminderDigestOptions & {
   withinMinutes?: number;
+  clerkUserId?: string;
 };
 
 const TRANSPORT_PREFIX_REGEX = /^(?:(?:=+|--+|[•·]\s*|[–—-]{2,}\s*))+/;
@@ -337,7 +338,7 @@ export class WhatsappCommandService {
   async buildUpcomingBlockDigest(options?: UpcomingDigestOptions) {
     const date = options?.date ?? this.todayDate();
     const withinMinutes = Math.max(5, Math.min(120, Math.round(options?.withinMinutes ?? 20)));
-    const plan = await this.dayPlanService.getByDate(date, 'legacy');
+    const plan = await this.dayPlanService.getByDate(date, options?.clerkUserId ?? 'legacy');
 
     if (!plan) {
       return null;
@@ -365,7 +366,7 @@ export class WhatsappCommandService {
     return [`🕒 *Blocos nos próximos ${withinMinutes} min*`, ...lines, '', 'Dica: responda *3* no menu para abrir o painel Deep Work.'].join('\n');
   }
 
-  async handle(rawText: string): Promise<CommandResult> {
+  async handle(rawText: string, clerkUserId = 'legacy'): Promise<CommandResult> {
     const text = sanitizeTransportPrefix(rawText);
 
     if (!text) {
@@ -404,7 +405,7 @@ export class WhatsappCommandService {
           content,
           source: 'whatsapp',
           status: 'pendente',
-          clerkUserId: 'legacy'
+          clerkUserId
         }
       });
 
@@ -557,7 +558,7 @@ export class WhatsappCommandService {
         blockType: 'task',
         startTime: start.toISOString(),
         endTime: end.toISOString(),
-        clerkUserId: 'legacy'
+        clerkUserId
       });
 
       return {
