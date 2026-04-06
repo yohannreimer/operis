@@ -6,5 +6,8 @@ export default defineConfig({
   envDir: '../../',
   server: {
     port: 5173
+  },
+  optimizeDeps: {
+    include: ['tldraw']
   }
 });

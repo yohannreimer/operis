@@ -4,6 +4,8 @@ import {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
+  Suspense,
+  lazy,
   useEffect,
   useMemo,
   useRef,
@@ -46,7 +48,10 @@ import {
 import { EmptyState, PremiumCard, SkeletonBlock } from '../components/premium-ui';
 import { DiagramCanvas } from '../components/diagram-canvas';
 import { MindMapCanvas } from '../components/mindmap-canvas';
-import { MindMapData } from '../api';
+const WhiteboardCanvas = lazy(() =>
+  import('../components/whiteboard-canvas').then((m) => ({ default: m.WhiteboardCanvas }))
+);
+import { MindMapData, WhiteboardData } from '../api';
 
 type FolderScope = 'all' | 'unfiled' | string;
 type FolderModalMode = 'create' | 'rename';
@@ -214,12 +219,12 @@ const AUTO_ACCENT_MAP: Record<string, string> = {
 };
 
 const WRITER_COLOR_OPTIONS: WriterColorOption[] = [
-  { id: 'base', label: 'Padrão', value: '#0f172a' },
-  { id: 'blue', label: 'Azul', value: '#1d4ed8' },
-  { id: 'green', label: 'Verde', value: '#15803d' },
-  { id: 'amber', label: 'Laranja', value: '#b45309' },
-  { id: 'red', label: 'Vermelho', value: '#b91c1c' },
-  { id: 'violet', label: 'Roxo', value: '#6d28d9' }
+  { id: 'base', label: 'Padrão', value: '#ffffff' },
+  { id: 'blue', label: 'Azul', value: '#60a5fa' },
+  { id: 'green', label: 'Verde', value: '#4ade80' },
+  { id: 'amber', label: 'Laranja', value: '#fbbf24' },
+  { id: 'red', label: 'Vermelho', value: '#f87171' },
+  { id: 'violet', label: 'Roxo', value: '#a78bfa' }
 ];
 
 const ENABLE_AUTO_ACCENT = false;
@@ -961,22 +966,42 @@ export function NotasPage() {
     bold: false,
     italic: false,
     strike: false,
-    color: normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#0f172a')
+    color: normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#ffffff')
   });
   const [clipboardFeedback, setClipboardFeedback] = useState<'idle' | 'copy' | 'whatsapp'>('idle');
   const autoSaveTimerRef = useRef<number | null>(null);
   const clipboardFeedbackTimerRef = useRef<number | null>(null);
 
   // Canvas mode
-  type CanvasMode = 'text' | 'diagram' | 'mindmap';
+  type CanvasMode = 'text' | 'diagram' | 'mindmap' | 'whiteboard';
   const [canvasMode, setCanvasMode] = useState<CanvasMode>('text');
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement) setIsFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => null);
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => null);
+      setIsFullscreen(false);
+    }
+  }
   const [diagramState, setDiagramState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
   const [diagramData, setDiagramData] = useState<DiagramData | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [mindmapState, setMindmapState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
   const [mindmapData, setMindmapData] = useState<MindMapData | null>(null);
   const [isMindmapGenerating, setIsMindmapGenerating] = useState(false);
+  const [whiteboardState, setWhiteboardState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
+  const [whiteboardData, setWhiteboardData] = useState<WhiteboardData | null>(null);
 
   const contentPlain = useMemo(() => extractPlainText(content), [content]);
 
@@ -1853,7 +1878,7 @@ export function NotasPage() {
           !current.bold &&
           !current.italic &&
           !current.strike &&
-          current.color === normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#0f172a')
+          current.color === normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#ffffff')
         ) {
           return current;
         }
@@ -1862,7 +1887,7 @@ export function NotasPage() {
           bold: false,
           italic: false,
           strike: false,
-          color: normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#0f172a')
+          color: normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#ffffff')
         };
       });
       return;
@@ -1905,7 +1930,7 @@ export function NotasPage() {
       strike: document.queryCommandState('strikeThrough'),
       color:
         normalizeCssColor(document.queryCommandValue('foreColor')) ||
-        normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#0f172a')
+        normalizeCssColor(WRITER_COLOR_OPTIONS[0]?.value ?? '#ffffff')
     };
 
     setWriterFormatState((current) => {
@@ -2514,6 +2539,15 @@ export function NotasPage() {
   }, [sortedScopedNotes, selectedNoteId]);
 
   useEffect(() => {
+    // Always reset canvas state when switching notes
+    setCanvasMode('text');
+    setDiagramState('idle');
+    setDiagramData(null);
+    setMindmapState('idle');
+    setMindmapData(null);
+    setWhiteboardState('idle');
+    setWhiteboardData(null);
+
     if (!selectedNote) {
       setTitle('');
       setContent('');
@@ -2998,6 +3032,51 @@ export function NotasPage() {
     if (mode === 'mindmap' && mindmapState === 'idle' && selectedNoteId) {
       void loadMindMap(selectedNoteId);
     }
+    if (mode === 'whiteboard' && whiteboardState === 'idle' && selectedNoteId) {
+      void loadWhiteboard(selectedNoteId);
+    }
+  }
+
+  async function loadWhiteboard(noteId: string) {
+    setWhiteboardState('loading');
+    try {
+      const wb = await api.getWhiteboard(noteId).catch((err: unknown) => {
+        if (err instanceof Error && (err.message.includes('404') || err.message.includes('not_found'))) return null;
+        if (err instanceof Response && err.status === 404) return null;
+        throw err;
+      });
+      if (wb) {
+        setWhiteboardData(wb.data);
+        setWhiteboardState('ready');
+      } else {
+        setWhiteboardState('empty');
+      }
+    } catch {
+      setWhiteboardState('error');
+    }
+  }
+
+  async function handleWhiteboardSave(data: WhiteboardData) {
+    if (!selectedNoteId) return;
+    try {
+      if (whiteboardState === 'empty') {
+        await api.createWhiteboard(selectedNoteId, data);
+        setWhiteboardData(data);
+        setWhiteboardState('ready');
+      } else {
+        await api.updateWhiteboard(selectedNoteId, data);
+        setWhiteboardData(data);
+      }
+    } catch {
+      // silent autosave failure
+    }
+  }
+
+  async function handleWhiteboardDelete() {
+    if (!selectedNoteId) return;
+    await api.deleteWhiteboard(selectedNoteId).catch(() => null);
+    setWhiteboardData(null);
+    setWhiteboardState('empty');
   }
 
   async function loadMindMap(noteId: string) {
@@ -4755,9 +4834,13 @@ export function NotasPage() {
                   onClick={() => handleModeChange('mindmap')}
                 >✦ Mapa Mental</button>
                 <button
+                  className={`canvas-mode-btn ${canvasMode === 'whiteboard' ? 'active' : ''}`}
+                  onClick={() => handleModeChange('whiteboard')}
+                >✏ Lousa</button>
+                <button
                   className="canvas-fullscreen-btn"
                   title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
-                  onClick={() => setIsFullscreen((v) => !v)}
+                  onClick={toggleFullscreen}
                 >{isFullscreen ? '⊠' : '⛶'}</button>
               </div>
 
@@ -4993,6 +5076,41 @@ export function NotasPage() {
                     />
                   )}
                 </div>
+
+              <div className="canvas-area" style={{ display: canvasMode === 'whiteboard' ? '' : 'none' }}>
+                {whiteboardState === 'loading' && (
+                  <div className="canvas-loading">Carregando lousa...</div>
+                )}
+                {whiteboardState === 'error' && (
+                  <div className="canvas-error">
+                    <p>Erro ao carregar a lousa.</p>
+                    <button onClick={() => { void loadWhiteboard(selectedNoteId); }}>
+                      Tentar novamente
+                    </button>
+                  </div>
+                )}
+                {whiteboardState === 'empty' && (
+                  <div className="canvas-empty-state">
+                    <div className="canvas-empty-icon">✏</div>
+                    <p>Nenhuma lousa ainda</p>
+                    <div className="canvas-empty-actions">
+                      <button onClick={() => void handleWhiteboardSave({})}>
+                        Criar lousa
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {whiteboardState === 'ready' && (
+                  <Suspense fallback={<div className="canvas-loading">Carregando lousa...</div>}>
+                    <WhiteboardCanvas
+                      key={selectedNoteId}
+                      initialData={whiteboardData}
+                      onSave={(data) => void handleWhiteboardSave(data)}
+                      onDelete={() => void handleWhiteboardDelete()}
+                    />
+                  </Suspense>
+                )}
+              </div>
 
               {canvasMode === 'text' && (
               <div className="notes-writer-editor-wrap">

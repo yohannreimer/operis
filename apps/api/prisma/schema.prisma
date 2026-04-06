@@ -420,9 +420,10 @@ model Note {
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
   task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  revisions NoteRevision[]
-  diagram   Diagram?
-  mindMap   MindMap?
+  revisions  NoteRevision[]
+  diagram    Diagram?
+  mindMap    MindMap?
+  whiteboard Whiteboard?
 
   @@index([folderId, updatedAt])
   @@index([type, updatedAt])
@@ -871,6 +872,18 @@ model MindMap {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("mind_maps")
+}
+
+model Whiteboard {
+  id        String   @id @default(uuid())
+  noteId    String   @unique @map("note_id")
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  title     String?
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("whiteboards")
 }
 
 model UserPhone {

@@ -278,6 +278,18 @@ export interface MindMap {
   updatedAt: string;
 }
 
+// tldraw snapshot — opaque JSON preserved as-is
+export type WhiteboardData = Record<string, unknown>;
+
+export interface Whiteboard {
+  id: string;
+  noteId: string;
+  title: string | null;
+  data: WhiteboardData;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ProjectMetric = {
   id: string;
   projectId: string;
@@ -2041,6 +2053,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ overwrite }),
     }),
+
+  getWhiteboard: (noteId: string) =>
+    apiRequest<Whiteboard>(`/canvas/notes/${noteId}/whiteboard`),
+  createWhiteboard: (noteId: string, data: WhiteboardData, title?: string) =>
+    apiRequest<Whiteboard>(`/canvas/notes/${noteId}/whiteboard`, {
+      method: 'POST',
+      body: JSON.stringify({ data, title }),
+    }),
+  updateWhiteboard: (noteId: string, data: WhiteboardData) =>
+    apiRequest<Whiteboard>(`/canvas/notes/${noteId}/whiteboard`, {
+      method: 'PATCH',
+      body: JSON.stringify({ data }),
+    }),
+  deleteWhiteboard: (noteId: string) =>
+    apiRequest<void>(`/canvas/notes/${noteId}/whiteboard`, { method: 'DELETE' }),
+
   getUserPhone: () =>
     apiRequest<UserPhone>('/user/phone'),
   linkPhone: (phoneNumber: string) =>

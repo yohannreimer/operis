@@ -299,7 +299,7 @@ button:active:not(:disabled) {
 .main-nav-link.active {
   border-color: var(--primary);
   background: var(--primary-soft);
-  box-shadow: inset 0 0 0 1px #d6e4ff;
+  box-shadow: inset 0 0 0 1px var(--primary-glow);
 }
 
 .sidebar-score {
@@ -5011,7 +5011,7 @@ h4 {
 }
 
 .project-methodology-current {
-  border: 1px dashed #c7d7f7;
+  border: 1px dashed var(--border-hover);
   border-radius: 12px;
   background: var(--surface);
   padding: 10px 12px;
@@ -5105,7 +5105,7 @@ h4 {
 }
 
 .projects-onboarding-grid article {
-  border: 1px solid #dbe5f6;
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
   padding: 8px 9px;
@@ -5130,7 +5130,7 @@ h4 {
 }
 
 .project-framework-block {
-  border: 1px solid #dbe5f6;
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
   padding: 8px 10px;
@@ -5151,7 +5151,7 @@ h4 {
 }
 
 .framework-checkin-block {
-  border: 1px solid #dbe5f6;
+  border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
   padding: 9px 10px;
@@ -5227,7 +5227,7 @@ h4 {
 }
 
 .project-action-pillars li {
-  border: 1px solid #dbe5f6;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 6px 10px;
   display: grid;
@@ -5290,7 +5290,7 @@ h4 {
 }
 
 .project-template-preview {
-  border: 1px dashed #c7d7f7;
+  border: 1px dashed var(--border-hover);
   border-radius: 12px;
   background: var(--surface);
   padding: 10px 12px;
@@ -5362,7 +5362,7 @@ h4 {
 }
 
 .project-template-signals span {
-  border: 1px solid #dde6f7;
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
   color: var(--muted);
@@ -5819,7 +5819,7 @@ h4 {
 }
 
 .evolution-inline-details {
-  border: 1px solid #d8e4f7;
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-soft);
   padding: 8px 10px;
@@ -5958,7 +5958,7 @@ h4 {
 }
 
 .smart-density-switch {
-  border: 1px solid #c6d8fa;
+  border: 1px solid var(--primary-glow);
   border-radius: 9px;
   background: var(--primary-soft);
   padding: 2px;
@@ -6462,7 +6462,7 @@ h4 {
 }
 
 .completion-note-placeholder {
-  border: 1px dashed #bfd2ff;
+  border: 1px dashed var(--primary-glow);
   background: var(--primary-soft);
   border-radius: 10px;
   padding: 10px 12px;
@@ -6596,7 +6596,7 @@ h4 {
 }
 
 .notes-template-origin {
-  border: 1px solid #cddcfb;
+  border: 1px solid var(--primary-glow);
   border-radius: 999px;
   padding: 2px 9px;
   font-size: 0.72rem;
@@ -6618,7 +6618,7 @@ h4 {
 }
 
 .notes-template-tags span {
-  border: 1px solid #cdddff;
+  border: 1px solid var(--primary-glow);
   border-radius: 999px;
   background: var(--primary-soft);
   padding: 2px 8px;
@@ -6906,7 +6906,7 @@ h4 {
 
 .notes-app-list input {
   width: 100%;
-  border: 1px solid #cddcf6;
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   padding: 10px 12px;
@@ -6956,7 +6956,7 @@ h4 {
   margin: 0;
   font-size: 0.72rem;
   color: var(--muted);
-  border: 1px solid #d8e4fb;
+  border: 1px solid var(--border);
   background: var(--surface);
   border-radius: 999px;
   padding: 2px 8px;
@@ -7395,7 +7395,7 @@ h4 {
 }
 
 .notes-related-reasons span {
-  border: 1px solid #d7e2f9;
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
   padding: 2px 8px;
@@ -7547,7 +7547,7 @@ h4 {
 }
 
 .notes-writer-title {
-  border: 1px solid #d7e3fb;
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   padding: 12px 14px;
@@ -7646,7 +7646,7 @@ h4 {
   min-height: 34px;
   padding: 6px 10px;
   border-radius: 10px;
-  border: 1px solid #9dc7ff;
+  border: 1px solid var(--primary-glow);
   background: var(--primary-soft);
   color: var(--primary);
   font-size: 0.78rem;
@@ -7658,7 +7658,7 @@ h4 {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid #d2ddf5;
+  border: 1px solid var(--border);
   background: var(--surface);
   display: inline-flex;
   align-items: center;
@@ -7670,7 +7670,7 @@ h4 {
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   display: inline-block;
 }
 
@@ -7686,7 +7686,7 @@ h4 {
 }
 
 .notes-slash-menu {
-  border: 1px solid #cdddfb;
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   padding: 10px;
@@ -7815,7 +7815,7 @@ h4 {
 }
 
 .notes-recording-panel {
-  border: 1px solid #c9dafc;
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface-soft);
   padding: 12px;
@@ -14319,6 +14319,33 @@ h4 {
   font-size: 0.9rem;
 }
 
+/* Whiteboard (tldraw) */
+.whiteboard-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+.whiteboard-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 0 6px;
+  flex-shrink: 0;
+}
+.whiteboard-container {
+  flex: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+.ghost-button.danger-ghost {
+  color: var(--danger, #dc2626);
+  font-size: 0.78rem;
+}
+.ghost-button.danger-ghost:hover {
+  background: rgba(220, 38, 38, 0.08);
+}
+
 /* Diagram canvas wrapper */
 .diagram-canvas-wrapper {
   position: relative;
@@ -14332,18 +14359,38 @@ h4 {
 /* Toolbar lateral */
 .diagram-toolbar {
   position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
   z-index: 10;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 6px;
+  padding: 4px 6px;
   box-shadow: var(--shadow-md);
+}
+/* Diagrama — vertical na esquerda (mantém comportamento original) */
+.diagram-canvas-wrapper .diagram-toolbar {
+  flex-direction: column;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 6px;
+}
+/* Mapa mental — horizontal no topo esquerda */
+.mindmap-canvas-wrapper .diagram-toolbar {
+  flex-direction: row;
+  left: 12px;
+  top: 12px;
+  transform: none;
+}
+.toolbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
 }
 .diagram-toolbar-btn {
   width: 36px;
@@ -14566,30 +14613,33 @@ h4 {
   background: var(--surface-hover);
 }
 
+:fullscreen .fullscreen-mode,
+:-webkit-full-screen .fullscreen-mode,
 .fullscreen-mode {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 9999 !important;
+  z-index: 99999 !important;
   background: var(--bg) !important;
   display: flex !important;
   flex-direction: column !important;
   padding: 0 !important;
   overflow: hidden !important;
 }
-.fullscreen-mode .notes-writer-title {
-  display: none !important;
+
+/* Garante que o html/body não limitam o fullscreen nativo */
+:fullscreen,
+:-webkit-full-screen {
+  background: var(--bg);
 }
-.fullscreen-mode .canvas-mode-toggle {
-  border-radius: 0 !important;
-  border-left: none !important;
-  border-right: none !important;
-  border-top: none !important;
-  padding: 10px 16px !important;
-  flex-shrink: 0;
+.fullscreen-mode .notes-writer-title,
+.fullscreen-mode .notes-writer-meta-line,
+.fullscreen-mode .canvas-mode-toggle,
+.fullscreen-mode .whiteboard-toolbar {
+  display: none !important;
 }
 .fullscreen-mode .canvas-area {
   flex: 1 !important;
-  height: auto !important;
+  height: 100% !important;
   min-height: 0 !important;
 }
 .fullscreen-mode .notes-writer-editor-wrap {

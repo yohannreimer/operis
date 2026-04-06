@@ -200,6 +200,73 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
     return reply.status(204).send();
   });
 
+  // ── WHITEBOARD ────────────────────────────────────────────────────────────
+
+  app.get('/canvas/notes/:noteId/whiteboard', async (req, reply) => {
+    const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
+    const whiteboard = await prisma.whiteboard.findUnique({ where: { noteId } });
+    if (!whiteboard) return reply.status(404).send({ error: 'not_found' });
+    return whiteboard;
+  });
+
+  app.post('/canvas/notes/:noteId/whiteboard', async (req, reply) => {
+    const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
+    const body = req.body as { data: unknown; title?: string };
+
+    const existing = await prisma.whiteboard.findUnique({ where: { noteId } });
+    if (existing) return reply.status(409).send({ error: 'whiteboard_exists' });
+
+    const parsed = dataSchema.safeParse(body.data);
+    if (!parsed.success) return reply.status(422).send({ error: parsed.error.message });
+
+    const whiteboard = await prisma.whiteboard.create({
+      data: { noteId, data: parsed.data as object, title: body.title ?? null },
+    });
+    return reply.status(201).send(whiteboard);
+  });
+
+  app.patch('/canvas/notes/:noteId/whiteboard', async (req, reply) => {
+    const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
+    const body = req.body as { data?: unknown; title?: string };
+
+    const existing = await prisma.whiteboard.findUnique({ where: { noteId } });
+    if (!existing) return reply.status(404).send({ error: 'not_found' });
+
+    if (body.data) {
+      const parsed = dataSchema.safeParse(body.data);
+      if (!parsed.success) return reply.status(413).send({ error: parsed.error.message });
+    }
+
+    const updated = await prisma.whiteboard.update({
+      where: { noteId },
+      data: {
+        ...(body.data !== undefined && { data: body.data as object }),
+        ...(body.title !== undefined && { title: body.title }),
+      },
+    });
+    return updated;
+  });
+
+  app.delete('/canvas/notes/:noteId/whiteboard', async (req, reply) => {
+    const { noteId } = req.params as { noteId: string };
+    const clerkUserId = getUserId(req);
+    const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
+    if (!note) return reply.status(404).send({ error: 'not_found' });
+    const existing = await prisma.whiteboard.findUnique({ where: { noteId } });
+    if (!existing) return reply.status(404).send({ error: 'not_found' });
+    await prisma.whiteboard.delete({ where: { noteId } });
+    return reply.status(204).send();
+  });
+
   app.post('/canvas/notes/:noteId/mindmap/generate', async (req, reply) => {
     const { noteId } = req.params as { noteId: string };
     const clerkUserId = getUserId(req);

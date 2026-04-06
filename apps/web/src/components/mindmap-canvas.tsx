@@ -95,6 +95,7 @@ export function MindMapCanvas({
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   const [direction, setDirection] = useState<'right' | 'side'>('right');
   const [linkSource, setLinkSource] = useState<HTMLElement | null>(null);
+  const currentScale = useRef(1);
 
   const triggerSave = useCallback(() => {
     if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
@@ -298,6 +299,35 @@ export function MindMapCanvas({
             }, 400);
           }}
         >↓</button>
+        <span className="toolbar-sep" />
+        <button
+          className="diagram-toolbar-btn"
+          title="Zoom +"
+          onClick={() => {
+            if (!meRef.current) return;
+            currentScale.current = Math.min(3, currentScale.current * 1.2);
+            meRef.current.scale(currentScale.current);
+          }}
+        >+</button>
+        <button
+          className="diagram-toolbar-btn"
+          title="Zoom −"
+          onClick={() => {
+            if (!meRef.current) return;
+            currentScale.current = Math.max(0.2, currentScale.current / 1.2);
+            meRef.current.scale(currentScale.current);
+          }}
+        >−</button>
+        <button
+          className="diagram-toolbar-btn"
+          title="Centralizar"
+          onClick={() => {
+            currentScale.current = 1;
+            meRef.current?.scale(1);
+            setTimeout(() => meRef.current?.toCenter(), 50);
+          }}
+        >⊙</button>
+        <span className="toolbar-sep" />
         <button
           className="diagram-toolbar-btn"
           title="Estilos"
