@@ -74,7 +74,6 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
               { source: 'user', scope: 'document' }
             );
           }}
-          forceDarkMode
         />
       </div>
     </div>
