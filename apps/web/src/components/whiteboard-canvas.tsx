@@ -30,7 +30,7 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
   useEffect(() => {
     const onFsChange = () => {
       setTimeout(() => {
-        editorRef.current?.zoomToFit({ duration: 0 });
+        editorRef.current?.zoomToFit({ animation: { duration: 0 } });
       }, 300); // wait for the fullscreen transition to complete
     };
     document.addEventListener('fullscreenchange', onFsChange);
@@ -41,7 +41,8 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
   const triggerSave = useCallback((editor: any) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      const snapshot = editor.store.getStoreSnapshot();
+      // 'document' scope excludes instance/session records that cause conflicts on reload
+      const snapshot = editor.store.getStoreSnapshot('document');
       onSaveRef.current(snapshot as unknown as WhiteboardData);
     }, 1500);
   }, []);
@@ -69,7 +70,7 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
           onMount={(editor) => {
             editorRef.current = editor;
             if (storeSnapshot) {
-              setTimeout(() => editor.zoomToFit({ duration: 0 }), 80);
+              setTimeout(() => editor.zoomToFit({ animation: { duration: 0 } }), 80);
             }
             editor.store.listen(
               () => triggerSave(editor),
