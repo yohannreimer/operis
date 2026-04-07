@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { Component, useCallback, useEffect, useRef } from 'react';
 import { Tldraw } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { WhiteboardData } from '../api';
@@ -17,6 +17,34 @@ function toStoreSnapshot(data: any): any | null {
   return null;
 }
 
+// ErrorBoundary catches tldraw internal errors and shows them instead of going black
+type EBState = { error: Error | null };
+class TldrawErrorBoundary extends Component<{ children: React.ReactNode }, EBState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[Whiteboard] tldraw error:', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, color: '#d46464', fontFamily: 'monospace', fontSize: 13 }}>
+          <strong>Erro na lousa:</strong>
+          <pre style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
+          <button
+            style={{ marginTop: 12, padding: '6px 14px', cursor: 'pointer' }}
+            onClick={() => this.setState({ error: null })}
+          >Tentar novamente</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCanvasProps) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
@@ -25,13 +53,11 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
 
   useEffect(() => { onSaveRef.current = onSave; });
 
-  // When fullscreen changes, tldraw's canvas may go black because the container
-  // resizes abruptly. Re-fit the viewport after the transition settles.
   useEffect(() => {
     const onFsChange = () => {
       setTimeout(() => {
-        editorRef.current?.zoomToFit({ animation: { duration: 0 } });
-      }, 300); // wait for the fullscreen transition to complete
+        try { editorRef.current?.zoomToFit({ animation: { duration: 0 } }); } catch { /* ignore */ }
+      }, 300);
     };
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
@@ -41,9 +67,12 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
   const triggerSave = useCallback((editor: any) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      // 'document' scope excludes instance/session records that cause conflicts on reload
-      const snapshot = editor.store.getStoreSnapshot('document');
-      onSaveRef.current(snapshot as unknown as WhiteboardData);
+      try {
+        const snapshot = editor.store.getStoreSnapshot('document');
+        onSaveRef.current(snapshot as unknown as WhiteboardData);
+      } catch (e) {
+        console.error('[Whiteboard] save error:', e);
+      }
     }, 1500);
   }, []);
 
@@ -64,20 +93,24 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
         </button>
       </div>
       <div className="whiteboard-container">
-        <Tldraw
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          snapshot={snapshotProp as any}
-          onMount={(editor) => {
-            editorRef.current = editor;
-            if (storeSnapshot) {
-              setTimeout(() => editor.zoomToFit({ animation: { duration: 0 } }), 80);
-            }
-            editor.store.listen(
-              () => triggerSave(editor),
-              { source: 'user', scope: 'document' }
-            );
-          }}
-        />
+        <TldrawErrorBoundary>
+          <Tldraw
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            snapshot={snapshotProp as any}
+            onMount={(editor) => {
+              editorRef.current = editor;
+              if (storeSnapshot) {
+                setTimeout(() => {
+                  try { editor.zoomToFit({ animation: { duration: 0 } }); } catch { /* ignore */ }
+                }, 80);
+              }
+              editor.store.listen(
+                () => triggerSave(editor),
+                { source: 'user', scope: 'document' }
+              );
+            }}
+          />
+        </TldrawErrorBoundary>
       </div>
     </div>
   );
