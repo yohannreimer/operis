@@ -9,20 +9,10 @@ type WhiteboardCanvasProps = {
   onDelete: () => void;
 };
 
-/**
- * Normalise whatever shape data came from the DB into a plain TLStoreSnapshot
- * ({ store, schema }) so we can pass { document: snapshot } to <Tldraw>.
- *
- * Handles two legacy formats:
- *   - { document: TLStoreSnapshot, session: ... }  ← old getSnapshot() output
- *   - { store: ..., schema: ... }                  ← plain store snapshot
- */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toStoreSnapshot(data: any): any | null {
   if (!data || typeof data !== 'object') return null;
-  // Already a TLEditorSnapshot — unwrap document part only (ignore session)
   if ('document' in data && data.document) return data.document;
-  // Already a TLStoreSnapshot
   if ('store' in data && 'schema' in data) return data;
   return null;
 }
@@ -30,14 +20,27 @@ function toStoreSnapshot(data: any): any | null {
 export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCanvasProps) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorRef = useRef<any>(null);
+
   useEffect(() => { onSaveRef.current = onSave; });
+
+  // When fullscreen changes, tldraw's canvas may go black because the container
+  // resizes abruptly. Re-fit the viewport after the transition settles.
+  useEffect(() => {
+    const onFsChange = () => {
+      setTimeout(() => {
+        editorRef.current?.zoomToFit({ duration: 0 });
+      }, 300); // wait for the fullscreen transition to complete
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const triggerSave = useCallback((editor: any) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      // Save only the store snapshot (shapes/schema) — no camera/session state.
-      // This avoids the "90-degree on reload" bug caused by stale session coords.
       const snapshot = editor.store.getStoreSnapshot();
       onSaveRef.current(snapshot as unknown as WhiteboardData);
     }, 1500);
@@ -50,7 +53,6 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
   };
 
   const storeSnapshot = toStoreSnapshot(initialData);
-  // Tldraw snapshot prop expects Partial<TLEditorSnapshot>: { document?, session? }
   const snapshotProp = storeSnapshot ? { document: storeSnapshot } : undefined;
 
   return (
@@ -65,9 +67,9 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           snapshot={snapshotProp as any}
           onMount={(editor) => {
-            // After tldraw finishes initializing, fit all content in view
+            editorRef.current = editor;
             if (storeSnapshot) {
-              setTimeout(() => editor.zoomToFit(), 80);
+              setTimeout(() => editor.zoomToFit({ duration: 0 }), 80);
             }
             editor.store.listen(
               () => triggerSave(editor),
