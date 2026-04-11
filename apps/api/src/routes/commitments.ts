@@ -57,6 +57,19 @@ function matchesDate(
   return true;
 }
 
+// Helper: verify that a commitment belongs to the authenticated user
+async function assertOwnsCommitment(prisma: PrismaClient, id: string, clerkUserId: string) {
+  const commitment = await prisma.commitment.findFirst({
+    where: { id, clerkUserId },
+    select: { id: true },
+  });
+  if (!commitment) {
+    const error = new Error('Compromisso não encontrado.');
+    (error as any).statusCode = 404;
+    throw error;
+  }
+}
+
 export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { prisma: PrismaClient }) {
 
   // GET /commitments — list all (optionally filtered by date or workspaceId)
@@ -69,21 +82,11 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
       status: z.enum(['ativo', 'pausado', 'encerrado']).optional(),
     }).parse(request.query);
 
-    const userWorkspaces = await prisma.workspace.findMany({
-      where: { clerkUserId },
-      select: { id: true }
-    });
-    const userWorkspaceIds = userWorkspaces.map(w => w.id);
-
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { clerkUserId };
     if (query.workspaceId) where['workspaceId'] = query.workspaceId;
     if (query.type) where['type'] = query.type;
     if (query.status) where['status'] = query.status;
     else where['status'] = { not: 'encerrado' };
-    where['OR'] = [
-      { workspaceId: { in: userWorkspaceIds } },
-      { workspaceId: null }
-    ];
 
     const commitments = await prisma.commitment.findMany({
       where,
@@ -106,7 +109,11 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
 
       // Add rescheduled exceptions from other days that point to this date
       const rescheduled = await prisma.commitmentException.findMany({
-        where: { newDate: filterDate, action: 'rescheduled' },
+        where: {
+          newDate: filterDate,
+          action: 'rescheduled',
+          commitment: { clerkUserId },
+        },
         include: { commitment: { include: { exceptions: true } } },
       });
 
@@ -123,20 +130,25 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
   });
 
   // GET /commitments/:id
-  app.get('/commitments/:id', async (request) => {
+  app.get('/commitments/:id', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    return prisma.commitment.findUniqueOrThrow({
-      where: { id },
+    const commitment = await prisma.commitment.findFirst({
+      where: { id, clerkUserId },
       include: { exceptions: { orderBy: { date: 'asc' } } },
     });
+    if (!commitment) return reply.code(404).send({ message: 'Compromisso não encontrado.' });
+    return commitment;
   });
 
   // POST /commitments
   app.post('/commitments', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const data = commitmentCreateSchema.parse(request.body);
 
     const commitment = await prisma.commitment.create({
       data: {
+        clerkUserId,
         workspaceId: data.workspaceId ?? null,
         projectId: data.projectId ?? null,
         title: data.title.trim(),
@@ -156,9 +168,12 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
   });
 
   // PATCH /commitments/:id
-  app.patch('/commitments/:id', async (request) => {
+  app.patch('/commitments/:id', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const data = commitmentUpdateSchema.parse(request.body);
+
+    await assertOwnsCommitment(prisma, id, clerkUserId);
 
     const updateData: Record<string, unknown> = {};
     if (data.title !== undefined) updateData['title'] = data.title.trim();
@@ -182,8 +197,11 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
 
   // DELETE /commitments/:id — encerra (soft) ou deleta (hard com ?hard=true)
   app.delete('/commitments/:id', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const { hard } = z.object({ hard: z.coerce.boolean().default(false) }).parse(request.query);
+
+    await assertOwnsCommitment(prisma, id, clerkUserId);
 
     if (hard) {
       await prisma.commitment.delete({ where: { id } });
@@ -196,6 +214,7 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
 
   // POST /commitments/:id/exceptions — cancelar ou remarcar uma ocorrência
   app.post('/commitments/:id/exceptions', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const data = z.object({
       date: z.string(),                     // YYYY-MM-DD — ocorrência afetada
@@ -205,8 +224,7 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
       note: z.string().optional().nullable(),
     }).parse(request.body);
 
-    // Verifica que o compromisso existe
-    await prisma.commitment.findUniqueOrThrow({ where: { id } });
+    await assertOwnsCommitment(prisma, id, clerkUserId);
 
     const exception = await prisma.commitmentException.upsert({
       where: { commitmentId_date: { commitmentId: id, date: new Date(data.date + 'T00:00:00.000Z') } },
@@ -231,7 +249,11 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
 
   // DELETE /commitments/:id/exceptions/:date — remove exceção (restaura ocorrência)
   app.delete('/commitments/:id/exceptions/:date', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const { id, date } = z.object({ id: z.string().uuid(), date: z.string() }).parse(request.params);
+
+    await assertOwnsCommitment(prisma, id, clerkUserId);
+
     await prisma.commitmentException.deleteMany({
       where: { commitmentId: id, date: new Date(date + 'T00:00:00.000Z') },
     });
@@ -248,15 +270,9 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
     const endDate = new Date(startDate);
     endDate.setUTCDate(endDate.getUTCDate() + 6);
 
-    const userWorkspaces = await prisma.workspace.findMany({
-      where: { clerkUserId },
-      select: { id: true }
-    });
-    const userWorkspaceIds = userWorkspaces.map(w => w.id);
-
     const where: Record<string, unknown> = {
+      clerkUserId,
       status: { not: 'encerrado' },
-      OR: [{ workspaceId: { in: userWorkspaceIds } }, { workspaceId: null }]
     };
     if (workspaceId) where['workspaceId'] = workspaceId;
 

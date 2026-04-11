@@ -646,7 +646,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
             OR: [
               { workspace: { clerkUserId } },
               { workspaceId: null, folder: { clerkUserId } },
-              { workspaceId: null, folderId: null }
+              { workspaceId: null, folderId: null, clerkUserId }
             ]
           },
           ...(query.q
@@ -671,10 +671,12 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.post('/notes', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const payload = noteCreateSchema.parse(request.body);
 
     const note = await prisma.note.create({
       data: {
+        clerkUserId,
         title: payload.title.trim(),
         content: payload.content ?? null,
         type: payload.type ?? NoteType.geral,
@@ -696,11 +698,13 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.patch('/notes/:noteId', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
     const payload = noteUpdateSchema.parse(request.body);
-    const current = await prisma.note.findUnique({
+    const current = await prisma.note.findFirst({
       where: {
-        id: params.noteId
+        id: params.noteId,
+        clerkUserId
       },
       select: {
         ...NOTE_REVISION_CORE_SELECT
@@ -767,12 +771,14 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.get('/notes/:noteId/revisions', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
     const query = noteRevisionQuerySchema.parse(request.query);
 
-    const note = await prisma.note.findUnique({
+    const note = await prisma.note.findFirst({
       where: {
-        id: params.noteId
+        id: params.noteId,
+        clerkUserId
       },
       select: {
         id: true
@@ -797,12 +803,14 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.post('/notes/:noteId/revisions', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
     const payload = noteRevisionCreateSchema.parse(request.body ?? {});
 
-    const note = await prisma.note.findUnique({
+    const note = await prisma.note.findFirst({
       where: {
-        id: params.noteId
+        id: params.noteId,
+        clerkUserId
       },
       select: {
         ...NOTE_REVISION_CORE_SELECT
@@ -823,12 +831,14 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   });
 
   app.post('/notes/:noteId/revisions/:revisionId/restore', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = noteRevisionRestoreParamsSchema.parse(request.params);
 
     const [current, revision] = await Promise.all([
-      prisma.note.findUnique({
+      prisma.note.findFirst({
         where: {
-          id: params.noteId
+          id: params.noteId,
+          clerkUserId
         },
         select: {
           ...NOTE_REVISION_CORE_SELECT
@@ -885,8 +895,15 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     return restored;
   });
 
-  app.delete('/notes/:noteId', async (request) => {
+  app.delete('/notes/:noteId', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
+
+    const note = await prisma.note.findFirst({
+      where: { id: params.noteId, clerkUserId },
+      select: { id: true }
+    });
+    if (!note) return reply.code(404).send({ message: 'Nota não encontrada.' });
 
     await prisma.note.delete({
       where: {

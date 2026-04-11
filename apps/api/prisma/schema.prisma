@@ -403,6 +403,7 @@ model TaskRestriction {
 
 model Note {
   id          String    @id @default(uuid())
+  clerkUserId String    @map("clerk_user_id") @default("legacy")
   title       String
   content     String?
   type        NoteType  @default(geral)
@@ -425,6 +426,7 @@ model Note {
   mindMap    MindMap?
   whiteboard Whiteboard?
 
+  @@index([clerkUserId, updatedAt])
   @@index([folderId, updatedAt])
   @@index([type, updatedAt])
   @@index([workspaceId, updatedAt])
@@ -707,6 +709,7 @@ enum RecurrenceDay {
 
 model Commitment {
   id          String           @id @default(uuid())
+  clerkUserId String           @map("clerk_user_id") @default("legacy")
   workspaceId String?          @map("workspace_id")
   projectId   String?          @map("project_id")
   title       String
@@ -732,6 +735,7 @@ model Commitment {
 
   exceptions CommitmentException[]
 
+  @@index([clerkUserId])
   @@index([workspaceId])
   @@index([projectId])
   @@index([type, status])
