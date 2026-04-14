@@ -99,6 +99,7 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
             snapshot={snapshotProp as any}
             onMount={(editor) => {
               editorRef.current = editor;
+              editor.user.updateUserPreferences({ colorScheme: 'light' });
               if (storeSnapshot) {
                 setTimeout(() => {
                   try { editor.zoomToFit({ animation: { duration: 0 } }); } catch { /* ignore */ }
