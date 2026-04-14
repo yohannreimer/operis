@@ -3065,7 +3065,8 @@ export function NotasPage() {
         setWhiteboardState('ready');
       } else {
         await api.updateWhiteboard(selectedNoteId, data);
-        setWhiteboardData(data);
+        // Não atualiza whiteboardData no React state — evita re-render do
+        // WhiteboardCanvas que causaria o tldraw recarregar o snapshot (tela preta)
       }
     } catch {
       // silent autosave failure
