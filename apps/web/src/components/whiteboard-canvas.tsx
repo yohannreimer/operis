@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
+import '@excalidraw/excalidraw/index.css';
 import { WhiteboardData } from '../api';
+
+// Carrega assets (fontes, locales) do CDN para não precisar copiar arquivos
+// ao deploy. Deve ser definido antes do primeiro render do Excalidraw.
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).EXCALIDRAW_ASSET_PATH =
+    'https://unpkg.com/@excalidraw/excalidraw@0.18.0/dist/prod/';
+}
 
 type WhiteboardCanvasProps = {
   initialData?: WhiteboardData | null;
@@ -35,7 +44,6 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
 
   const handleDelete = () => {
     if (window.confirm('Deletar a lousa desta nota? Esta ação não pode ser desfeita.')) {
-      // Cancela o timer de auto-save pendente para evitar que ele recrie a lousa logo após deletar
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
         saveTimer.current = null;
