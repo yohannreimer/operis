@@ -3059,17 +3059,23 @@ export function NotasPage() {
   async function handleWhiteboardSave(data: WhiteboardData) {
     if (!selectedNoteId) return;
     try {
-      if (whiteboardState === 'empty') {
-        await api.createWhiteboard(selectedNoteId, data);
-        setWhiteboardData(data);
-        setWhiteboardState('ready');
-      } else {
+      // Tenta atualizar primeiro. Se não existir (404), cria.
+      // Isso evita depender do closure de whiteboardState, que pode estar
+      // desatualizado quando o timer de debounce dispara após navegar.
+      try {
         await api.updateWhiteboard(selectedNoteId, data);
-        // Não atualiza whiteboardData no React state — evita re-render do
-        // WhiteboardCanvas que causaria o Excalidraw recarregar os dados
+      } catch (updateErr) {
+        const isNotFound =
+          (updateErr instanceof Error && (updateErr.message.includes('404') || updateErr.message.includes('not_found')));
+        if (isNotFound) {
+          await api.createWhiteboard(selectedNoteId, data);
+          setWhiteboardState('ready');
+        } else {
+          throw updateErr;
+        }
       }
-    } catch {
-      // silent autosave failure
+    } catch (e) {
+      console.error('[Whiteboard] autosave error:', e);
     }
   }
 
@@ -5095,7 +5101,14 @@ export function NotasPage() {
                     <div className="canvas-empty-icon">✏</div>
                     <p>Nenhuma lousa ainda</p>
                     <div className="canvas-empty-actions">
-                      <button onClick={() => void handleWhiteboardSave({})}>
+                      <button onClick={async () => {
+                        if (!selectedNoteId) return;
+                        try {
+                          await api.createWhiteboard(selectedNoteId, { elements: [], files: {} });
+                          setWhiteboardData({ elements: [], files: {} });
+                          setWhiteboardState('ready');
+                        } catch { /* ignore */ }
+                      }}>
                         Criar lousa
                       </button>
                     </div>

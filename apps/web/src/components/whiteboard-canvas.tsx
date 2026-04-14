@@ -3,8 +3,7 @@ import { Excalidraw } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import { WhiteboardData } from '../api';
 
-// Carrega assets (fontes, locales) do CDN para não precisar copiar arquivos
-// ao deploy. Deve ser definido antes do primeiro render do Excalidraw.
+// Carrega assets (fontes, locales) do CDN para não precisar copiar arquivos ao deploy.
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).EXCALIDRAW_ASSET_PATH =
@@ -23,18 +22,25 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
 
   useEffect(() => { onSaveRef.current = onSave; });
 
+  // Limpa o timer ao desmontar para não disparar save com dados obsoletos
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
+  const handleChange = useCallback((elements: readonly any[], _appState: any, files: any) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       try {
-        // Remove collaborators que não é serializável
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { collaborators: _c, ...safeAppState } = appState;
+        // Salva apenas os elementos (sem appState — passá-lo de volta ao init
+        // causa restauração quebrada) e os files (imagens coladas).
+        // Elementos deletados são preservados pois o Excalidraw precisa deles
+        // para o histórico de undo, mas são ignorados na renderização.
         onSaveRef.current({
           elements: Array.from(elements),
-          appState: safeAppState,
-          files,
+          files: files ?? {},
         } as unknown as WhiteboardData);
       } catch (e) {
         console.error('[Whiteboard] save error:', e);
@@ -52,17 +58,17 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
     }
   };
 
+  // Só passa elements e files para o init — o appState é reinicializado pelo
+  // Excalidraw com valores padrão seguros, evitando canvas em branco ao reabrir.
   const excalidrawInitialData = initialData
     ? {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         elements: (initialData as any).elements ?? [],
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        appState: (initialData as any).appState ?? {},
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         files: (initialData as any).files ?? {},
         scrollToContent: true,
       }
-    : null;
+    : undefined;
 
   return (
     <div className="whiteboard-wrap">
