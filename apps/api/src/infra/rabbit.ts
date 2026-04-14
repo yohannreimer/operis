@@ -14,9 +14,33 @@ async function getChannel(): Promise<amqplib.Channel> {
 
   if (!connection) {
     connection = await amqplib.connect(env.RABBITMQ_URL);
+
+    // Sem esses handlers, qualquer ECONNRESET/close vira erro não tratado
+    // e derruba o processo inteiro
+    connection.on('error', (err) => {
+      console.error('[RabbitMQ] connection error:', err.message);
+      connection = null;
+      channel = null;
+    });
+
+    connection.on('close', () => {
+      console.warn('[RabbitMQ] connection closed — will reconnect on next publish');
+      connection = null;
+      channel = null;
+    });
   }
 
   channel = await connection.createChannel();
+
+  channel.on('error', (err) => {
+    console.error('[RabbitMQ] channel error:', err.message);
+    channel = null;
+  });
+
+  channel.on('close', () => {
+    console.warn('[RabbitMQ] channel closed');
+    channel = null;
+  });
 
   return channel;
 }
