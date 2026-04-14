@@ -14337,6 +14337,27 @@ h4 {
   border-radius: 12px;
   overflow: hidden;
   position: relative;
+  /* Reseta variáveis do app para não vazarem para o Excalidraw */
+  --primary: initial;
+  --primary-soft: initial;
+  --primary-glow: initial;
+  --bg: initial;
+  --surface: initial;
+  --surface-soft: initial;
+  --surface-elevated: initial;
+  --text: initial;
+  --text-secondary: initial;
+  --border: initial;
+  --border-hover: initial;
+  color: initial;
+  background: initial;
+  font-family: initial;
+}
+/* Garante que o canvas do Excalidraw ocupe todo o espaço disponível */
+.whiteboard-container .excalidraw,
+.whiteboard-container .excalidraw-container {
+  width: 100% !important;
+  height: 100% !important;
 }
 .ghost-button.danger-ghost {
   color: var(--danger, #dc2626);

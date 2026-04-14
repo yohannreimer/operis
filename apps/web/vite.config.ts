@@ -8,6 +8,6 @@ export default defineConfig({
     port: 5173
   },
   optimizeDeps: {
-    include: ['tldraw']
+    include: ['@excalidraw/excalidraw']
   }
 });
