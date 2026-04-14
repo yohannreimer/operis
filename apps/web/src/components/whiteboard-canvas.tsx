@@ -1,6 +1,5 @@
-import { Component, useCallback, useEffect, useRef } from 'react';
-import { Tldraw } from 'tldraw';
-import 'tldraw/tldraw.css';
+import { useCallback, useEffect, useRef } from 'react';
+import { Excalidraw } from '@excalidraw/excalidraw';
 import { WhiteboardData } from '../api';
 
 type WhiteboardCanvasProps = {
@@ -9,67 +8,25 @@ type WhiteboardCanvasProps = {
   onDelete: () => void;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toStoreSnapshot(data: any): any | null {
-  if (!data || typeof data !== 'object') return null;
-  if ('document' in data && data.document) return data.document;
-  if ('store' in data && 'schema' in data) return data;
-  return null;
-}
-
-// ErrorBoundary catches tldraw internal errors and shows them instead of going black
-type EBState = { error: Error | null };
-class TldrawErrorBoundary extends Component<{ children: React.ReactNode }, EBState> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[Whiteboard] tldraw error:', error, info);
-  }
-  render() {
-    if (this.state.error) {
-      return (
-        <div style={{ padding: 24, color: '#d46464', fontFamily: 'monospace', fontSize: 13 }}>
-          <strong>Erro na lousa:</strong>
-          <pre style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
-          <button
-            style={{ marginTop: 12, padding: '6px 14px', cursor: 'pointer' }}
-            onClick={() => this.setState({ error: null })}
-          >Tentar novamente</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCanvasProps) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const editorRef = useRef<any>(null);
 
   useEffect(() => { onSaveRef.current = onSave; });
 
-  useEffect(() => {
-    const onFsChange = () => {
-      setTimeout(() => {
-        try { editorRef.current?.zoomToFit({ animation: { duration: 0 } }); } catch { /* ignore */ }
-      }, 300);
-    };
-    document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, []);
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const triggerSave = useCallback((editor: any) => {
+  const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       try {
-        const snapshot = editor.store.getStoreSnapshot('document');
-        onSaveRef.current(snapshot as unknown as WhiteboardData);
+        // Remove collaborators que não é serializável
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { collaborators: _c, ...safeAppState } = appState;
+        onSaveRef.current({
+          elements: Array.from(elements),
+          appState: safeAppState,
+          files,
+        } as unknown as WhiteboardData);
       } catch (e) {
         console.error('[Whiteboard] save error:', e);
       }
@@ -78,12 +35,26 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
 
   const handleDelete = () => {
     if (window.confirm('Deletar a lousa desta nota? Esta ação não pode ser desfeita.')) {
+      // Cancela o timer de auto-save pendente para evitar que ele recrie a lousa logo após deletar
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
       onDelete();
     }
   };
 
-  const storeSnapshot = toStoreSnapshot(initialData);
-  const snapshotProp = storeSnapshot ? { document: storeSnapshot } : undefined;
+  const excalidrawInitialData = initialData
+    ? {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        elements: (initialData as any).elements ?? [],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        appState: (initialData as any).appState ?? {},
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        files: (initialData as any).files ?? {},
+        scrollToContent: true,
+      }
+    : null;
 
   return (
     <div className="whiteboard-wrap">
@@ -93,25 +64,13 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
         </button>
       </div>
       <div className="whiteboard-container">
-        <TldrawErrorBoundary>
-          <Tldraw
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            snapshot={snapshotProp as any}
-            onMount={(editor) => {
-              editorRef.current = editor;
-              editor.user.updateUserPreferences({ colorScheme: 'light' });
-              if (storeSnapshot) {
-                setTimeout(() => {
-                  try { editor.zoomToFit({ animation: { duration: 0 } }); } catch { /* ignore */ }
-                }, 80);
-              }
-              editor.store.listen(
-                () => triggerSave(editor),
-                { source: 'user', scope: 'document' }
-              );
-            }}
-          />
-        </TldrawErrorBoundary>
+        <Excalidraw
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          initialData={excalidrawInitialData as any}
+          onChange={handleChange}
+          theme="light"
+          langCode="pt-BR"
+        />
       </div>
     </div>
   );
