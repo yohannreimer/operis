@@ -6974,10 +6974,8 @@ h4 {
 
 .notes-smart-collections {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 2px;
 }
 
 .notes-smart-chip {
