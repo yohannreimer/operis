@@ -7153,45 +7153,39 @@ h4 {
   width: 100%;
 }
 
-/* Wrapper que controla a altura e esconde o scrollbar nativo fora da área visível */
-.notes-list-scroll {
-  position: relative;
-  max-height: calc(100vh - 390px);
-  overflow: hidden;
-}
-
-/* Barra fina visual posicionada absolutamente no canto direito do wrapper */
-.notes-list-scroll::after {
-  content: '';
-  position: absolute;
-  right: 2px;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  background: var(--border-hover);
-  border-radius: 999px;
-  opacity: 0;
-  transition: opacity 200ms;
-  pointer-events: none;
-}
-.notes-list-scroll:hover::after {
-  opacity: 1;
-}
-
 .notes-list {
   list-style: none;
   margin: 0;
-  padding: 2px 4px 6px 2px;
+  /* padding-right: deixa espaço visível para a borda direita dos cards */
+  padding: 2px 6px 6px 2px;
   display: grid;
   gap: 10px;
   max-height: calc(100vh - 390px);
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x: hidden;
-  /* Scrollbar escondido: já não ocupa espaço nem sobrepõe os cards */
-  scrollbar-width: none; /* Firefox */
+  /* Scrollbar fina para não sobrepor a borda dos cards */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
 }
+
+/* Override do scrollbar global (6px) para um mais fino */
 .notes-list::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  width: 4px;
+}
+.notes-list::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 6px;
+}
+.notes-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+}
+.notes-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.notes-list li {
+  min-width: 0; /* impede o grid item de expandir além do track */
 }
 
 .notes-list li button {
