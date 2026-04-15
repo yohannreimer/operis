@@ -7187,9 +7187,7 @@ h4 {
   max-height: calc(100vh - 390px);
   overflow-y: scroll;
   overflow-x: hidden;
-  /* Empurra o scrollbar nativo para fora da área visível do wrapper */
-  margin-right: -20px;
-  padding-right: 24px; /* 4px visível + 20px para compensar o margin-right */
+  /* Scrollbar escondido: já não ocupa espaço nem sobrepõe os cards */
   scrollbar-width: none; /* Firefox */
 }
 .notes-list::-webkit-scrollbar {
