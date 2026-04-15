@@ -5546,6 +5546,7 @@ export function NotasPage() {
               onAction={() => void createNote({ focusWriter: true })}
             />
           ) : (
+            <div className="notes-list-wrap">
             <ul className="notes-list" ref={notesListRef}>
               {sortedScopedNotes.map((note) => {
                 const checklist = getChecklistProgress(note.content);
@@ -5584,6 +5585,7 @@ export function NotasPage() {
                 );
               })}
             </ul>
+            </div>
           )}
         </section>
 

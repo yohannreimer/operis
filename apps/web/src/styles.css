@@ -7153,35 +7153,36 @@ h4 {
   width: 100%;
 }
 
+/* Wrapper para o gradiente de fade embaixo */
+.notes-list-wrap {
+  position: relative;
+}
+.notes-list-wrap::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  pointer-events: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
 .notes-list {
   list-style: none;
   margin: 0;
-  /* padding-right: deixa espaço visível para a borda direita dos cards */
   padding: 2px 6px 6px 2px;
   display: grid;
   gap: 10px;
   max-height: calc(100vh - 390px);
   overflow-y: auto;
   overflow-x: hidden;
-  /* Scrollbar fina para não sobrepor a borda dos cards */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
+  /* Scrollbar completamente oculto — rola com trackpad/mouse wheel */
+  scrollbar-width: none;
 }
-
-/* Override do scrollbar global (6px) para um mais fino */
 .notes-list::-webkit-scrollbar {
-  width: 4px;
-}
-.notes-list::-webkit-scrollbar-track {
-  background: transparent;
-  margin-block: 6px;
-}
-.notes-list::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12);
-  border-radius: 999px;
-}
-.notes-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.2);
+  display: none;
 }
 
 .notes-list li {
