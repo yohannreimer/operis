@@ -7156,20 +7156,22 @@ h4 {
 .notes-list {
   list-style: none;
   margin: 0;
-  padding: 2px 4px 2px 2px;
+  /* padding-right: espaço para o scrollbar não cobrir a borda dos cards
+     padding-bottom: para o último card visível mostrar a borda de baixo */
+  padding: 2px 10px 6px 2px;
   display: grid;
   gap: 10px;
   max-height: calc(100vh - 390px);
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-gutter: stable;
 }
 
 .notes-list::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
 }
 .notes-list::-webkit-scrollbar-track {
   background: transparent;
+  margin-block: 4px;
 }
 .notes-list::-webkit-scrollbar-thumb {
   background: var(--border-hover);
