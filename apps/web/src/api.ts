@@ -1024,6 +1024,20 @@ export type InboxListResponse = {
   contexts: InboxContext[];
 };
 
+export type InboxTodayItem = {
+  id: string;
+  clerkUserId: string;
+  inboxItemId: string;
+  todayDate: string;
+  position: number;
+  completedAt: string | null;
+  createdAt: string;
+  inboxItem: InboxItem & {
+    workspace: WorkspaceRef | null;
+    inboxContext: InboxContextRef | null;
+  };
+};
+
 export type Gamification = {
   scoreAtual: number;
   scoreSemanal: number;
@@ -1935,6 +1949,24 @@ export const api = {
 
   deleteInboxContext: (id: string) =>
     apiRequest<void>(`/inbox/contexts/${id}`, { method: 'DELETE' }),
+
+  getTodayItems: (todayDate: string) =>
+    apiRequest<InboxTodayItem[]>(`/inbox/today?todayDate=${todayDate}`),
+
+  addTodayItem: (payload: { inboxItemId: string; todayDate: string; position: number }) =>
+    apiRequest<InboxTodayItem>('/inbox/today', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateTodayItem: (id: string, patch: { position?: number; completedAt?: string | null }) =>
+    apiRequest<InboxTodayItem>(`/inbox/today/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+
+  removeTodayItem: (id: string) =>
+    apiRequest<void>(`/inbox/today/${id}`, { method: 'DELETE' }),
 
   getGamification: () => apiRequest<Gamification>('/gamification'),
   getGamificationDetails: () => apiRequest<GamificationDetails>('/gamification/details'),
