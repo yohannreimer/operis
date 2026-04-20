@@ -2,14 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { arrayMove } from '@dnd-kit/sortable';
+import {
   api,
   DeepWorkSession,
   InboxContext,
   InboxItem,
   InboxItemStatus,
+  InboxTodayItem,
   Task,
   Workspace,
 } from '../api';
+import { TodayFAB } from '../components/today-fab';
+import { TodayPanel } from '../components/today-panel';
 import { useShellContext } from '../components/shell-context';
 import { PremiumHeader, PremiumPage, SkeletonBlock } from '../components/premium-ui';
 import { InboxInput } from '../components/inbox-input';
@@ -25,6 +36,11 @@ function formatDuration(totalSeconds: number) {
 }
 
 type Filter = 'hoje' | 'ontem' | 'semana' | 'tudo';
+
+function getTodayDateString(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export function InboxPage() {
   const { workspaces } = useShellContext();
@@ -42,6 +58,13 @@ export function InboxPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [convertingItem, setConvertingItem] = useState<InboxItem | null>(null);
+
+  const [todayMode, setTodayMode] = useState(false);
+  const [todayItems, setTodayItems] = useState<InboxTodayItem[]>([]);
+
+  const sensors = useSensors(useSensor(PointerSensor, {
+    activationConstraint: { distance: 8 },
+  }));
 
   // Collapse state — set of collapsed group IDs
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['__aguardando__']));
@@ -106,6 +129,11 @@ export function InboxPage() {
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [activeSession?.id, activeSession?.state]);
+
+  useEffect(() => {
+    if (todayMode) loadTodayItems();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayMode]);
 
   const elapsedSeconds = useCallback(() => {
     if (!activeSession || activeSession.state !== 'active') return 0;
@@ -267,6 +295,83 @@ export function InboxPage() {
       toast.success(`Contexto "${ctx.name}" criado.`);
     } catch {
       toast.error('Erro ao criar contexto.');
+    }
+  }
+
+  // ── Today Mode ────────────────────────────────────────────────────────────
+
+  async function loadTodayItems() {
+    try {
+      const items = await api.getTodayItems(getTodayDateString());
+      setTodayItems(items);
+    } catch {
+      toast.error('Erro ao carregar Modo Hoje.');
+    }
+  }
+
+  async function handleAddToToday(inboxItemId: string) {
+    const alreadyIn = todayItems.some((i) => i.inboxItemId === inboxItemId);
+    if (alreadyIn) return;
+    try {
+      const position = todayItems.filter((i) => i.completedAt === null).length;
+      const todayItem = await api.addTodayItem({ inboxItemId, todayDate: getTodayDateString(), position });
+      setTodayItems((prev) => [...prev, todayItem]);
+    } catch {
+      toast.error('Erro ao adicionar ao Hoje.');
+    }
+  }
+
+  async function handleCompleteToday(todayItem: InboxTodayItem) {
+    const completedAt = new Date().toISOString();
+    setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt } : i)));
+    try {
+      await api.updateTodayItem(todayItem.id, { completedAt });
+    } catch {
+      toast.error('Erro ao concluir.');
+      setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt: null } : i)));
+    }
+  }
+
+  async function handleUncompleteToday(todayItem: InboxTodayItem) {
+    setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt: null } : i)));
+    try {
+      await api.updateTodayItem(todayItem.id, { completedAt: null });
+    } catch {
+      toast.error('Erro ao desmarcar.');
+      setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt: todayItem.completedAt } : i)));
+    }
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    // Inbox item dropped onto today panel
+    if (over.id === 'today-panel-drop' && active.data.current?.type === 'inbox-item') {
+      await handleAddToToday(active.data.current.inboxItemId as string);
+      return;
+    }
+
+    // Reorder within today panel
+    if (active.id !== over.id) {
+      const pending = todayItems.filter((i) => i.completedAt === null);
+      const oldIndex = pending.findIndex((i) => i.id === active.id);
+      const newIndex = pending.findIndex((i) => i.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reordered = arrayMove(pending, oldIndex, newIndex);
+      const done = todayItems.filter((i) => i.completedAt !== null);
+      setTodayItems([...reordered, ...done]);
+
+      try {
+        await Promise.all([
+          api.updateTodayItem(reordered[newIndex].id, { position: newIndex }),
+          api.updateTodayItem(reordered[oldIndex].id, { position: oldIndex }),
+        ]);
+      } catch {
+        toast.error('Erro ao reordenar.');
+        await loadTodayItems();
+      }
     }
   }
 
@@ -458,6 +563,7 @@ export function InboxPage() {
   };
 
   return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
     <PremiumPage>
       <PremiumHeader
         title="Inbox Operacional"
@@ -541,47 +647,94 @@ export function InboxPage() {
         </div>
       ) : (
         /* Modo agrupado */
-        <div className="inbox-groups">
-          {orderedGroups.length === 0 ? (
-            <div className="inbox-empty">
-              Nenhum item {filter === 'hoje' ? 'hoje' : 'nesse período'}. Use o campo acima para capturar.
+        todayMode ? (
+          <div className="inbox-today-split">
+            <div className="inbox-today-split-today">
+              <TodayPanel
+                items={todayItems}
+                onComplete={handleCompleteToday}
+                onUncomplete={handleUncompleteToday}
+              />
             </div>
-          ) : (
-            (() => {
-              const nonVirtualGroups = orderedGroups.filter((g) => !g.isVirtual);
-              return orderedGroups.map((group) => {
-                const nvIdx = nonVirtualGroups.findIndex((g) => g.id === group.id);
-                return (
-                  <InboxGroup
-                    key={group.id}
-                    label={group.label}
-                    items={group.items}
-                    contexts={contexts}
-                    workspaces={workspaces}
-                    isVirtual={group.isVirtual}
-                    collapsed={collapsedGroups.has(group.id)}
-                    onToggleCollapse={() => toggleCollapse(group.id)}
-                    canMoveUp={nvIdx > 0}
-                    canMoveDown={nvIdx !== -1 && nvIdx < nonVirtualGroups.length - 1}
-                    onMoveUp={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'up')}
-                    onMoveDown={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'down')}
-                    {...itemCallbacks}
-                    {...itemCallbacksWithReorder(group.items)}
-                  />
-                );
-              });
-            })()
-          )}
+            <div className="inbox-today-split-inbox inbox-groups">
+              {orderedGroups.length === 0 ? (
+                <div className="inbox-empty">
+                  Nenhum item {filter === 'hoje' ? 'hoje' : 'nesse período'}. Use o campo acima para capturar.
+                </div>
+              ) : (
+                (() => {
+                  const nonVirtualGroups = orderedGroups.filter((g) => !g.isVirtual);
+                  return orderedGroups.map((group) => {
+                    const nvIdx = nonVirtualGroups.findIndex((g) => g.id === group.id);
+                    return (
+                      <InboxGroup
+                        key={group.id}
+                        label={group.label}
+                        items={group.items}
+                        contexts={contexts}
+                        workspaces={workspaces}
+                        isVirtual={group.isVirtual}
+                        draggable
+                        collapsed={collapsedGroups.has(group.id)}
+                        onToggleCollapse={() => toggleCollapse(group.id)}
+                        canMoveUp={nvIdx > 0}
+                        canMoveDown={nvIdx !== -1 && nvIdx < nonVirtualGroups.length - 1}
+                        onMoveUp={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'up')}
+                        onMoveDown={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'down')}
+                        {...itemCallbacks}
+                        {...itemCallbacksWithReorder(group.items)}
+                      />
+                    );
+                  });
+                })()
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="inbox-groups">
+            {orderedGroups.length === 0 ? (
+              <div className="inbox-empty">
+                Nenhum item {filter === 'hoje' ? 'hoje' : 'nesse período'}. Use o campo acima para capturar.
+              </div>
+            ) : (
+              (() => {
+                const nonVirtualGroups = orderedGroups.filter((g) => !g.isVirtual);
+                return orderedGroups.map((group) => {
+                  const nvIdx = nonVirtualGroups.findIndex((g) => g.id === group.id);
+                  return (
+                    <InboxGroup
+                      key={group.id}
+                      label={group.label}
+                      items={group.items}
+                      contexts={contexts}
+                      workspaces={workspaces}
+                      isVirtual={group.isVirtual}
+                      collapsed={collapsedGroups.has(group.id)}
+                      onToggleCollapse={() => toggleCollapse(group.id)}
+                      canMoveUp={nvIdx > 0}
+                      canMoveDown={nvIdx !== -1 && nvIdx < nonVirtualGroups.length - 1}
+                      onMoveUp={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'up')}
+                      onMoveDown={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'down')}
+                      {...itemCallbacks}
+                      {...itemCallbacksWithReorder(group.items)}
+                    />
+                  );
+                });
+              })()
+            )}
 
-          <button
-            type="button"
-            className="inbox-add-context ghost-button"
-            onClick={handleAddContext}
-          >
-            + Novo contexto
-          </button>
-        </div>
+            <button
+              type="button"
+              className="inbox-add-context ghost-button"
+              onClick={handleAddContext}
+            >
+              + Novo contexto
+            </button>
+          </div>
+        )
       )}
+
+      <TodayFAB active={todayMode} onToggle={() => setTodayMode((v) => !v)} />
 
       {/* Convert to task modal */}
       <CreateTaskModal
@@ -637,5 +790,6 @@ export function InboxPage() {
         </div>
       )}
     </PremiumPage>
+    </DndContext>
   );
 }

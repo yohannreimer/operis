@@ -16072,3 +16072,28 @@ h4 {
   flex: 1;
   overflow-y: auto;
 }
+
+/* ── Inbox item drag handle (Modo Hoje) ──────────────────────────────────── */
+.inbox-item-drag-handle {
+  color: var(--muted);
+  cursor: grab;
+  padding: 2px 4px;
+  min-height: unset;
+  border-color: transparent;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.inbox-item:hover .inbox-item-drag-handle {
+  opacity: 1;
+}
+
+.inbox-item-drag-handle:hover {
+  color: var(--text-secondary);
+  background: var(--surface-elevated);
+}
+
+.inbox-item--dragging {
+  opacity: 0.4;
+}
