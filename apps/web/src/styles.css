@@ -15895,3 +15895,180 @@ h4 {
   border-color: var(--primary);
   color: #fff;
 }
+
+/* ── Today Panel ─────────────────────────────────────────────────────────── */
+.today-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  height: 100%;
+}
+
+.today-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.today-panel-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--primary);
+  flex: 1;
+}
+
+.today-panel-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid var(--primary-glow);
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 22px;
+  text-align: center;
+}
+
+.today-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  transition: background var(--transition-fast);
+}
+
+.today-panel-body--over {
+  background: var(--primary-soft);
+}
+
+.today-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  border: 1.5px dashed var(--border-hover);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 16px;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.today-panel-empty--over {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.today-panel-done-section {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.today-panel-done-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 4px 6px;
+  width: 100%;
+  text-align: left;
+  border-color: transparent;
+}
+
+.today-panel-done-items {
+  margin-top: 4px;
+}
+
+/* ── Today Item ──────────────────────────────────────────────────────────── */
+.today-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.today-item:hover {
+  background: var(--surface-soft);
+}
+
+.today-item:hover .today-item-handle {
+  opacity: 1;
+}
+
+.today-item--completed .today-item-content {
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+
+.today-item-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--muted);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  min-height: unset;
+  box-shadow: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.today-item-checkbox:hover {
+  border-color: var(--primary);
+}
+
+.today-item-checkbox--checked {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.today-item-content {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.today-item-handle {
+  color: var(--muted);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.today-item-handle:active {
+  cursor: grabbing;
+}
+
+/* ── Inbox Today Split Layout ────────────────────────────────────────────── */
+.inbox-today-split {
+  display: flex;
+  gap: 16px;
+  height: calc(100vh - 160px);
+  min-height: 400px;
+}
+
+.inbox-today-split-today {
+  width: 40%;
+  flex-shrink: 0;
+}
+
+.inbox-today-split-inbox {
+  flex: 1;
+  overflow-y: auto;
+}
