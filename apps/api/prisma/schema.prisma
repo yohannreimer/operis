@@ -537,6 +537,7 @@ model InboxItem {
 
   workspace       Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   inboxContext    InboxContext?   @relation(fields: [inboxContextId], references: [id], onDelete: SetNull)
+  todayItems      InboxTodayItem[]
 
   @@index([clerkUserId, status])
   @@map("inbox_items")
@@ -553,6 +554,22 @@ model InboxContext {
 
   @@index([clerkUserId])
   @@map("inbox_contexts")
+}
+
+model InboxTodayItem {
+  id          String    @id @default(uuid())
+  clerkUserId String    @map("clerk_user_id")
+  inboxItemId String    @map("inbox_item_id")
+  todayDate   String    @map("today_date")
+  position    Int       @default(0)
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  inboxItem   InboxItem @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
+
+  @@unique([clerkUserId, inboxItemId, todayDate])
+  @@index([clerkUserId, todayDate])
+  @@map("inbox_today_items")
 }
 
 model WhatsappEvent {
