@@ -353,7 +353,8 @@ export function InboxPage() {
     }
 
     // Reorder within today panel
-    if (active.id !== over.id) {
+    const activeIsTodayItem = todayItems.some((i) => i.id === active.id);
+    if (active.id !== over.id && activeIsTodayItem) {
       const pending = todayItems.filter((i) => i.completedAt === null);
       const oldIndex = pending.findIndex((i) => i.id === active.id);
       const newIndex = pending.findIndex((i) => i.id === over.id);
