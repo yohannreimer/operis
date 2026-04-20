@@ -300,4 +300,102 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     await prisma.inboxContext.delete({ where: { id } });
     return reply.code(204).send();
   });
+
+  // ── Today ─────────────────────────────────────────────────────────────────
+
+  // GET /inbox/today
+  app.get('/inbox/today', async (request) => {
+    const clerkUserId = getUserId(request);
+    const { todayDate } = z.object({
+      todayDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).parse(request.query);
+
+    return prisma.inboxTodayItem.findMany({
+      where: { clerkUserId, todayDate },
+      orderBy: { position: 'asc' },
+      include: {
+        inboxItem: {
+          include: {
+            workspace: { select: { id: true, name: true, color: true } },
+            inboxContext: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+  });
+
+  // POST /inbox/today
+  app.post('/inbox/today', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const payload = z.object({
+      inboxItemId: z.string().uuid(),
+      todayDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      position: z.number().int().default(0),
+    }).parse(request.body);
+
+    const item = await prisma.inboxItem.findUniqueOrThrow({ where: { id: payload.inboxItemId } });
+    assertOwnership(clerkUserId, item.clerkUserId);
+
+    const todayItem = await prisma.inboxTodayItem.create({
+      data: {
+        clerkUserId,
+        inboxItemId: payload.inboxItemId,
+        todayDate: payload.todayDate,
+        position: payload.position,
+      },
+      include: {
+        inboxItem: {
+          include: {
+            workspace: { select: { id: true, name: true, color: true } },
+            inboxContext: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    return reply.code(201).send(todayItem);
+  });
+
+  // PATCH /inbox/today/:id
+  app.patch('/inbox/today/:id', async (request) => {
+    const clerkUserId = getUserId(request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const payload = z.object({
+      position: z.number().int().optional(),
+      completedAt: z.string().datetime().nullable().optional(),
+    }).parse(request.body);
+
+    const existing = await prisma.inboxTodayItem.findUniqueOrThrow({ where: { id } });
+    assertOwnership(clerkUserId, existing.clerkUserId);
+
+    return prisma.inboxTodayItem.update({
+      where: { id },
+      data: {
+        ...(payload.position !== undefined && { position: payload.position }),
+        ...('completedAt' in payload && {
+          completedAt: payload.completedAt ? new Date(payload.completedAt) : null,
+        }),
+      },
+      include: {
+        inboxItem: {
+          include: {
+            workspace: { select: { id: true, name: true, color: true } },
+            inboxContext: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+  });
+
+  // DELETE /inbox/today/:id
+  app.delete('/inbox/today/:id', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+
+    const existing = await prisma.inboxTodayItem.findUniqueOrThrow({ where: { id } });
+    assertOwnership(clerkUserId, existing.clerkUserId);
+
+    await prisma.inboxTodayItem.delete({ where: { id } });
+    return reply.code(204).send();
+  });
 }
