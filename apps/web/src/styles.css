@@ -15866,3 +15866,32 @@ h4 {
 .inbox-group--virtual .inbox-group-label {
   color: var(--muted);
 }
+
+/* ── Today FAB ─────────────────────────────────────────────────────────────── */
+.today-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--shadow-sm);
+  padding: 0;
+  transition: background var(--transition-normal) var(--ease-out),
+              border-color var(--transition-normal) var(--ease-out),
+              color var(--transition-normal) var(--ease-out);
+}
+
+.today-fab--active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
