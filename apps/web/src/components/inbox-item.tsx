@@ -17,6 +17,7 @@ type Props = {
   onMoveItemDown?: (item: InboxItemType) => void;
   canMoveItemUp?: (item: InboxItemType) => boolean;
   canMoveItemDown?: (item: InboxItemType) => boolean;
+  draggable?: boolean;
 };
 
 function formatWaitingDate(dateStr: string) {

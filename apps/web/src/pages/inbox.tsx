@@ -44,7 +44,7 @@ export function InboxPage() {
   const [convertingItem, setConvertingItem] = useState<InboxItem | null>(null);
 
   // Collapse state — set of collapsed group IDs
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['__aguardando__']));
 
   // Group display order — persisted to localStorage (covers workspaces + contexts)
   const [groupOrder, setGroupOrder] = useState<string[]>(() => {
@@ -58,7 +58,6 @@ export function InboxPage() {
 
   // Visibility filters
   const [showDone, setShowDone] = useState(false);
-  const [showWaiting, setShowWaiting] = useState(true);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
@@ -274,8 +273,7 @@ export function InboxPage() {
   // ── Group reorder ─────────────────────────────────────────────────────────
 
   function handleMoveGroup(groupId: string, direction: 'up' | 'down') {
-    // Work on the ordered visible group IDs
-    const visibleIds = orderedGroups.map((g) => g.id);
+    const visibleIds = orderedGroups.filter((g) => !g.isVirtual).map((g) => g.id);
     const idx = visibleIds.indexOf(groupId);
     if (idx === -1) return;
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -343,43 +341,68 @@ export function InboxPage() {
   const filteredItems = useMemo(
     () => items.filter((i) => {
       if (!showDone && i.status === 'feito') return false;
-      if (!showWaiting && i.status === 'aguardando') return false;
       return true;
     }),
-    [items, showDone, showWaiting]
+    [items, showDone]
   );
 
   const rawGroups = useMemo(() => {
+    const aguardandoItems = filteredItems.filter((i) => i.status === 'aguardando');
+    const activeItems = filteredItems.filter((i) => i.status !== 'aguardando');
+
     const workspaceGroups = (workspaces as Workspace[]).map((w) => ({
       id: w.id,
       label: w.name,
       type: 'workspace' as const,
-      items: filteredItems.filter((i) => i.workspaceId === w.id),
+      isVirtual: false,
+      items: activeItems.filter((i) => i.workspaceId === w.id),
     }));
 
     const contextGroups = contexts.map((c) => ({
       id: c.id,
       label: c.name,
       type: 'context' as const,
-      items: filteredItems.filter((i) => i.inboxContextId === c.id),
+      isVirtual: false,
+      items: activeItems.filter((i) => i.inboxContextId === c.id),
     }));
 
     const noContext = {
       id: 'no-context',
       label: 'Sem contexto',
       type: 'noContext' as const,
-      items: filteredItems.filter((i) => !i.workspaceId && !i.inboxContextId),
+      isVirtual: false,
+      items: activeItems.filter((i) => !i.workspaceId && !i.inboxContextId),
     };
 
-    return [...workspaceGroups, ...contextGroups, noContext].filter((g) => g.items.length > 0);
+    const groups: Array<{
+      id: string;
+      label: string;
+      type: string;
+      isVirtual: boolean;
+      items: InboxItem[];
+    }> = [...workspaceGroups, ...contextGroups, noContext].filter((g) => g.items.length > 0);
+
+    if (aguardandoItems.length > 0) {
+      groups.push({
+        id: '__aguardando__',
+        label: 'Aguardando',
+        type: 'virtual',
+        isVirtual: true,
+        items: aguardandoItems,
+      });
+    }
+
+    return groups;
   }, [filteredItems, workspaces, contexts]);
 
   // Apply groupOrder: known IDs first (in saved order), new IDs appended at end
   const orderedGroups = useMemo(() => {
     const byId = new Map(rawGroups.map((g) => [g.id, g]));
-    const known = groupOrder.flatMap((id) => { const g = byId.get(id); return g ? [g] : []; });
-    const newOnes = rawGroups.filter((g) => !groupOrder.includes(g.id));
-    return [...known, ...newOnes];
+    const regularGroups = rawGroups.filter((g) => !g.isVirtual);
+    const virtualGroups = rawGroups.filter((g) => g.isVirtual);
+    const known = groupOrder.flatMap((id) => { const g = byId.get(id); return g && !g.isVirtual ? [g] : []; });
+    const newOnes = regularGroups.filter((g) => !groupOrder.includes(g.id));
+    return [...known, ...newOnes, ...virtualGroups];
   }, [rawGroups, groupOrder]);
 
   const bruteItems = useMemo(
@@ -407,7 +430,10 @@ export function InboxPage() {
 
   // Sync new group IDs into order on first appearance
   useEffect(() => {
-    const newIds = rawGroups.map((g) => g.id).filter((id) => !groupOrder.includes(id));
+    const newIds = rawGroups
+      .filter((g) => !g.isVirtual)
+      .map((g) => g.id)
+      .filter((id) => !groupOrder.includes(id));
     if (newIds.length > 0) persistGroupOrder([...groupOrder, ...newIds]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawGroups]);
@@ -463,7 +489,7 @@ export function InboxPage() {
             <div className="inbox-vis-filter-wrapper" ref={filterMenuRef}>
               <button
                 type="button"
-                className={`inbox-vis-filter-btn${showFilterMenu || !showDone || !showWaiting ? ' active' : ''}`}
+                className={`inbox-vis-filter-btn${showFilterMenu || !showDone ? ' active' : ''}`}
                 onClick={() => setShowFilterMenu((v) => !v)}
                 aria-label="Filtros de visibilidade"
                 title="Filtros de visibilidade"
@@ -479,14 +505,6 @@ export function InboxPage() {
                       onChange={(e) => setShowDone(e.target.checked)}
                     />
                     Mostrar concluídos
-                  </label>
-                  <label className="inbox-vis-filter-item">
-                    <input
-                      type="checkbox"
-                      checked={showWaiting}
-                      onChange={(e) => setShowWaiting(e.target.checked)}
-                    />
-                    Mostrar aguardando
                   </label>
                 </div>
               )}
@@ -529,23 +547,30 @@ export function InboxPage() {
               Nenhum item {filter === 'hoje' ? 'hoje' : 'nesse período'}. Use o campo acima para capturar.
             </div>
           ) : (
-            orderedGroups.map((group, idx) => (
-              <InboxGroup
-                key={group.id}
-                label={group.label}
-                items={group.items}
-                contexts={contexts}
-                workspaces={workspaces}
-                collapsed={collapsedGroups.has(group.id)}
-                onToggleCollapse={() => toggleCollapse(group.id)}
-                canMoveUp={idx > 0}
-                canMoveDown={idx < orderedGroups.length - 1}
-                onMoveUp={() => handleMoveGroup(group.id, 'up')}
-                onMoveDown={() => handleMoveGroup(group.id, 'down')}
-                {...itemCallbacks}
-                {...itemCallbacksWithReorder(group.items)}
-              />
-            ))
+            (() => {
+              const nonVirtualGroups = orderedGroups.filter((g) => !g.isVirtual);
+              return orderedGroups.map((group) => {
+                const nvIdx = nonVirtualGroups.findIndex((g) => g.id === group.id);
+                return (
+                  <InboxGroup
+                    key={group.id}
+                    label={group.label}
+                    items={group.items}
+                    contexts={contexts}
+                    workspaces={workspaces}
+                    isVirtual={group.isVirtual}
+                    collapsed={collapsedGroups.has(group.id)}
+                    onToggleCollapse={() => toggleCollapse(group.id)}
+                    canMoveUp={nvIdx > 0}
+                    canMoveDown={nvIdx !== -1 && nvIdx < nonVirtualGroups.length - 1}
+                    onMoveUp={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'up')}
+                    onMoveDown={group.isVirtual ? undefined : () => handleMoveGroup(group.id, 'down')}
+                    {...itemCallbacks}
+                    {...itemCallbacksWithReorder(group.items)}
+                  />
+                );
+              });
+            })()
           )}
 
           <button

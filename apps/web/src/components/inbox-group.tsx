@@ -28,6 +28,8 @@ type Props = ItemCallbacks & {
   canMoveDown?: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  isVirtual?: boolean;
+  draggable?: boolean;
 };
 
 export function InboxGroup({
@@ -42,12 +44,14 @@ export function InboxGroup({
   canMoveDown,
   onMoveUp,
   onMoveDown,
+  isVirtual = false,
+  draggable = false,
   ...callbacks
 }: Props) {
   if (items.length === 0) return null;
 
   return (
-    <div className="inbox-group">
+    <div className={`inbox-group${isVirtual ? ' inbox-group--virtual' : ''}`}>
       {label && (
         <div className="inbox-group-header">
           {onToggleCollapse && (
@@ -65,8 +69,7 @@ export function InboxGroup({
           <span className="inbox-group-label">{label}</span>
           <span className="inbox-group-count">{items.length}</span>
 
-          {/* Reorder buttons — only for context groups */}
-          {(onMoveUp || onMoveDown) && (
+          {!isVirtual && (onMoveUp || onMoveDown) && (
             <div className="inbox-group-reorder">
               <button
                 type="button"
@@ -89,7 +92,7 @@ export function InboxGroup({
             </div>
           )}
 
-          {onAddItem && (
+          {!isVirtual && onAddItem && (
             <button
               type="button"
               className="inbox-group-add ghost-button"
@@ -110,6 +113,7 @@ export function InboxGroup({
               item={item}
               contexts={contexts}
               workspaces={workspaces}
+              draggable={draggable}
               {...callbacks}
             />
           ))}

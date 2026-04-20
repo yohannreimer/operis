@@ -15856,3 +15856,13 @@ h4 {
     padding-left: 12px;
   }
 }
+
+/* ── Inbox Group Virtual (Aguardando) ─────────────────────────────────────── */
+.inbox-group--virtual .inbox-group-header {
+  opacity: 0.6;
+  border-bottom-style: dashed;
+}
+
+.inbox-group--virtual .inbox-group-label {
+  color: var(--muted);
+}
