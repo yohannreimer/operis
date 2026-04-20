@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import {
   DndContext,
   DragEndEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -62,9 +63,14 @@ export function InboxPage() {
   const [todayMode, setTodayMode] = useState(false);
   const [todayItems, setTodayItems] = useState<InboxTodayItem[]>([]);
 
-  const sensors = useSensors(useSensor(PointerSensor, {
-    activationConstraint: { distance: 8 },
-  }));
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    })
+  );
 
   // Collapse state — set of collapsed group IDs
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['__aguardando__']));
