@@ -364,10 +364,9 @@ export function InboxPage() {
       setTodayItems([...reordered, ...done]);
 
       try {
-        await Promise.all([
-          api.updateTodayItem(reordered[newIndex].id, { position: newIndex }),
-          api.updateTodayItem(reordered[oldIndex].id, { position: oldIndex }),
-        ]);
+        await Promise.all(
+          reordered.map((todayItem, idx) => api.updateTodayItem(todayItem.id, { position: idx }))
+        );
       } catch {
         toast.error('Erro ao reordenar.');
         await loadTodayItems();
