@@ -4,9 +4,10 @@ import { Sun, X } from 'lucide-react';
 type Props = {
   active: boolean;
   onToggle: () => void;
+  pendingCount?: number;
 };
 
-export function TodayFAB({ active, onToggle }: Props) {
+export function TodayFAB({ active, onToggle, pendingCount = 0 }: Props) {
   return (
     <motion.button
       type="button"
@@ -15,7 +16,7 @@ export function TodayFAB({ active, onToggle }: Props) {
       title={active ? 'Fechar Modo Hoje' : 'Modo Hoje'}
       whileHover={{ scale: 1.08, boxShadow: '0 8px 28px rgba(0,0,0,0.35)' }}
       whileTap={{ scale: 0.93 }}
-      animate={{ opacity: active ? 1 : 0.4 }}
+      animate={{ opacity: active ? 1 : pendingCount > 0 ? 0.85 : 0.4 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
     >
       <AnimatePresence mode="wait" initial={false}>
@@ -40,6 +41,21 @@ export function TodayFAB({ active, onToggle }: Props) {
             style={{ display: 'flex' }}
           >
             <Sun size={18} />
+          </motion.span>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {!active && pendingCount > 0 && (
+          <motion.span
+            key="badge"
+            className="today-fab-badge"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 22 }}
+          >
+            {pendingCount > 9 ? '9+' : pendingCount}
           </motion.span>
         )}
       </AnimatePresence>

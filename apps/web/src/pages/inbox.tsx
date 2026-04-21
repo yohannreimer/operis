@@ -51,8 +51,24 @@ export function InboxPage() {
 
   const [convertingItem, setConvertingItem] = useState<InboxItem | null>(null);
 
-  const [todayMode, setTodayMode] = useState(false);
+  const [todayMode, setTodayMode] = useState<boolean>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('inbox.todayMode') ?? 'null');
+      if (stored?.date === getTodayDateString()) return stored.active as boolean;
+    } catch { /* ignore */ }
+    return false;
+  });
   const [todayItems, setTodayItems] = useState<InboxTodayItem[]>([]);
+
+  function toggleTodayMode() {
+    setTodayMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('inbox.todayMode', JSON.stringify({ active: next, date: getTodayDateString() }));
+      } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   // Collapse state — set of collapsed group IDs
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['__aguardando__']));
@@ -332,22 +348,34 @@ export function InboxPage() {
 
   async function handleCompleteToday(todayItem: InboxTodayItem) {
     const completedAt = new Date().toISOString();
+    // Sync: today item → concluído; inbox item → feito
     setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt } : i)));
+    setItems((prev) => prev.map((i) => (i.id === todayItem.inboxItemId ? { ...i, status: 'feito' as InboxItemStatus } : i)));
     try {
-      await api.updateTodayItem(todayItem.id, { completedAt });
+      await Promise.all([
+        api.updateTodayItem(todayItem.id, { completedAt }),
+        api.updateInboxItem(todayItem.inboxItemId, { status: 'feito' }),
+      ]);
     } catch {
       toast.error('Erro ao concluir.');
       setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt: null } : i)));
+      setItems((prev) => prev.map((i) => (i.id === todayItem.inboxItemId ? { ...i, status: 'pendente' as InboxItemStatus } : i)));
     }
   }
 
   async function handleUncompleteToday(todayItem: InboxTodayItem) {
+    // Sync: today item → pendente; inbox item → pendente
     setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt: null } : i)));
+    setItems((prev) => prev.map((i) => (i.id === todayItem.inboxItemId ? { ...i, status: 'pendente' as InboxItemStatus } : i)));
     try {
-      await api.updateTodayItem(todayItem.id, { completedAt: null });
+      await Promise.all([
+        api.updateTodayItem(todayItem.id, { completedAt: null }),
+        api.updateInboxItem(todayItem.inboxItemId, { status: 'pendente' }),
+      ]);
     } catch {
       toast.error('Erro ao desmarcar.');
       setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt: todayItem.completedAt } : i)));
+      setItems((prev) => prev.map((i) => (i.id === todayItem.inboxItemId ? { ...i, status: 'feito' as InboxItemStatus } : i)));
     }
   }
 
@@ -543,6 +571,11 @@ export function InboxPage() {
     [todayItems]
   );
 
+  const todayPendingCount = useMemo(
+    () => todayItems.filter((i) => i.completedAt === null).length,
+    [todayItems]
+  );
+
   return (
     <PremiumPage>
       <PremiumHeader
@@ -716,7 +749,7 @@ export function InboxPage() {
         )
       )}
 
-      <TodayFAB active={todayMode} onToggle={() => setTodayMode((v) => !v)} />
+      <TodayFAB active={todayMode} onToggle={toggleTodayMode} pendingCount={todayPendingCount} />
 
       {/* Convert to task modal */}
       <CreateTaskModal

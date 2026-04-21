@@ -108,7 +108,7 @@ export function InboxItem({
 
   return (
     <div
-      className={`inbox-item${isDone ? ' inbox-item--done' : ''}${isWaiting ? ' inbox-item--waiting' : ''}`}
+      className={`inbox-item${isDone ? ' inbox-item--done' : ''}${isWaiting ? ' inbox-item--waiting' : ''}${isInToday && !isDone ? ' inbox-item--in-today' : ''}`}
     >
       <div className="inbox-item-row">
         {/* Item reorder handle */}

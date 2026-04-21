@@ -15896,6 +15896,26 @@ h4 {
   color: #fff;
 }
 
+.today-fab-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 9px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  pointer-events: none;
+}
+
 /* ── Today Panel ─────────────────────────────────────────────────────────── */
 .today-panel {
   display: flex;
@@ -16107,4 +16127,14 @@ h4 {
   border-color: var(--border-hover);
   color: var(--muted);
   background: transparent;
+}
+
+/* ── Inbox item dimmed when already in Hoje ──────────────────────────────── */
+.inbox-item--in-today {
+  opacity: 0.42;
+  transition: opacity 200ms ease;
+}
+
+.inbox-item--in-today:hover {
+  opacity: 1;
 }
