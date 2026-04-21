@@ -15511,18 +15511,31 @@ h4 {
   display: block;
 }
 
-/* Age indicator — tiny muted monospace label, appears only on older items */
+/* Age chip — inline na row, não adiciona altura ao item */
 .inbox-item-age {
-  display: inline-block;
-  font-size: 0.67rem;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 0.6rem;
   font-family: var(--font-mono);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-secondary);
-  opacity: 0.5;
-  line-height: 1;
-  align-self: flex-start;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  line-height: 1.5;
+  white-space: nowrap;
   user-select: none;
+  opacity: 0.65;
+  transition: opacity 150ms ease;
+}
+
+/* Fica mais discreto quando as ações aparecem */
+.inbox-item:hover .inbox-item-age,
+.inbox-item:focus-within .inbox-item-age {
+  opacity: 0.3;
 }
 
 /* Badges */

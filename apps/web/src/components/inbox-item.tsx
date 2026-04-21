@@ -24,8 +24,8 @@ type Props = {
 function getItemAge(createdAt?: string): string | null {
   if (!createdAt) return null;
   const diffDays = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000);
-  if (diffDays < 1) return null;            // mesmo dia → nada
-  if (diffDays < 7) return `${diffDays}d`;  // 1d … 6d
+  if (diffDays < 3) return null;            // menos de 3 dias → nada
+  if (diffDays < 7) return `${diffDays}d`;  // 3d … 6d
   if (diffDays < 14) return '1sem';
   if (diffDays < 21) return '2sem';
   if (diffDays < 30) return '3sem';
@@ -194,11 +194,6 @@ export function InboxItem({
             </span>
           )}
 
-          {/* Age indicator */}
-          {age && !isDone && (
-            <span className="inbox-item-age" title={`Criado há ${age}`}>{age}</span>
-          )}
-
           {/* Badges */}
           <div className="inbox-item-badges">
             {item.source === 'whatsapp' && (
@@ -220,6 +215,11 @@ export function InboxItem({
             )}
           </div>
         </div>
+
+        {/* Age chip — inline, não adiciona altura */}
+        {age && !isDone && (
+          <span className="inbox-item-age" title={`Criado há ${age}`}>{age}</span>
+        )}
 
         {/* Inline action icons — revealed on hover */}
         <div className="inbox-item-actions">
