@@ -13782,6 +13782,26 @@ h4 {
   padding-bottom: 14px;
 }
 
+/* Stats inline com o título — flex row em vez de coluna */
+.agenda-header-wrap .premium-header > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.agenda-header-wrap .premium-header h2 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+
+.agenda-header-wrap .premium-subtitle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* ─── Agenda: view toggle ────────────────────────────────────────────────── */
 
 .agenda-view-toggle {
@@ -14068,6 +14088,7 @@ h4 {
 .agenda-week-body-scroll {
   overflow-y: auto;
   max-height: 548px; /* ~9.8 hours visible before scroll */
+  padding-top: 8px; /* espaço para o label "06h" não ser cortado */
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }

@@ -171,6 +171,12 @@ function formatMinutes(min: number): string {
   return `${h}h${m}min`;
 }
 
+function addMinutesToTime(hhmm: string, min: number): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = h * 60 + m + min;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -345,12 +351,14 @@ function WeekView({ commitments, weekStart, onEdit, onNew }: WeekViewProps) {
                       className={`agenda-week-timed-card agenda-week-timed-card--${c.type}${c.status === 'pausado' ? ' agenda-week-timed-card--muted' : ''}`}
                       style={{ top, height }}
                       onClick={() => onEdit(c)}
-                      title={`${c.title} · ${c.startTime}${c.durationMin ? ` · ${c.durationMin}min` : ''}`}
+                      title={`${c.title} · ${c.startTime}${c.durationMin ? `–${addMinutesToTime(c.startTime!, c.durationMin)} · ${c.durationMin}min` : ''}`}
                     >
                       <span className="agenda-week-timed-title">{c.title}</span>
                       {height > 34 && (
                         <span className="agenda-week-timed-time">
-                          {c.startTime}{c.durationMin ? ` · ${c.durationMin}min` : ''}
+                          {c.startTime}{c.durationMin
+                            ? `–${addMinutesToTime(c.startTime!, c.durationMin)} · ${c.durationMin}min`
+                            : ''}
                         </span>
                       )}
                     </button>
