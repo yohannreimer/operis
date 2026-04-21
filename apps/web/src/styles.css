@@ -14818,6 +14818,39 @@ h4 {
   color: var(--text-secondary);
 }
 
+/* ── Inbox header — compact inline layout ───────────────────────────────── */
+.inbox-header-wrap .premium-header {
+  padding: 10px 14px;
+  align-items: center;
+}
+
+/* Title + count pill on same line */
+.inbox-header-wrap .premium-header > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.inbox-header-wrap .premium-header h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.inbox-header-wrap .premium-subtitle {
+  margin: 0;
+  font-size: 0.7rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
 /* ── Header controls ─────────────────────────────────────────────────────── */
 
 .inbox-header-controls {
@@ -14983,8 +15016,8 @@ h4 {
 }
 
 .inbox-input-row:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-soft);
+  border-color: rgba(249, 115, 22, 0.45);
+  box-shadow: none;
 }
 
 .inbox-input {
@@ -15958,10 +15991,11 @@ h4 {
 
 .today-panel-time {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: var(--muted);
   margin-left: auto;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
 }
 
 .today-panel-body {
@@ -16084,8 +16118,15 @@ h4 {
 
 /* ── Today item — MIT ────────────────────────────────────────────────────── */
 .today-item--mit {
+  background: linear-gradient(90deg, rgba(249,115,22,0.06) 0%, transparent 100%);
+  border-radius: var(--radius-sm);
   border-left: 2px solid var(--primary);
-  padding-left: 6px;
+  padding-left: 8px;
+}
+
+.today-item--mit .today-item-content {
+  color: var(--text);
+  font-weight: 500;
 }
 
 .today-item-mit-btn {
@@ -16094,7 +16135,7 @@ h4 {
   color: var(--muted);
   background: transparent;
   border: none;
-  padding: 3px 4px;
+  padding: 4px;
   cursor: pointer;
   border-radius: var(--radius-sm);
   display: flex;
@@ -16102,7 +16143,7 @@ h4 {
   justify-content: center;
   min-height: unset;
   box-shadow: none;
-  transition: opacity var(--transition-fast), color var(--transition-fast);
+  transition: opacity 150ms ease, color 150ms ease;
 }
 
 .today-item:hover .today-item-mit-btn {
@@ -16123,8 +16164,22 @@ h4 {
 .today-item-timer {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   flex-shrink: 0;
+  background: var(--surface-soft);
+  border-radius: 999px;
+  padding: 0 6px;
+  height: 24px;
+  border: 1px solid transparent;
+  transition: border-color 150ms ease;
+}
+
+/* Only show background when timer is active (has content beyond idle play btn) */
+.today-item-timer:has(.today-item-play-btn) {
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+  height: auto;
 }
 
 /* Idle: play button hidden until hover */
@@ -16133,7 +16188,7 @@ h4 {
   color: var(--muted);
   background: transparent;
   border: none;
-  padding: 3px 4px;
+  padding: 3px 5px;
   cursor: pointer;
   border-radius: var(--radius-sm);
   display: flex;
@@ -16141,7 +16196,7 @@ h4 {
   justify-content: center;
   min-height: unset;
   box-shadow: none;
-  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  transition: opacity 150ms ease, color 150ms ease, background 150ms ease;
 }
 
 .today-item:hover .today-item-play-btn {
@@ -16154,27 +16209,28 @@ h4 {
   opacity: 1;
 }
 
-/* Running: dot + time + controls */
+/* Running state */
 .today-item-timer-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--primary);
   flex-shrink: 0;
-  animation: timer-pulse 1.2s ease-in-out infinite;
+  animation: timer-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes timer-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.35; }
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
 }
 
 .today-item-timer-display {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--primary);
-  min-width: 36px;
-  letter-spacing: 0.02em;
+  min-width: 34px;
+  letter-spacing: 0.03em;
+  line-height: 1;
 }
 
 .today-item-timer-display--paused {
@@ -16194,12 +16250,17 @@ h4 {
   justify-content: center;
   min-height: unset;
   box-shadow: none;
-  transition: color var(--transition-fast), background var(--transition-fast);
+  transition: color 150ms ease;
 }
 
 .today-item-timer-btn:hover {
-  color: var(--text);
-  background: var(--surface-elevated);
+  color: var(--text-secondary);
+}
+
+/* Separator between timer group and MIT/remove buttons */
+.today-item-timer + .today-item-mit-btn,
+.today-item-timer + .today-item-remove {
+  margin-left: 2px;
 }
 
 /* ── Inbox Today Split Layout ────────────────────────────────────────────── */

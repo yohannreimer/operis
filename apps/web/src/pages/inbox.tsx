@@ -680,6 +680,7 @@ export function InboxPage() {
 
   return (
     <PremiumPage>
+      <div className="inbox-header-wrap">
       <PremiumHeader
         title="Inbox Operacional"
         subtitle={`${pendingCount} pendente${pendingCount !== 1 ? 's' : ''}`}
@@ -733,6 +734,7 @@ export function InboxPage() {
           </div>
         }
       />
+      </div>
 
       {/* Capture input — sempre visível */}
       <div className="inbox-capture-bar">
