@@ -21,6 +21,17 @@ type Props = {
   isInToday?: boolean;
 };
 
+function getItemAge(createdAt?: string): string | null {
+  if (!createdAt) return null;
+  const diffDays = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000);
+  if (diffDays < 1) return null;            // mesmo dia → nada
+  if (diffDays < 7) return `${diffDays}d`;  // 1d … 6d
+  if (diffDays < 14) return '1sem';
+  if (diffDays < 21) return '2sem';
+  if (diffDays < 30) return '3sem';
+  return `${Math.floor(diffDays / 30)}mes`;
+}
+
 function formatWaitingDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
@@ -105,6 +116,7 @@ export function InboxItem({
   const isWaiting = item.status === 'aguardando';
   const isConverted = item.status === 'convertido';
   const isAgenda = item.status === 'agenda';
+  const age = getItemAge(item.createdAt);
 
   return (
     <div
@@ -180,6 +192,11 @@ export function InboxItem({
             >
               {item.content}
             </span>
+          )}
+
+          {/* Age indicator */}
+          {age && !isDone && (
+            <span className="inbox-item-age" title={`Criado há ${age}`}>{age}</span>
           )}
 
           {/* Badges */}

@@ -15518,8 +15518,8 @@ h4 {
   font-family: var(--font-mono);
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--muted);
-  opacity: 0.38;
+  color: var(--text-secondary);
+  opacity: 0.5;
   line-height: 1;
   align-self: flex-start;
   user-select: none;

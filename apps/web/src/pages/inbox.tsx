@@ -178,6 +178,9 @@ export function InboxPage() {
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
+  // Ref para focar o campo de captura via atalho
+  const inboxInputRef = useRef<HTMLInputElement>(null);
+
   // ── Search ────────────────────────────────────────────────────────────────
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -221,6 +224,23 @@ export function InboxPage() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Atalho `a` → foca o campo de captura do inbox (não conflita com c/n/f/s/g/[/])
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement;
+      const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (typing) return;
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        inboxInputRef.current?.focus();
+        inboxInputRef.current?.select();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   async function load() {
@@ -861,6 +881,7 @@ export function InboxPage() {
         <InboxInput
           workspaces={workspaces}
           contexts={contexts}
+          inputRef={inboxInputRef}
           onSubmit={handleCreate}
         />
       </div>
