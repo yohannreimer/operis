@@ -1,6 +1,5 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { useDraggable } from '@dnd-kit/core';
-import { Check, Clock, Play, Calendar, ArrowRight, Trash2, MoveRight, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
+import { Check, Clock, Play, Calendar, ArrowRight, Trash2, MoveRight, ChevronUp, ChevronDown, Sun } from 'lucide-react';
 import { InboxItem as InboxItemType, InboxContext, Workspace } from '../api';
 
 type Props = {
@@ -18,7 +17,8 @@ type Props = {
   onMoveItemDown?: (item: InboxItemType) => void;
   canMoveItemUp?: (item: InboxItemType) => boolean;
   canMoveItemDown?: (item: InboxItemType) => boolean;
-  draggable?: boolean;
+  onAddToToday?: () => void;
+  isInToday?: boolean;
 };
 
 function formatWaitingDate(dateStr: string) {
@@ -44,7 +44,8 @@ export function InboxItem({
   onMoveItemDown,
   canMoveItemUp,
   canMoveItemDown,
-  draggable = false,
+  onAddToToday,
+  isInToday = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(item.content);
@@ -54,12 +55,6 @@ export function InboxItem({
   const [waitingPerson, setWaitingPerson] = useState('');
   const [waitingNote, setWaitingNote] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const { attributes: dragAttributes, listeners: dragListeners, setNodeRef: setDragRef, isDragging } = useDraggable({
-    id: item.id,
-    data: { type: 'inbox-item', inboxItemId: item.id },
-    disabled: !draggable,
-  });
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -113,9 +108,7 @@ export function InboxItem({
 
   return (
     <div
-      ref={setDragRef}
-      className={`inbox-item${isDone ? ' inbox-item--done' : ''}${isWaiting ? ' inbox-item--waiting' : ''}${isDragging ? ' inbox-item--dragging' : ''}`}
-      style={isDragging ? { opacity: 0.4 } : undefined}
+      className={`inbox-item${isDone ? ' inbox-item--done' : ''}${isWaiting ? ' inbox-item--waiting' : ''}`}
     >
       <div className="inbox-item-row">
         {/* Item reorder handle */}
@@ -151,6 +144,19 @@ export function InboxItem({
         >
           {isDone && <Check size={10} />}
         </button>
+
+        {/* Today toggle — visible only in split mode */}
+        {onAddToToday && (
+          <button
+            type="button"
+            className={`inbox-item-today-btn${isInToday ? ' inbox-item-today-btn--active' : ''}`}
+            onClick={onAddToToday}
+            title={isInToday ? 'Remover do Hoje' : 'Adicionar ao Hoje'}
+            aria-label={isInToday ? 'Remover do Hoje' : 'Adicionar ao Hoje'}
+          >
+            <Sun size={12} />
+          </button>
+        )}
 
         {/* Content */}
         <div className="inbox-item-content">
@@ -255,17 +261,6 @@ export function InboxItem({
           >
             <Trash2 size={13} />
           </button>
-          {draggable && (
-            <button
-              type="button"
-              className="inbox-item-drag-handle ghost-button"
-              {...dragAttributes}
-              {...dragListeners}
-              aria-label="Arrastar para o Hoje"
-            >
-              <GripVertical size={13} />
-            </button>
-          )}
         </div>
       </div>
 

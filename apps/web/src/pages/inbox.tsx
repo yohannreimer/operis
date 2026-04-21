@@ -2,15 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  DndContext,
-  DragEndEvent,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { arrayMove } from '@dnd-kit/sortable';
-import {
   api,
   DeepWorkSession,
   InboxContext,
@@ -62,15 +53,6 @@ export function InboxPage() {
 
   const [todayMode, setTodayMode] = useState(false);
   const [todayItems, setTodayItems] = useState<InboxTodayItem[]>([]);
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 250, tolerance: 5 },
-    })
-  );
 
   // Collapse state — set of collapsed group IDs
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['__aguardando__']));
@@ -315,15 +297,36 @@ export function InboxPage() {
     }
   }
 
-  async function handleAddToToday(inboxItemId: string) {
-    const alreadyIn = todayItems.some((i) => i.inboxItemId === inboxItemId);
-    if (alreadyIn) return;
+  async function handleToggleToday(inboxItem: InboxItem) {
+    const existing = todayItems.find((i) => i.inboxItemId === inboxItem.id);
+    if (existing) {
+      // Optimistic remove
+      setTodayItems((prev) => prev.filter((i) => i.id !== existing.id));
+      try {
+        await api.removeTodayItem(existing.id);
+      } catch {
+        toast.error('Erro ao remover do Hoje.');
+        setTodayItems((prev) => [...prev, existing]);
+      }
+    } else {
+      // Optimistic add — we need to wait for the server id, so no optimistic here
+      try {
+        const position = todayItems.filter((i) => i.completedAt === null).length;
+        const todayItem = await api.addTodayItem({ inboxItemId: inboxItem.id, todayDate: getTodayDateString(), position });
+        setTodayItems((prev) => [...prev, todayItem]);
+      } catch {
+        toast.error('Erro ao adicionar ao Hoje.');
+      }
+    }
+  }
+
+  async function handleRemoveFromToday(todayItem: InboxTodayItem) {
+    setTodayItems((prev) => prev.filter((i) => i.id !== todayItem.id));
     try {
-      const position = todayItems.filter((i) => i.completedAt === null).length;
-      const todayItem = await api.addTodayItem({ inboxItemId, todayDate: getTodayDateString(), position });
-      setTodayItems((prev) => [...prev, todayItem]);
+      await api.removeTodayItem(todayItem.id);
     } catch {
-      toast.error('Erro ao adicionar ao Hoje.');
+      toast.error('Erro ao remover do Hoje.');
+      setTodayItems((prev) => [...prev, todayItem]);
     }
   }
 
@@ -345,39 +348,6 @@ export function InboxPage() {
     } catch {
       toast.error('Erro ao desmarcar.');
       setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt: todayItem.completedAt } : i)));
-    }
-  }
-
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over) return;
-
-    // Inbox item dropped onto today panel
-    if (over.id === 'today-panel-drop' && active.data.current?.type === 'inbox-item') {
-      await handleAddToToday(active.data.current.inboxItemId as string);
-      return;
-    }
-
-    // Reorder within today panel
-    const activeIsTodayItem = todayItems.some((i) => i.id === active.id);
-    if (active.id !== over.id && activeIsTodayItem) {
-      const pending = todayItems.filter((i) => i.completedAt === null);
-      const oldIndex = pending.findIndex((i) => i.id === active.id);
-      const newIndex = pending.findIndex((i) => i.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return;
-
-      const reordered = arrayMove(pending, oldIndex, newIndex);
-      const done = todayItems.filter((i) => i.completedAt !== null);
-      setTodayItems([...reordered, ...done]);
-
-      try {
-        await Promise.all(
-          reordered.map((todayItem, idx) => api.updateTodayItem(todayItem.id, { position: idx }))
-        );
-      } catch {
-        toast.error('Erro ao reordenar.');
-        await loadTodayItems();
-      }
     }
   }
 
@@ -568,8 +538,12 @@ export function InboxPage() {
     onMoveContext: handleMoveContext,
   };
 
+  const todayInboxItemIds = useMemo(
+    () => new Set(todayItems.map((i) => i.inboxItemId)),
+    [todayItems]
+  );
+
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
     <PremiumPage>
       <PremiumHeader
         title="Inbox Operacional"
@@ -660,6 +634,7 @@ export function InboxPage() {
                 items={todayItems}
                 onComplete={handleCompleteToday}
                 onUncomplete={handleUncompleteToday}
+                onRemove={handleRemoveFromToday}
               />
             </div>
             <div className="inbox-today-split-inbox inbox-groups">
@@ -680,7 +655,8 @@ export function InboxPage() {
                         contexts={contexts}
                         workspaces={workspaces}
                         isVirtual={group.isVirtual}
-                        draggable
+                        onAddToToday={handleToggleToday}
+                        todayInboxItemIds={todayInboxItemIds}
                         collapsed={collapsedGroups.has(group.id)}
                         onToggleCollapse={() => toggleCollapse(group.id)}
                         canMoveUp={nvIdx > 0}
@@ -796,6 +772,5 @@ export function InboxPage() {
         </div>
       )}
     </PremiumPage>
-    </DndContext>
   );
 }

@@ -29,7 +29,8 @@ type Props = ItemCallbacks & {
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   isVirtual?: boolean;
-  draggable?: boolean;
+  onAddToToday?: (item: InboxItemType) => void;
+  todayInboxItemIds?: Set<string>;
 };
 
 export function InboxGroup({
@@ -45,7 +46,8 @@ export function InboxGroup({
   onMoveUp,
   onMoveDown,
   isVirtual = false,
-  draggable = false,
+  onAddToToday,
+  todayInboxItemIds,
   ...callbacks
 }: Props) {
   if (items.length === 0) return null;
@@ -113,7 +115,8 @@ export function InboxGroup({
               item={item}
               contexts={contexts}
               workspaces={workspaces}
-              draggable={draggable}
+              onAddToToday={onAddToToday ? () => onAddToToday(item) : undefined}
+              isInToday={todayInboxItemIds?.has(item.id) ?? false}
               {...callbacks}
             />
           ))}
