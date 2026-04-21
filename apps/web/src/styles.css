@@ -14783,9 +14783,9 @@ h4 {
   top: 0;
   z-index: 10;
   background: var(--bg);
-  padding: 0 0 12px;
+  padding: 0 0 8px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .inbox-groups,
@@ -15008,16 +15008,16 @@ h4 {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 4px 4px 4px 12px;
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid transparent;
+  border-radius: 0;
+  padding: 6px 0 8px;
+  transition: border-color 180ms ease;
 }
 
 .inbox-input-row:focus-within {
-  border-color: rgba(249, 115, 22, 0.45);
-  box-shadow: none;
+  border-bottom-color: var(--primary);
 }
 
 .inbox-input {
@@ -15025,9 +15025,9 @@ h4 {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 8px 0;
+  padding: 4px 0;
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 0.93rem;
   outline: none;
   width: 100%;
   box-shadow: none;
@@ -15040,6 +15040,12 @@ h4 {
 
 .inbox-input::placeholder {
   color: var(--muted);
+  transition: color 180ms ease;
+}
+
+.inbox-input-row:focus-within .inbox-input::placeholder {
+  color: var(--text-secondary, var(--muted));
+  opacity: 0.5;
 }
 
 .inbox-input-context-tag {
@@ -15079,12 +15085,29 @@ h4 {
 }
 
 .inbox-input-submit {
-  min-height: 36px;
-  padding: 6px 12px;
-  font-size: 1rem;
+  min-height: unset;
+  padding: 4px 8px;
+  font-size: 0.9rem;
   line-height: 1;
   flex-shrink: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 180ms ease, color 150ms ease;
+}
+
+.inbox-input-row:focus-within .inbox-input-submit {
+  opacity: 1;
+}
+
+.inbox-input-submit:not(:disabled):hover {
+  color: var(--primary);
+  background: transparent;
+  transform: none;
+  box-shadow: none;
 }
 
 /* Autocomplete dropdown */
