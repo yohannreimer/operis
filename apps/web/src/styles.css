@@ -15479,13 +15479,20 @@ h4 {
   gap: 4px;
 }
 
+/* Linha de texto + chip de idade lado a lado */
+.inbox-item-text-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .inbox-item-text {
   font-size: 0.92rem;
   line-height: 1.5;
   color: var(--text);
   cursor: text;
   word-break: break-word;
-  display: block;
 }
 
 .inbox-item-text--strikethrough {
@@ -15532,11 +15539,6 @@ h4 {
   transition: opacity 150ms ease;
 }
 
-/* Fica mais discreto quando as ações aparecem */
-.inbox-item:hover .inbox-item-age,
-.inbox-item:focus-within .inbox-item-age {
-  opacity: 0.3;
-}
 
 /* Badges */
 .inbox-item-badges {

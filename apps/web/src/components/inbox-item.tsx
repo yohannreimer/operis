@@ -183,15 +183,21 @@ export function InboxItem({
               rows={1}
             />
           ) : (
-            <span
-              className={`inbox-item-text${isDone ? ' inbox-item-text--strikethrough' : ''}`}
-              onClick={startEdit}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && startEdit()}
-            >
-              {item.content}
-            </span>
+            /* Texto + chip de idade inline, sem aumentar altura */
+            <div className="inbox-item-text-line">
+              <span
+                className={`inbox-item-text${isDone ? ' inbox-item-text--strikethrough' : ''}`}
+                onClick={startEdit}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && startEdit()}
+              >
+                {item.content}
+              </span>
+              {age && !isDone && (
+                <span className="inbox-item-age" title={`Criado há ${age}`}>{age}</span>
+              )}
+            </div>
           )}
 
           {/* Badges */}
@@ -215,11 +221,6 @@ export function InboxItem({
             )}
           </div>
         </div>
-
-        {/* Age chip — inline, não adiciona altura */}
-        {age && !isDone && (
-          <span className="inbox-item-age" title={`Criado há ${age}`}>{age}</span>
-        )}
 
         {/* Inline action icons — revealed on hover */}
         <div className="inbox-item-actions">
