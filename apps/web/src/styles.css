@@ -14998,6 +14998,103 @@ h4 {
   padding: 0;
 }
 
+/* ── Search bar (inline, replaces filter-tabs when active) ──────────────── */
+
+.inbox-search-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  min-height: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  box-shadow: none;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  flex-shrink: 0;
+}
+
+.inbox-search-btn:hover,
+.inbox-search-btn.active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: none;
+  box-shadow: none;
+}
+
+.inbox-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-soft);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  height: 32px;
+  animation: search-expand 150ms var(--ease-out);
+}
+
+@keyframes search-expand {
+  from { opacity: 0; transform: scaleX(0.92); }
+  to   { opacity: 1; transform: scaleX(1); }
+}
+
+.inbox-search-icon {
+  color: var(--primary);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.inbox-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  font-size: 0.85rem;
+  color: var(--text);
+  padding: 0;
+  min-height: unset;
+  height: auto;
+  line-height: 1;
+}
+
+.inbox-search-input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.inbox-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  min-height: unset;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  box-shadow: none;
+  flex-shrink: 0;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.inbox-search-clear:hover {
+  background: var(--surface-active);
+  color: var(--text);
+  transform: none;
+  box-shadow: none;
+}
+
 /* ── Capture input ───────────────────────────────────────────────────────── */
 
 .inbox-input-container {
@@ -15412,6 +15509,20 @@ h4 {
   resize: none;
   overflow: hidden;
   display: block;
+}
+
+/* Age indicator — tiny muted monospace label, appears only on older items */
+.inbox-item-age {
+  display: inline-block;
+  font-size: 0.67rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  opacity: 0.38;
+  line-height: 1;
+  align-self: flex-start;
+  user-select: none;
 }
 
 /* Badges */

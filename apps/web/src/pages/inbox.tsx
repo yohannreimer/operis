@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   api,
@@ -178,6 +178,51 @@ export function InboxPage() {
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
 
+  // ── Search ────────────────────────────────────────────────────────────────
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  function openSearch() {
+    setShowSearch(true);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
+  }
+
+  function closeSearch() {
+    setShowSearch(false);
+    setSearchQuery('');
+  }
+
+  // ── Undo delete ───────────────────────────────────────────────────────────
+  const pendingDeletesRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const deletedItemsRef = useRef<Record<string, InboxItem>>({});
+
+  // ⌘Z / Ctrl+Z → undo last pending delete
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        const ids = Object.keys(pendingDeletesRef.current);
+        if (ids.length === 0) return;
+        e.preventDefault();
+        const itemId = ids[ids.length - 1];
+        const timeout = pendingDeletesRef.current[itemId];
+        if (timeout) {
+          clearTimeout(timeout);
+          delete pendingDeletesRef.current[itemId];
+        }
+        const item = deletedItemsRef.current[itemId];
+        if (item) {
+          setItems((prev) => [item, ...prev]);
+          delete deletedItemsRef.current[itemId];
+          toast.success('Item restaurado.');
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function load() {
     try {
       const data = await api.getInbox(filter);
@@ -335,13 +380,42 @@ export function InboxPage() {
     }
   }
 
-  async function handleDelete(item: InboxItem) {
-    try {
-      await api.deleteInboxItem(item.id);
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
-    } catch {
-      toast.error('Erro ao deletar item.');
+  function undoDelete(itemId: string) {
+    const timeout = pendingDeletesRef.current[itemId];
+    if (timeout) {
+      clearTimeout(timeout);
+      delete pendingDeletesRef.current[itemId];
     }
+    const item = deletedItemsRef.current[itemId];
+    if (item) {
+      setItems((prev) => [item, ...prev]);
+      delete deletedItemsRef.current[itemId];
+    }
+  }
+
+  function handleDelete(item: InboxItem) {
+    // Optimistic remove
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
+    deletedItemsRef.current[item.id] = item;
+
+    const timeoutId = setTimeout(async () => {
+      delete pendingDeletesRef.current[item.id];
+      delete deletedItemsRef.current[item.id];
+      try {
+        await api.deleteInboxItem(item.id);
+      } catch {
+        // Restore on API failure
+        setItems((prev) => [item, ...prev]);
+        toast.error('Erro ao deletar item.');
+      }
+    }, 4500);
+
+    pendingDeletesRef.current[item.id] = timeoutId;
+
+    toast(`"${item.content.slice(0, 40)}${item.content.length > 40 ? '…' : ''}" removido`, {
+      duration: 4500,
+      action: { label: 'Desfazer', onClick: () => undoDelete(item.id) },
+    });
   }
 
   async function handleWaiting(item: InboxItem, date: string, person?: string, note?: string) {
@@ -539,13 +613,17 @@ export function InboxPage() {
 
   // ── Grouping ──────────────────────────────────────────────────────────────
 
-  // Client-side visibility filter
+  // Client-side visibility + search filter
   const filteredItems = useMemo(
     () => items.filter((i) => {
       if (!showDone && i.status === 'feito') return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!i.content.toLowerCase().includes(q)) return false;
+      }
       return true;
     }),
-    [items, showDone]
+    [items, showDone, searchQuery]
   );
 
   const rawGroups = useMemo(() => {
@@ -686,25 +764,67 @@ export function InboxPage() {
         subtitle={`${pendingCount} pendente${pendingCount !== 1 ? 's' : ''}`}
         actions={
           <div className="inbox-header-controls">
-            <div className="inbox-filter-tabs">
-              {(['hoje', 'ontem', 'semana', 'tudo'] as Filter[]).map((f) => (
+            {showSearch ? (
+              /* ── Inline search bar ─────────────────────────────── */
+              <div className="inbox-search-bar">
+                <Search size={13} className="inbox-search-icon" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className="inbox-search-input"
+                  placeholder="Buscar itens..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Escape' && closeSearch()}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    className="inbox-search-clear"
+                    onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+                    aria-label="Limpar busca"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* ── Filter tabs + bruto ───────────────────────────── */
+              <>
+                <div className="inbox-filter-tabs">
+                  {(['hoje', 'ontem', 'semana', 'tudo'] as Filter[]).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      className={`inbox-filter-tab${filter === f ? ' active' : ''}`}
+                      onClick={() => setFilter(f)}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                    </button>
+                  ))}
+                </div>
                 <button
-                  key={f}
                   type="button"
-                  className={`inbox-filter-tab${filter === f ? ' active' : ''}`}
-                  onClick={() => setFilter(f)}
+                  className={`inbox-bruto-btn${bruteMode ? ' active' : ''}`}
+                  onClick={() => setBruteMode((v) => !v)}
+                  title="Lista cronológica sem agrupamento"
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                  Bruto
                 </button>
-              ))}
-            </div>
+              </>
+            )}
+
+            {/* Search toggle */}
             <button
               type="button"
-              className={`inbox-bruto-btn${bruteMode ? ' active' : ''}`}
-              onClick={() => setBruteMode((v) => !v)}
-              title="Lista cronológica sem agrupamento"
+              className={`inbox-search-btn${showSearch ? ' active' : ''}`}
+              onClick={showSearch ? closeSearch : openSearch}
+              aria-label={showSearch ? 'Fechar busca' : 'Buscar itens'}
+              title={showSearch ? 'Fechar busca (Esc)' : 'Buscar itens'}
             >
-              Bruto
+              {showSearch ? <X size={13} /> : <Search size={13} />}
             </button>
 
             {/* Visibility filter popover */}
