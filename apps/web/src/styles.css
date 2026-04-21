@@ -15956,6 +15956,14 @@ h4 {
   text-align: center;
 }
 
+.today-panel-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-left: auto;
+  letter-spacing: 0.02em;
+}
+
 .today-panel-body {
   flex: 1;
   overflow-y: auto;
@@ -16072,6 +16080,126 @@ h4 {
   color: var(--error, #ef4444);
   background: rgba(239, 68, 68, 0.1);
   opacity: 1;
+}
+
+/* ── Today item — MIT ────────────────────────────────────────────────────── */
+.today-item--mit {
+  border-left: 2px solid var(--primary);
+  padding-left: 6px;
+}
+
+.today-item-mit-btn {
+  flex-shrink: 0;
+  opacity: 0;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  padding: 3px 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: unset;
+  box-shadow: none;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.today-item:hover .today-item-mit-btn {
+  opacity: 1;
+}
+
+.today-item-mit-btn--active {
+  opacity: 1;
+  color: var(--primary);
+}
+
+.today-item-mit-btn:hover {
+  color: var(--primary);
+  opacity: 1;
+}
+
+/* ── Today item — focus timer ────────────────────────────────────────────── */
+.today-item-timer {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+/* Idle: play button hidden until hover */
+.today-item-play-btn {
+  opacity: 0;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  padding: 3px 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: unset;
+  box-shadow: none;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+
+.today-item:hover .today-item-play-btn {
+  opacity: 1;
+}
+
+.today-item-play-btn:hover {
+  color: var(--primary);
+  background: var(--primary-soft);
+  opacity: 1;
+}
+
+/* Running: dot + time + controls */
+.today-item-timer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+  animation: timer-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes timer-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+.today-item-timer-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--primary);
+  min-width: 36px;
+  letter-spacing: 0.02em;
+}
+
+.today-item-timer-display--paused {
+  color: var(--muted);
+}
+
+.today-item-timer-btn {
+  flex-shrink: 0;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  padding: 2px 3px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: unset;
+  box-shadow: none;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.today-item-timer-btn:hover {
+  color: var(--text);
+  background: var(--surface-elevated);
 }
 
 /* ── Inbox Today Split Layout ────────────────────────────────────────────── */

@@ -12,7 +12,7 @@ import {
   Workspace,
 } from '../api';
 import { TodayFAB } from '../components/today-fab';
-import { TodayPanel } from '../components/today-panel';
+import { TodayPanel, TimerHandlers } from '../components/today-panel';
 import { useShellContext } from '../components/shell-context';
 import { PremiumHeader, PremiumPage, SkeletonBlock } from '../components/premium-ui';
 import { InboxInput } from '../components/inbox-input';
@@ -59,6 +59,96 @@ export function InboxPage() {
     return false;
   });
   const [todayItems, setTodayItems] = useState<InboxTodayItem[]>([]);
+
+  // ── MIT (Most Important Task) ──────────────────────────────────────────────
+  const [mitItemId, setMitItemId] = useState<string | null>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('inbox.mit') ?? 'null');
+      if (stored?.date === getTodayDateString()) return stored.id as string | null;
+    } catch { /* ignore */ }
+    return null;
+  });
+
+  function handleToggleMIT(itemId: string) {
+    const next = mitItemId === itemId ? null : itemId;
+    setMitItemId(next);
+    try {
+      if (next) {
+        localStorage.setItem('inbox.mit', JSON.stringify({ id: next, date: getTodayDateString() }));
+      } else {
+        localStorage.removeItem('inbox.mit');
+      }
+    } catch { /* ignore */ }
+  }
+
+  // ── Focus Timer ────────────────────────────────────────────────────────────
+  const [activeTimerId, setActiveTimerId] = useState<string | null>(null);
+  const [timerStartedAt, setTimerStartedAt] = useState<number>(0);
+  const [frozenMs, setFrozenMs] = useState<Record<string, number>>({}); // id → accumulated ms
+  const [, triggerTimerRender] = useState(0);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (activeTimerId) {
+      timerIntervalRef.current = setInterval(() => triggerTimerRender((n) => n + 1), 1000);
+    }
+    return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); };
+  }, [activeTimerId]);
+
+  function getItemTimerSeconds(itemId: string): number {
+    const frozen = frozenMs[itemId] ?? 0;
+    if (activeTimerId === itemId) {
+      return Math.floor((frozen + Date.now() - timerStartedAt) / 1000);
+    }
+    return Math.floor(frozen / 1000);
+  }
+
+  function getTotalDaySeconds(): number {
+    const allIds = new Set<string>([
+      ...Object.keys(frozenMs),
+      ...(activeTimerId ? [activeTimerId] : []),
+    ]);
+    let total = 0;
+    for (const id of allIds) total += getItemTimerSeconds(id);
+    return total;
+  }
+
+  function handleStartTimer(itemId: string) {
+    if (activeTimerId && activeTimerId !== itemId) {
+      // Freeze current before switching
+      const elapsed = Date.now() - timerStartedAt;
+      setFrozenMs((prev) => ({ ...prev, [activeTimerId]: (prev[activeTimerId] ?? 0) + elapsed }));
+    }
+    setActiveTimerId(itemId);
+    setTimerStartedAt(Date.now());
+  }
+
+  function handlePauseTimer() {
+    if (!activeTimerId) return;
+    const elapsed = Date.now() - timerStartedAt;
+    setFrozenMs((prev) => ({ ...prev, [activeTimerId]: (prev[activeTimerId] ?? 0) + elapsed }));
+    setActiveTimerId(null);
+  }
+
+  function handleStopTimer(itemId: string) {
+    if (activeTimerId === itemId) {
+      setActiveTimerId(null);
+    }
+    setFrozenMs((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  }
+
+  function freezeTimerForItem(itemId: string) {
+    if (activeTimerId === itemId) {
+      const elapsed = Date.now() - timerStartedAt;
+      setFrozenMs((prev) => ({ ...prev, [itemId]: (prev[itemId] ?? 0) + elapsed }));
+      setActiveTimerId(null);
+    }
+  }
 
   function toggleTodayMode() {
     setTodayMode((prev) => {
@@ -337,6 +427,7 @@ export function InboxPage() {
   }
 
   async function handleRemoveFromToday(todayItem: InboxTodayItem) {
+    handleStopTimer(todayItem.id);
     setTodayItems((prev) => prev.filter((i) => i.id !== todayItem.id));
     try {
       await api.removeTodayItem(todayItem.id);
@@ -348,6 +439,8 @@ export function InboxPage() {
 
   async function handleCompleteToday(todayItem: InboxTodayItem) {
     const completedAt = new Date().toISOString();
+    // Freeze timer if running for this item
+    freezeTimerForItem(todayItem.id);
     // Sync: today item → concluído; inbox item → feito
     setTodayItems((prev) => prev.map((i) => (i.id === todayItem.id ? { ...i, completedAt } : i)));
     setItems((prev) => prev.map((i) => (i.id === todayItem.inboxItemId ? { ...i, status: 'feito' as InboxItemStatus } : i)));
@@ -576,6 +669,15 @@ export function InboxPage() {
     [todayItems]
   );
 
+  const timerHandlers: TimerHandlers = {
+    getItemSeconds: getItemTimerSeconds,
+    isRunning: (id) => activeTimerId === id,
+    onStart: handleStartTimer,
+    onPause: handlePauseTimer,
+    onStop: handleStopTimer,
+    totalDaySeconds: getTotalDaySeconds(),
+  };
+
   return (
     <PremiumPage>
       <PremiumHeader
@@ -668,6 +770,9 @@ export function InboxPage() {
                 onComplete={handleCompleteToday}
                 onUncomplete={handleUncompleteToday}
                 onRemove={handleRemoveFromToday}
+                mitItemId={mitItemId}
+                onToggleMIT={handleToggleMIT}
+                timerHandlers={timerHandlers}
               />
             </div>
             <div className="inbox-today-split-inbox inbox-groups">
