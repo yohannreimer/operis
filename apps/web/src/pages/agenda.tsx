@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlarmClock,
   Calendar,
@@ -138,6 +138,39 @@ function getCommitmentsForDay(commitments: Commitment[], day: Date): Commitment[
     });
 }
 
+// ─── time-grid constants ──────────────────────────────────────────────────────
+
+const HOUR_START      = 6;
+const HOUR_END        = 22;
+const PX_PER_HOUR     = 56;
+const GRID_HEIGHT     = (HOUR_END - HOUR_START) * PX_PER_HOUR; // 896 px
+const MIN_CARD_HEIGHT = 26;
+
+function timeToTopPx(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return Math.max(0, ((h + m / 60) - HOUR_START) * PX_PER_HOUR);
+}
+
+function durationToHeightPx(min: number): number {
+  return Math.max(MIN_CARD_HEIGHT, (min / 60) * PX_PER_HOUR);
+}
+
+function getNowTopPx(): number {
+  const now = new Date();
+  return Math.max(0, Math.min(
+    (now.getHours() + now.getMinutes() / 60 - HOUR_START) * PX_PER_HOUR,
+    GRID_HEIGHT
+  ));
+}
+
+function formatMinutes(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m}min`;
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -189,34 +222,6 @@ function blankForm(defaultType?: CommitmentType): FormState {
   };
 }
 
-// ─── WeekCard ─────────────────────────────────────────────────────────────────
-
-type WeekCardProps = {
-  commitment: Commitment;
-  onEdit: (c: Commitment) => void;
-};
-
-function WeekCard({ commitment: c, onEdit }: WeekCardProps) {
-  return (
-    <button
-      type="button"
-      className={`agenda-week-card agenda-week-card--${c.type}${c.status === 'pausado' ? ' agenda-week-card--muted' : ''}`}
-      onClick={() => onEdit(c)}
-      title={c.title}
-    >
-      <div className="agenda-week-card-dot" />
-      <div className="agenda-week-card-body">
-        <span className="agenda-week-card-title">{c.title}</span>
-        {c.startTime && (
-          <span className="agenda-week-card-time">
-            {c.startTime}{c.durationMin ? ` · ${c.durationMin}min` : ''}
-          </span>
-        )}
-      </div>
-    </button>
-  );
-}
-
 // ─── WeekView ─────────────────────────────────────────────────────────────────
 
 type WeekViewProps = {
@@ -229,34 +234,54 @@ type WeekViewProps = {
 function WeekView({ commitments, weekStart, onEdit, onNew }: WeekViewProps) {
   const today    = new Date();
   const weekDays = getWeekDays(weekStart);
+  const [nowTop, setNowTop] = useState<number>(() => getNowTopPx());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowTop(getNowTopPx()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const hours = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
 
   return (
-    <div className="agenda-week-grid">
-      {weekDays.map(day => {
-        const isToday = isSameDay(day, today);
-        const dayItems = getCommitmentsForDay(commitments, day);
-        const iso = dateToLocalISO(day);
+    <>
+      {/* ── Sticky column headers ── */}
+      <div className="agenda-week-cols-header">
+        <div className="agenda-week-gutter-header" />
+        {weekDays.map(day => {
+          const isToday    = isSameDay(day, today);
+          const iso        = dateToLocalISO(day);
+          const dayItems   = getCommitmentsForDay(commitments, day);
+          const untimed    = dayItems.filter(c => !c.startTime);
 
-        return (
-          <div
-            key={iso}
-            className={`agenda-week-col${isToday ? ' agenda-week-col--today' : ''}`}
-          >
-            {/* Column header */}
-            <div className="agenda-week-col-header">
+          return (
+            <div
+              key={iso}
+              className={`agenda-week-col-header${isToday ? ' agenda-week-col-header--today' : ''}`}
+            >
               <span className="agenda-week-col-weekday">{SHORT_WEEK[day.getDay()]}</span>
               <span className={`agenda-week-col-date${isToday ? ' agenda-week-col-date--today' : ''}`}>
                 {day.getDate()}
               </span>
-            </div>
 
-            {/* Cards */}
-            <div className="agenda-week-col-body">
-              {dayItems.map(c => (
-                <WeekCard key={c.id} commitment={c} onEdit={onEdit} />
+              {/* Untimed / all-day items */}
+              {untimed.slice(0, 2).map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`agenda-week-untimed-chip agenda-week-untimed-chip--${c.type}${c.status === 'pausado' ? ' agenda-week-untimed-chip--muted' : ''}`}
+                  onClick={() => onEdit(c)}
+                  title={c.title}
+                >
+                  <span className="agenda-week-untimed-dot" />
+                  <span className="agenda-week-untimed-label">{c.title}</span>
+                </button>
               ))}
+              {untimed.length > 2 && (
+                <span className="agenda-week-untimed-more">+{untimed.length - 2}</span>
+              )}
 
-              {/* Add button — subtle, appears on hover */}
+              {/* Add button */}
               <button
                 type="button"
                 className="agenda-week-col-add"
@@ -264,13 +289,88 @@ function WeekView({ commitments, weekStart, onEdit, onNew }: WeekViewProps) {
                 aria-label={`Novo compromisso em ${iso}`}
                 title="Novo compromisso"
               >
-                <Plus size={11} />
+                <Plus size={10} />
               </button>
             </div>
+          );
+        })}
+      </div>
+
+      {/* ── Scrollable time body ── */}
+      <div className="agenda-week-body-scroll">
+        <div className="agenda-week-body-inner">
+
+          {/* Time gutter */}
+          <div className="agenda-week-gutter-col">
+            {hours.map(h => (
+              <div key={h} className="agenda-week-hour-slot">
+                <span className="agenda-week-hour-label">
+                  {String(h).padStart(2, '0')}h
+                </span>
+              </div>
+            ))}
           </div>
-        );
-      })}
-    </div>
+
+          {/* Day columns */}
+          {weekDays.map(day => {
+            const isToday    = isSameDay(day, today);
+            const iso        = dateToLocalISO(day);
+            const dayItems   = getCommitmentsForDay(commitments, day);
+            const timedItems = dayItems.filter(c => !!c.startTime);
+
+            return (
+              <div
+                key={iso}
+                className={`agenda-week-day-col${isToday ? ' agenda-week-day-col--today' : ''}`}
+              >
+                {/* Hour grid lines */}
+                {hours.map((h, idx) => (
+                  <div
+                    key={h}
+                    className="agenda-week-hour-line"
+                    style={{ top: idx * PX_PER_HOUR }}
+                  />
+                ))}
+
+                {/* Timed commitment cards */}
+                {timedItems.map(c => {
+                  const top    = timeToTopPx(c.startTime!);
+                  const height = c.durationMin
+                    ? durationToHeightPx(c.durationMin)
+                    : MIN_CARD_HEIGHT;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`agenda-week-timed-card agenda-week-timed-card--${c.type}${c.status === 'pausado' ? ' agenda-week-timed-card--muted' : ''}`}
+                      style={{ top, height }}
+                      onClick={() => onEdit(c)}
+                      title={`${c.title} · ${c.startTime}${c.durationMin ? ` · ${c.durationMin}min` : ''}`}
+                    >
+                      <span className="agenda-week-timed-title">{c.title}</span>
+                      {height > 34 && (
+                        <span className="agenda-week-timed-time">
+                          {c.startTime}{c.durationMin ? ` · ${c.durationMin}min` : ''}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* Now indicator — today column only */}
+                {isToday && (
+                  <div className="agenda-week-now-indicator" style={{ top: nowTop }}>
+                    <div className="agenda-week-now-dot" />
+                    <div className="agenda-week-now-line" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -736,6 +836,16 @@ export function AgendaPage() {
 
   function closeForm() { setShowForm(false); setEditing(null); }
 
+  // Week total committed time (timed items only)
+  const weekTotalMin = useMemo(() => {
+    const days = getWeekDays(weekStart);
+    return days.reduce((total, day) =>
+      total + getCommitmentsForDay(commitments, day)
+        .reduce((sum, c) => sum + (c.durationMin ?? 0), 0),
+      0
+    );
+  }, [commitments, weekStart]);
+
   const filtered   = filterType === 'todos' ? commitments : commitments.filter(c => c.type === filterType);
   const fixos      = filtered.filter(c => c.type === 'fixo');
   const variaveis  = filtered.filter(c => c.type === 'variavel');
@@ -761,6 +871,11 @@ export function AgendaPage() {
                   <button type="button" className="agenda-week-nav-btn" onClick={nextWeek} aria-label="Próxima semana">
                     <ChevronRight size={13} />
                   </button>
+                  {weekTotalMin > 0 && (
+                    <span className="agenda-week-nav-hours" title="Total de tempo agendado esta semana">
+                      {formatMinutes(weekTotalMin)}
+                    </span>
+                  )}
                   {!isCurrentWeek && (
                     <button type="button" className="agenda-week-today-btn" onClick={goToday}>
                       Hoje
