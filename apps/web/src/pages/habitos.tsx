@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, MoreVertical, Pencil, Archive, Trash2, Flame, Zap } from 'lucide-react';
+import {
+  Brain, Briefcase, ChevronDown, ChevronLeft, ChevronRight,
+  Check, Dumbbell, Flame, Heart, Leaf, MoreVertical,
+  Pencil, Archive, Trash2, TrendingUp, Zap,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -23,34 +28,36 @@ import {
 } from '../components/premium-ui';
 import { localDateKey } from '../utils/date';
 
-// ─── constants ────────────────────────────────────────────────────────────────
+// ─── types & constants ────────────────────────────────────────────────────────
 
-const LIFE_AREAS = [
-  { key: 'corpo' as HabitLifeArea, label: 'Corpo', emoji: '💪', color: '#e07c4a' },
-  { key: 'mente' as HabitLifeArea, label: 'Mente', emoji: '🧠', color: '#818cf8' },
-  { key: 'trabalho' as HabitLifeArea, label: 'Trabalho', emoji: '💼', color: '#5bb98c' },
-  { key: 'relacoes' as HabitLifeArea, label: 'Relações', emoji: '❤️', color: '#d46464' },
-  { key: 'financas' as HabitLifeArea, label: 'Finanças', emoji: '💰', color: '#d4a843' },
-  { key: 'crescimento' as HabitLifeArea, label: 'Crescimento', emoji: '🌱', color: '#7dd3fc' },
-] as const;
+type LifeAreaDef = {
+  key: HabitLifeArea;
+  label: string;
+  Icon: LucideIcon;
+  color: string;
+};
 
-const AREA_MAP = Object.fromEntries(LIFE_AREAS.map((a) => [a.key, a])) as Record<
-  HabitLifeArea,
-  (typeof LIFE_AREAS)[number]
->;
+const LIFE_AREAS: LifeAreaDef[] = [
+  { key: 'corpo',       label: 'Corpo',       Icon: Dumbbell,   color: '#e07c4a' },
+  { key: 'mente',       label: 'Mente',       Icon: Brain,      color: '#818cf8' },
+  { key: 'trabalho',    label: 'Trabalho',    Icon: Briefcase,  color: '#5bb98c' },
+  { key: 'relacoes',    label: 'Relações',    Icon: Heart,      color: '#d46464' },
+  { key: 'financas',    label: 'Finanças',    Icon: TrendingUp, color: '#d4a843' },
+  { key: 'crescimento', label: 'Crescimento', Icon: Leaf,       color: '#7dd3fc' },
+];
 
-const RADAR_AREAS: HabitLifeArea[] = ['corpo', 'mente', 'financas', 'crescimento', 'relacoes', 'trabalho'];
+const AREA_MAP = Object.fromEntries(LIFE_AREAS.map((a) => [a.key, a])) as Record<HabitLifeArea, LifeAreaDef>;
 
 const ALL_DAYS: RecurrenceDay[] = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
 const DAY_LABELS: Record<RecurrenceDay, string> = {
   seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sáb', dom: 'Dom',
 };
 
-const FREQ_OPTIONS: Array<{ key: HabitFrequency; label: string; icon: string }> = [
-  { key: 'daily', label: 'Diário', icon: '🗓' },
-  { key: 'weekly', label: 'Semanal', icon: '📅' },
-  { key: 'monthly', label: 'Mensal', icon: '📆' },
-  { key: 'specific_days', label: 'Dias específicos', icon: '📌' },
+const FREQ_OPTIONS: Array<{ key: HabitFrequency; label: string }> = [
+  { key: 'daily',         label: 'Diário' },
+  { key: 'weekly',        label: 'Semanal' },
+  { key: 'monthly',       label: 'Mensal' },
+  { key: 'specific_days', label: 'Dias específicos' },
 ];
 
 function addDays(dateStr: string, n: number) {
@@ -64,209 +71,42 @@ function formatDisplayDate(dateStr: string) {
   return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
 }
 
-// ─── HabitRadarCompact ────────────────────────────────────────────────────────
+// ─── AreaChipsRow ─────────────────────────────────────────────────────────────
 
-const R_SIZE = 140;
-const R_CENTER = R_SIZE / 2;
-const R_MAX = 50;
-
-function polarToXY(angle: number, radius: number, cx = R_CENTER, cy = R_CENTER) {
-  return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
-}
-
-function levelToR(level: number) { return (level / 10) * R_MAX; }
-
-interface HabitRadarCompactProps {
-  stats: HabitRadarStats | null;
-  hoveredArea: HabitLifeArea | null;
-  onHover: (area: HabitLifeArea | null) => void;
-}
-
-function HabitRadarCompact({ stats, hoveredArea, onHover }: HabitRadarCompactProps) {
-  const angles = RADAR_AREAS.map((_, i) => (Math.PI * (270 + 60 * i)) / 180);
-  const gridLevels = [3, 6, 10];
-
-  const areaLevels = RADAR_AREAS.map((area) => stats?.[area]?.level ?? 1);
-  const filledPoints = areaLevels.map((lvl, i) => {
-    const r = levelToR(lvl);
-    const { x, y } = polarToXY(angles[i], r);
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <svg
-      viewBox={`0 0 ${R_SIZE} ${R_SIZE}`}
-      width={R_SIZE}
-      height={R_SIZE}
-      style={{ display: 'block', flexShrink: 0 }}
-    >
-      <defs>
-        <radialGradient id="r-grad" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(224,124,74,0.4)" />
-          <stop offset="100%" stopColor="rgba(129,140,248,0.15)" />
-        </radialGradient>
-        <filter id="r-glow">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
-          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
-      </defs>
-
-      {/* Grid */}
-      {gridLevels.map((gl) => (
-        <polygon
-          key={gl}
-          points={angles.map((a) => { const { x, y } = polarToXY(a, levelToR(gl)); return `${x},${y}`; }).join(' ')}
-          fill="none"
-          stroke="rgba(255,255,255,0.07)"
-          strokeWidth={1}
-        />
-      ))}
-
-      {/* Axes */}
-      {angles.map((angle, i) => {
-        const outer = polarToXY(angle, R_MAX);
-        return <line key={i} x1={R_CENTER} y1={R_CENTER} x2={outer.x} y2={outer.y} stroke="rgba(255,255,255,0.07)" strokeWidth={1} />;
-      })}
-
-      {/* Fill */}
-      <polygon points={filledPoints} fill="url(#r-grad)" stroke="none" />
-      <polygon points={filledPoints} fill="none" stroke="rgba(224,124,74,0.6)" strokeWidth={1.5} filter="url(#r-glow)" />
-
-      {/* Dots + hover hit areas */}
-      {RADAR_AREAS.map((area, i) => {
-        const lvl = stats?.[area]?.level ?? 1;
-        const { x, y } = polarToXY(angles[i], levelToR(lvl));
-        const isHovered = hoveredArea === area;
-
-        // Wedge hit area between adjacent midpoint angles
-        const prev = angles[(i - 1 + 6) % 6];
-        const next = angles[(i + 1) % 6];
-        const midP = (angles[i] + prev) / 2;
-        const midN = (angles[i] + next) / 2;
-        const hitR = R_MAX + 18;
-        const p0 = polarToXY(midP, hitR);
-        const p1 = polarToXY(angles[i], hitR);
-        const p2 = polarToXY(midN, hitR);
-        const hitPts = `${R_CENTER},${R_CENTER} ${p0.x},${p0.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`;
-
-        return (
-          <g key={area}>
-            <polygon
-              points={hitPts}
-              fill="transparent"
-              style={{ cursor: 'pointer' }}
-              onMouseEnter={() => onHover(area)}
-              onMouseLeave={() => onHover(null)}
-            />
-            <circle
-              cx={x} cy={y} r={isHovered ? 5 : 3}
-              fill={AREA_MAP[area].color}
-              stroke={isHovered ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)'}
-              strokeWidth={isHovered ? 1.5 : 1}
-              filter={isHovered ? 'url(#r-glow)' : undefined}
-              style={{ transition: 'all 0.15s' }}
-            />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-// ─── AreaLevelCard ─────────────────────────────────────────────────────────────
-
-interface AreaLevelCardProps {
-  area: (typeof LIFE_AREAS)[number];
-  info: HabitLevelInfo | null;
-  hovered: boolean;
-  onHover: (v: boolean) => void;
-}
-
-function AreaLevelCard({ area, info, hovered, onHover }: AreaLevelCardProps) {
-  const level = info?.level ?? 1;
-  const pct = info?.progressPct ?? 0;
-  const xpLeft = info && info.nextLevelXp !== null ? info.nextLevelXp - info.totalXp : null;
-
-  return (
-    <div
-      onMouseEnter={() => onHover(true)}
-      onMouseLeave={() => onHover(false)}
-      style={{
-        padding: '8px 10px',
-        borderRadius: 10,
-        border: `1px solid ${hovered ? area.color + '55' : 'var(--border)'}`,
-        background: hovered ? `${area.color}0d` : 'var(--surface)',
-        transition: 'all 0.18s',
-        cursor: 'default',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: hovered ? area.color : 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}>
-          {area.emoji} {area.label}
-        </span>
-        <span style={{
-          fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99,
-          background: `${area.color}22`, color: area.color,
-        }}>
-          Nv.{level}
-        </span>
-      </div>
-      <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', borderRadius: 99, background: area.color,
-          width: `${pct}%`, transition: 'width 0.5s ease',
-          boxShadow: hovered ? `0 0 6px ${area.color}` : 'none',
-        }} />
-      </div>
-      {hovered && (
-        <div style={{ fontSize: '0.67rem', color: 'var(--muted)', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
-          <span>{info?.totalXp ?? 0} XP</span>
-          {xpLeft !== null && <span>faltam {xpLeft} XP</span>}
-          {xpLeft === null && <span style={{ color: area.color }}>Nível máximo 🏆</span>}
-        </div>
-      )}
-      {hovered && info && (
-        <div style={{ fontSize: '0.65rem', color: area.color, marginTop: 2 }}>{info.name}</div>
-      )}
-    </div>
-  );
-}
-
-// ─── HabitStatsWidget ─────────────────────────────────────────────────────────
-
-interface HabitStatsWidgetProps {
+interface AreaChipsRowProps {
   stats: HabitRadarStats | null;
   ready: boolean;
 }
 
-function HabitStatsWidget({ stats, ready }: HabitStatsWidgetProps) {
-  const [hoveredArea, setHoveredArea] = useState<HabitLifeArea | null>(null);
-
-  if (!ready) return <SkeletonBlock lines={1} height={150} />;
+function AreaChipsRow({ stats, ready }: AreaChipsRowProps) {
+  if (!ready) return <SkeletonBlock lines={1} height={40} />;
 
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-      {/* Compact radar */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
-        <HabitRadarCompact
-          stats={stats}
-          hoveredArea={hoveredArea}
-          onHover={setHoveredArea}
-        />
-      </div>
+    <div className="habitos-area-chips">
+      {LIFE_AREAS.map((area) => {
+        const info: HabitLevelInfo | null = stats?.[area.key] ?? null;
+        const level = info?.level ?? 1;
+        const pct = info?.progressPct ?? 0;
+        const tooltip = info
+          ? `${area.label} · Nv.${level} · ${info.totalXp} XP${info.nextLevelXp !== null ? ` · faltam ${info.nextLevelXp - info.totalXp} XP` : ' · Nível máximo'}`
+          : area.label;
 
-      {/* Area cards grid */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-        {LIFE_AREAS.map((area) => (
-          <AreaLevelCard
+        return (
+          <div
             key={area.key}
-            area={area}
-            info={stats?.[area.key] ?? null}
-            hovered={hoveredArea === area.key}
-            onHover={(v) => setHoveredArea(v ? area.key : null)}
-          />
-        ))}
-      </div>
+            className="habitos-area-chip"
+            style={{ '--hab-color': area.color } as React.CSSProperties}
+            title={tooltip}
+          >
+            <area.Icon size={12} className="habitos-area-chip-icon" />
+            <span className="habitos-area-chip-label">{area.label}</span>
+            <span className="habitos-area-chip-level">Nv.{level}</span>
+            <div className="habitos-area-chip-bar">
+              <div className="habitos-area-chip-bar-fill" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -293,36 +133,23 @@ function HabitMenu({ habit, onEdit, onArchive, onDelete }: {
     <div ref={ref} style={{ position: 'relative' }}>
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        style={{
-          background: 'none', border: 'none', cursor: 'pointer', padding: '6px',
-          color: 'var(--muted)', borderRadius: 6, display: 'flex', alignItems: 'center',
-          opacity: 0, transition: 'opacity 0.15s',
-        }}
         className="habit-menu-trigger"
         title="Opções"
+        aria-label="Opções do hábito"
       >
         <MoreVertical size={14} />
       </button>
       {open && (
-        <div style={{
-          position: 'absolute', right: 0, top: '100%', zIndex: 200,
-          background: 'var(--surface-elevated)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: 4, minWidth: 140,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-        }}>
+        <div className="habit-menu-dropdown">
           {[
-            { icon: <Pencil size={12} />, label: 'Editar', action: () => onEdit(habit) },
+            { icon: <Pencil size={12} />, label: 'Editar',   action: () => onEdit(habit) },
             { icon: <Archive size={12} />, label: 'Arquivar', action: () => onArchive(habit.id) },
-            { icon: <Trash2 size={12} />, label: 'Excluir', action: () => onDelete(habit.id), danger: true },
+            { icon: <Trash2 size={12} />,  label: 'Excluir',  action: () => onDelete(habit.id), danger: true },
           ].map((item) => (
             <button
               key={item.label}
               onClick={() => { setOpen(false); item.action(); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px',
-                background: 'none', border: 'none', cursor: 'pointer', borderRadius: 7,
-                fontSize: '0.8rem', color: item.danger ? 'var(--danger)' : 'var(--text)', textAlign: 'left',
-              }}
+              className={`habit-menu-item${item.danger ? ' danger' : ''}`}
             >
               {item.icon} {item.label}
             </button>
@@ -351,80 +178,53 @@ interface HabitRowProps {
 
 function HabitRow({ stat, onLog, onUndo, onRecaiu, onUndoRecaiu, onEdit, onArchive, onDelete, busy, areaColor }: HabitRowProps) {
   const { type, title, streak, currentLog, periodProgress, isCompletedToday, dailyTarget, unit } = stat;
+  const rowStyle = { '--hab-color': areaColor } as React.CSSProperties;
 
-  const rowStyle: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0',
-    borderBottom: '1px solid rgba(255,255,255,0.04)',
-    transition: 'background 0.15s',
-  };
-
+  // ── binary ──────────────────────────────────────────────────────────────────
   if (type === 'binary') {
     return (
-      <div className="habit-row-hover" style={rowStyle}>
-        {/* Check circle */}
+      <div className="habit-row" style={rowStyle}>
         <button
           onClick={() => isCompletedToday ? onUndo(stat.id) : onLog(stat.id)}
           disabled={busy}
-          style={{
-            width: 28, height: 28, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-            border: `2px solid ${isCompletedToday ? areaColor : 'rgba(255,255,255,0.15)'}`,
-            background: isCompletedToday ? areaColor : 'transparent',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.8rem', color: 'white', transition: 'all 0.2s',
-            boxShadow: isCompletedToday ? `0 0 8px ${areaColor}55` : 'none',
-          }}
+          className={`habit-row-check${isCompletedToday ? ' done' : ''}`}
+          aria-label={isCompletedToday ? 'Desmarcar' : 'Marcar como feito'}
         >
-          {isCompletedToday && '✓'}
+          {isCompletedToday && <Check size={13} />}
         </button>
 
-        {/* Info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{
-            fontSize: '0.88rem', fontWeight: 600,
-            color: isCompletedToday ? 'var(--muted)' : 'var(--text)',
-            textDecoration: isCompletedToday ? 'line-through' : 'none',
-            transition: 'all 0.2s',
-          }}>
+        <div className="habit-row-info">
+          <div className={`habit-row-title${isCompletedToday ? ' done-title' : ''}`}>
             {stat.icon ? `${stat.icon} ` : ''}{title}
           </div>
           {periodProgress && (
-            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: 2 }}>
+            <div className="habit-row-sub">
               {periodProgress.done}/{periodProgress.target} esta {stat.frequencyType === 'weekly' ? 'semana' : 'mês'}
             </div>
           )}
         </div>
 
-        {/* Streak */}
         {streak > 1 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 3,
-            fontSize: '0.75rem', fontWeight: 700, color: '#f97316',
-            background: 'rgba(249,115,22,0.1)', padding: '3px 8px', borderRadius: 99,
-          }}>
-            <Flame size={12} /> {streak}
+          <div className="habit-streak">
+            <Flame size={11} /> {streak}
           </div>
         )}
 
-        {/* Done button */}
-        <button
-          onClick={() => isCompletedToday ? onUndo(stat.id) : onLog(stat.id)}
-          disabled={busy}
-          style={{
-            padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
-            fontWeight: 600, border: `1px solid ${isCompletedToday ? areaColor + '44' : 'var(--border)'}`,
-            background: isCompletedToday ? `${areaColor}18` : 'var(--surface)',
-            color: isCompletedToday ? areaColor : 'var(--text)',
-            transition: 'all 0.2s', whiteSpace: 'nowrap',
-          }}
-        >
-          {isCompletedToday ? '✓ Feito' : 'Marcar'}
-        </button>
-
-        <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
+        <div className="habit-row-actions">
+          <button
+            onClick={() => isCompletedToday ? onUndo(stat.id) : onLog(stat.id)}
+            disabled={busy}
+            className={`habit-btn-done${isCompletedToday ? ' done' : ''}`}
+          >
+            {isCompletedToday ? '✓ Feito' : 'Marcar'}
+          </button>
+          <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
+        </div>
       </div>
     );
   }
 
+  // ── quantitative ─────────────────────────────────────────────────────────────
   if (type === 'quantitative') {
     const current = currentLog?.value ?? 0;
     const target = dailyTarget ?? 1;
@@ -433,69 +233,59 @@ function HabitRow({ stat, onLog, onUndo, onRecaiu, onUndoRecaiu, onEdit, onArchi
     const inc = unit === 'páginas' ? 10 : 1;
 
     return (
-      <div className="habit-row-hover" style={rowStyle}>
+      <div className="habit-row" style={rowStyle}>
         {/* Progress ring */}
-        <div style={{ position: 'relative', flexShrink: 0, width: 28, height: 28 }}>
-          <svg viewBox="0 0 28 28" width={28} height={28}>
-            <circle cx={14} cy={14} r={11} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
+        <div style={{ position: 'relative', flexShrink: 0, width: 32, height: 32 }}>
+          <svg viewBox="0 0 32 32" width={32} height={32}>
+            <circle cx={16} cy={16} r={12} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={3} />
             <circle
-              cx={14} cy={14} r={11} fill="none"
+              cx={16} cy={16} r={12} fill="none"
               stroke={isComplete ? areaColor : `${areaColor}88`}
               strokeWidth={3}
-              strokeDasharray={`${Math.round(2 * Math.PI * 11 * pct / 100)} 100`}
+              strokeDasharray={`${Math.round(2 * Math.PI * 12 * pct / 100)} 100`}
               strokeLinecap="round"
-              transform="rotate(-90 14 14)"
-              style={{ transition: 'stroke-dasharray 0.4s ease', filter: isComplete ? `drop-shadow(0 0 4px ${areaColor})` : 'none' }}
+              transform="rotate(-90 16 16)"
+              style={{ transition: 'stroke-dasharray 0.4s ease' }}
             />
             {isComplete && (
-              <text x={14} y={18} textAnchor="middle" fontSize={9} fill={areaColor}>✓</text>
+              <text x={16} y={20} textAnchor="middle" fontSize={10} fill={areaColor} fontWeight={700}>✓</text>
             )}
           </svg>
         </div>
 
-        {/* Info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '0.88rem', fontWeight: 600, color: isComplete ? 'var(--muted)' : 'var(--text)' }}>
+        <div className="habit-row-info">
+          <div className={`habit-row-title${isComplete ? ' done-title' : ''}`}>
             {stat.icon ? `${stat.icon} ` : ''}{title}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 99, background: isComplete ? areaColor : `${areaColor}88`,
-                width: `${pct}%`, transition: 'width 0.4s ease',
-              }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+            <div className="habit-progress-bar" style={{ flex: 1 }}>
+              <div
+                className={`habit-progress-fill${isComplete ? ' complete' : ''}`}
+                style={{ width: `${pct}%` }}
+              />
             </div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+            <span className="habit-row-sub" style={{ whiteSpace: 'nowrap', margin: 0 }}>
               {current}/{target} {unit ?? ''}
             </span>
           </div>
           {periodProgress && (
-            <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: 2 }}>
+            <div className="habit-row-sub">
               {periodProgress.done}/{periodProgress.target} esta {stat.frequencyType === 'weekly' ? 'semana' : 'mês'}
             </div>
           )}
         </div>
 
         {streak > 1 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 3,
-            fontSize: '0.75rem', fontWeight: 700, color: '#f97316',
-            background: 'rgba(249,115,22,0.1)', padding: '3px 8px', borderRadius: 99,
-          }}>
-            <Flame size={12} /> {streak}
+          <div className="habit-streak">
+            <Flame size={11} /> {streak}
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="habit-row-actions">
           <button
             onClick={() => onLog(stat.id, inc)}
             disabled={busy}
-            style={{
-              padding: '5px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
-              fontWeight: 600, border: '1px solid var(--border)',
-              background: 'var(--surface)', color: 'var(--text)',
-              transition: 'all 0.15s', whiteSpace: 'nowrap',
-            }}
+            className="habit-btn-increment"
           >
             +{inc} {unit ?? ''}
           </button>
@@ -504,82 +294,60 @@ function HabitRow({ stat, onLog, onUndo, onRecaiu, onUndoRecaiu, onEdit, onArchi
               onClick={() => onUndo(stat.id)}
               disabled={busy}
               title="Zerar dia"
-              style={{
-                padding: '5px 8px', borderRadius: 8, cursor: 'pointer', fontSize: '0.72rem',
-                border: '1px solid rgba(255,255,255,0.06)', background: 'none', color: 'var(--muted)',
-              }}
+              className="habit-btn-increment"
+              aria-label="Zerar dia"
             >
               ↺
             </button>
           )}
+          <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
         </div>
-
-        <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
       </div>
     );
   }
 
-  // vice
+  // ── vice ─────────────────────────────────────────────────────────────────────
   const recaiu = currentLog?.value === -1;
   return (
-    <div className="habit-row-hover" style={rowStyle}>
-      {/* Clean indicator */}
+    <div className="habit-row" style={rowStyle}>
       <div style={{
-        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-        border: `2px solid ${recaiu ? 'var(--danger)' : areaColor}`,
-        background: recaiu ? 'rgba(239,68,68,0.1)' : 'transparent',
+        width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+        border: `2px solid ${recaiu ? 'var(--danger, #d46464)' : areaColor}`,
+        background: recaiu ? 'rgba(212,100,100,0.1)' : 'transparent',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '0.8rem',
+        fontSize: '0.85rem', color: recaiu ? 'var(--danger, #d46464)' : areaColor,
+        fontWeight: 700,
       }}>
         {recaiu ? '✗' : '✓'}
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>
+      <div className="habit-row-info">
+        <div className="habit-row-title">
           {stat.icon ? `${stat.icon} ` : ''}{title}
         </div>
-        <div style={{ fontSize: '0.72rem', color: recaiu ? 'var(--danger)' : 'var(--muted)', marginTop: 2 }}>
+        <div className="habit-row-sub" style={{ color: recaiu ? 'var(--danger)' : undefined }}>
           {recaiu ? '⚠ Recaiu hoje' : `${streak} dias limpos`}
         </div>
       </div>
 
       {!recaiu && streak > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 3,
-          fontSize: '0.75rem', fontWeight: 700, color: '#22c55e',
-          background: 'rgba(34,197,94,0.1)', padding: '3px 8px', borderRadius: 99,
-        }}>
+        <div className="habit-streak" style={{ color: '#22c55e', background: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.2)' }}>
           <Zap size={11} /> {streak}d
         </div>
       )}
 
-      {recaiu ? (
-        <button
-          onClick={() => onUndoRecaiu(stat.id)}
-          disabled={busy}
-          style={{
-            padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
-            fontWeight: 600, border: '1px solid rgba(34,197,94,0.3)',
-            background: 'rgba(34,197,94,0.08)', color: '#22c55e', transition: 'all 0.15s',
-          }}
-        >
-          Desfazer
-        </button>
-      ) : (
-        <button
-          onClick={() => onRecaiu(stat.id)}
-          disabled={busy}
-          style={{
-            padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontSize: '0.78rem',
-            fontWeight: 600, border: '1px solid rgba(239,68,68,0.3)',
-            background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', transition: 'all 0.15s',
-          }}
-        >
-          Recaí
-        </button>
-      )}
-
-      <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
+      <div className="habit-row-actions">
+        {recaiu ? (
+          <button onClick={() => onUndoRecaiu(stat.id)} disabled={busy} className="habit-btn-done done">
+            Desfazer
+          </button>
+        ) : (
+          <button onClick={() => onRecaiu(stat.id)} disabled={busy} className="habit-btn-recaiu">
+            Recaí
+          </button>
+        )}
+        <HabitMenu habit={stat} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
+      </div>
     </div>
   );
 }
@@ -587,7 +355,7 @@ function HabitRow({ stat, onLog, onUndo, onRecaiu, onUndoRecaiu, onEdit, onArchi
 // ─── HabitAreaSection ─────────────────────────────────────────────────────────
 
 interface HabitAreaSectionProps {
-  area: (typeof LIFE_AREAS)[number];
+  area: LifeAreaDef;
   habits: HabitTodayStat[];
   date: string;
   onLog: (id: string, value?: number) => Promise<void>;
@@ -603,25 +371,28 @@ interface HabitAreaSectionProps {
 function HabitAreaSection({ area, habits, date, onLog, onUndo, onRecaiu, onUndoRecaiu, onEdit, onArchive, onDelete, busy }: HabitAreaSectionProps) {
   const done = habits.filter((h) => h.isCompletedToday).length;
   const allDone = done === habits.length;
+  const { Icon } = area;
 
   return (
-    <div style={{
-      borderLeft: `3px solid ${area.color}`,
-      paddingLeft: 14,
-      marginBottom: 20,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: '1rem' }}>{area.emoji}</span>
-        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
-          {area.label}
-        </span>
-        <span style={{
-          fontSize: '0.7rem', fontWeight: 700, padding: '1px 7px', borderRadius: 99,
-          background: allDone ? `${area.color}22` : 'rgba(255,255,255,0.05)',
-          color: allDone ? area.color : 'var(--muted)',
-          border: `1px solid ${allDone ? area.color + '44' : 'transparent'}`,
-          marginLeft: 'auto',
-        }}>
+    <div
+      className="habit-area-section"
+      style={{ '--hab-color': area.color } as React.CSSProperties}
+    >
+      <div className="habit-area-header">
+        <Icon size={12} style={{ color: area.color, flexShrink: 0 }} />
+        <span className="habit-area-label">{area.label}</span>
+        <span
+          className="habit-area-badge"
+          style={allDone ? {
+            background: `${area.color}22`,
+            color: area.color,
+            border: `1px solid ${area.color}44`,
+          } : {
+            background: 'rgba(255,255,255,0.05)',
+            color: 'var(--muted)',
+            border: '1px solid transparent',
+          }}
+        >
           {done}/{habits.length}
         </span>
       </div>
@@ -670,9 +441,9 @@ function FrequencyField({ frequencyType, frequencyTarget, specificDays, onFreqCh
             border: `1px solid ${frequencyType === opt.key ? 'var(--accent)' : 'var(--border)'}`,
             background: frequencyType === opt.key ? 'rgba(224,124,74,0.15)' : 'var(--surface)',
             color: frequencyType === opt.key ? 'var(--accent)' : 'var(--text)',
-            transition: 'all 0.15s', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 7,
+            transition: 'all 0.15s', textAlign: 'left',
           }}>
-            <span>{opt.icon}</span> {opt.label}
+            {opt.label}
           </button>
         ))}
       </div>
@@ -733,10 +504,25 @@ function defaultForm(): HabitFormState {
 }
 
 const TYPE_OPTIONS: Array<{ key: HabitType; icon: string; label: string; desc: string }> = [
-  { key: 'binary', icon: '✓', label: 'Binário', desc: 'Feito ou não feito' },
+  { key: 'binary',       icon: '✓',  label: 'Binário',      desc: 'Feito ou não feito' },
   { key: 'quantitative', icon: '📊', label: 'Quantitativo', desc: 'Mede quantidade' },
-  { key: 'vice', icon: '🚫', label: 'Vício', desc: 'Dias sem recair' },
+  { key: 'vice',         icon: '🚫', label: 'Vício',        desc: 'Dias sem recair' },
 ];
+
+// Area button helper — icon + label
+function AreaButton({ area, selected, onClick }: { area: LifeAreaDef; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`habit-area-btn${selected ? ' selected' : ''}`}
+      style={{ '--area-color': area.color } as React.CSSProperties}
+      onClick={onClick}
+    >
+      <area.Icon size={14} style={{ display: 'block', margin: '0 auto 4px' }} />
+      {area.label}
+    </button>
+  );
+}
 
 // ─── HabitCreateModal ─────────────────────────────────────────────────────────
 
@@ -806,10 +592,12 @@ function HabitCreateModal({ onClose, onCreate }: { onClose: () => void; onCreate
               <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Área da vida</label>
               <div className="habit-area-grid">
                 {LIFE_AREAS.map((area) => (
-                  <button key={area.key} type="button" className={`habit-area-btn ${form.lifeArea === area.key ? 'selected' : ''}`}
-                    style={{ '--area-color': area.color } as React.CSSProperties} onClick={() => set({ lifeArea: area.key })}>
-                    {area.emoji} {area.label}
-                  </button>
+                  <AreaButton
+                    key={area.key}
+                    area={area}
+                    selected={form.lifeArea === area.key}
+                    onClick={() => set({ lifeArea: area.key })}
+                  />
                 ))}
               </div>
             </div>
@@ -916,10 +704,12 @@ function HabitEditModal({ habit, onClose, onSave }: { habit: HabitTodayStat; onC
           <label style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', marginBottom: 8 }}>Área da vida</label>
           <div className="habit-area-grid">
             {LIFE_AREAS.map((area) => (
-              <button key={area.key} type="button" className={`habit-area-btn ${form.lifeArea === area.key ? 'selected' : ''}`}
-                style={{ '--area-color': area.color } as React.CSSProperties} onClick={() => set({ lifeArea: area.key })}>
-                {area.emoji} {area.label}
-              </button>
+              <AreaButton
+                key={area.key}
+                area={area}
+                selected={form.lifeArea === area.key}
+                onClick={() => set({ lifeArea: area.key })}
+              />
             ))}
           </div>
         </div>
@@ -970,16 +760,10 @@ function HabitHeatmap({ habits, allHabits }: { habits: HabitTodayStat[]; allHabi
   }
 
   const selectedHabit = allHabits.find((h) => h.id === selectedId);
-
-  // Only show cells from habit creation date to today
   const todayStr = localDateKey();
-  const createdStr = selectedHabit?.createdAt
-    ? selectedHabit.createdAt.slice(0, 10)
-    : todayStr;
-
+  const createdStr = selectedHabit?.createdAt ? selectedHabit.createdAt.slice(0, 10) : todayStr;
   const logValues = new Map(heatmap?.logs.map((l) => [l.date, l.value]) ?? []);
 
-  // Generate cells from createdAt → today
   const cells: Array<{ date: string; value: number | null; isFuture: boolean }> = [];
   const startDate = new Date(createdStr + 'T00:00:00Z');
   const endDate = new Date(todayStr + 'T00:00:00Z');
@@ -1007,7 +791,6 @@ function HabitHeatmap({ habits, allHabits }: { habits: HabitTodayStat[]; allHabi
 
   return (
     <div>
-      {/* Selector + stats */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <select className="premium-input" value={selectedId ?? ''} onChange={(e) => setSelectedId(e.target.value)}
           style={{ display: 'inline-block', width: 'auto', flex: 1, minWidth: 140 }}>
@@ -1027,7 +810,6 @@ function HabitHeatmap({ habits, allHabits }: { habits: HabitTodayStat[]; allHabi
         </div>
       </div>
 
-      {/* Grid */}
       {cells.length === 0 ? (
         <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>Hábito criado hoje — dados aparecerão amanhã.</p>
       ) : (
@@ -1049,7 +831,6 @@ function HabitHeatmap({ habits, allHabits }: { habits: HabitTodayStat[]; allHabi
         </div>
       )}
 
-      {/* Legend */}
       <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
         <span style={{ fontSize: '0.68rem', color: 'var(--muted)' }}>Menos</span>
         {[null, 1, 5, 10].map((v, i) => (
@@ -1112,7 +893,7 @@ export function HabitosPage() {
         if (newLevel > prevLevel) {
           toast.success(`🎉 Subiu para Nível ${newLevel} em ${AREA_MAP[areaKey].label}!`, { duration: 4000 });
         } else {
-          toast.success(`+${stat.xpPerCompletion ?? 10} XP ${AREA_MAP[areaKey].emoji}`, { duration: 2000 });
+          toast.success(`+${stat.xpPerCompletion ?? 10} XP · ${AREA_MAP[areaKey].label}`, { duration: 2000 });
         }
       }
     } catch { toast.error('Erro ao registrar'); }
@@ -1167,70 +948,66 @@ export function HabitosPage() {
 
   const totalH = habits.length;
   const doneH = habits.filter((h) => h.isCompletedToday).length;
+  const dayPct = totalH > 0 ? Math.round((doneH / totalH) * 100) : 0;
 
   return (
     <PremiumPage>
+      {/* Header with date nav inline */}
       <PremiumHeader
         title="Hábitos"
         subtitle="RPG de vida"
         actions={
-          <button className="premium-btn" onClick={() => setShowCreateModal(true)}>+ Novo hábito</button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button
+              className="habit-date-nav-btn"
+              style={{ minWidth: 34, minHeight: 34, width: 34, height: 34 }}
+              onClick={() => setDate(addDays(date, -1))}
+              aria-label="Dia anterior"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span style={{
+              fontSize: '0.82rem', fontWeight: 700, color: 'var(--text)',
+              minWidth: 68, textAlign: 'center',
+            }}>
+              {displayLabel}
+            </span>
+            <button
+              className="habit-date-nav-btn"
+              style={{ minWidth: 34, minHeight: 34, width: 34, height: 34 }}
+              onClick={() => setDate(addDays(date, 1))}
+              disabled={date >= todayStr}
+              aria-label="Próximo dia"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <button className="premium-btn" onClick={() => setShowCreateModal(true)}>+ Novo</button>
+          </div>
         }
       />
 
-      {/* Date nav */}
-      <div className="habit-date-nav">
-        <button className="habit-date-nav-btn" onClick={() => setDate(addDays(date, -1))} aria-label="Dia anterior">
-          <ChevronLeft size={16} />
-        </button>
-        <div className="habit-date-nav-center">
-          <span className="habit-date-label">{displayLabel}</span>
-          {!isToday && (
-            <span className="habit-date-sub">
-              {new Date(date + 'T12:00:00Z').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
-            </span>
-          )}
-        </div>
-        <button className="habit-date-nav-btn" onClick={() => setDate(addDays(date, 1))} disabled={date >= todayStr} aria-label="Próximo dia">
-          <ChevronRight size={16} />
-        </button>
-      </div>
-
-      {/* Stats widget: compact radar + area cards */}
-      <PremiumCard>
-        <HabitStatsWidget stats={radar} ready={ready} />
-      </PremiumCard>
-
-      {/* Global progress bar */}
+      {/* Thin day progress strip */}
       {ready && totalH > 0 && (
-        <div style={{ padding: '4px 2px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Progresso do dia</span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: doneH === totalH ? '#5bb98c' : 'var(--muted)' }}>
-              {doneH}/{totalH} {doneH === totalH && '🎉'}
-            </span>
-          </div>
-          <div style={{ height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', borderRadius: 99,
-              background: doneH === totalH ? '#5bb98c' : 'var(--accent)',
-              width: `${Math.round((doneH / totalH) * 100)}%`,
-              transition: 'width 0.5s ease',
-            }} />
-          </div>
+        <div className="habitos-day-progress">
+          <div
+            className={`habitos-day-progress-fill${doneH === totalH ? ' complete' : ''}`}
+            style={{ width: `${dayPct}%` }}
+          />
         </div>
       )}
+
+      {/* Area chips — compact XP overview */}
+      <AreaChipsRow stats={radar} ready={ready} />
 
       {/* Habit list */}
       {!ready ? (
         <PremiumCard><SkeletonBlock lines={4} height={52} /></PremiumCard>
       ) : habits.length === 0 ? (
         <PremiumCard>
-          <EmptyState title="Nenhum hábito para este dia" description='Crie o primeiro hábito clicando em "+ Novo hábito"' />
+          <EmptyState title="Nenhum hábito para este dia" description='Crie o primeiro hábito clicando em "+ Novo"' />
         </PremiumCard>
       ) : (
         <PremiumCard>
-          <style>{`.habit-row-hover:hover .habit-menu-trigger { opacity: 1 !important; }`}</style>
           {areaHabits.map(({ area, habits: aHabits }) => (
             <HabitAreaSection
               key={area.key} area={area} habits={aHabits} date={date}
@@ -1241,12 +1018,19 @@ export function HabitosPage() {
         </PremiumCard>
       )}
 
-      {/* Analysis */}
+      {/* Analysis toggle */}
       {allHabits.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <button className="premium-btn-secondary" onClick={() => setAnalysisOpen(!analysisOpen)}
-            style={{ width: '100%', justifyContent: 'center' }}>
-            Análise {analysisOpen ? '▴' : '▾'}
+        <div>
+          <button
+            type="button"
+            className="habitos-analysis-btn ghost-button"
+            onClick={() => setAnalysisOpen(!analysisOpen)}
+          >
+            <span>Análise de consistência</span>
+            <ChevronDown
+              size={13}
+              style={{ transform: analysisOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}
+            />
           </button>
           {analysisOpen && (
             <div style={{ marginTop: 8 }}>
@@ -1258,8 +1042,12 @@ export function HabitosPage() {
         </div>
       )}
 
-      {showCreateModal && <HabitCreateModal onClose={() => setShowCreateModal(false)} onCreate={() => { setShowCreateModal(false); load(); }} />}
-      {editingHabit && <HabitEditModal habit={editingHabit} onClose={() => setEditingHabit(null)} onSave={() => { setEditingHabit(null); load(); }} />}
+      {showCreateModal && (
+        <HabitCreateModal onClose={() => setShowCreateModal(false)} onCreate={() => { setShowCreateModal(false); load(); }} />
+      )}
+      {editingHabit && (
+        <HabitEditModal habit={editingHabit} onClose={() => setEditingHabit(null)} onSave={() => { setEditingHabit(null); load(); }} />
+      )}
     </PremiumPage>
   );
 }

@@ -14744,6 +14744,176 @@ h4 {
   opacity: 0.5;
 }
 
+/* ── Habit menu (dropdown) ───────────────────────────────────── */
+
+.habit-menu-trigger {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  color: var(--muted);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.habit-row:hover .habit-menu-trigger { opacity: 1; }
+.habit-menu-trigger:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+.habit-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 200;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.habit-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  color: var(--text);
+  text-align: left;
+  transition: background 0.12s;
+}
+.habit-menu-item:hover { background: rgba(255,255,255,0.05); }
+.habit-menu-item.danger { color: var(--danger, #d46464); }
+.habit-menu-item.danger:hover { background: rgba(212,100,100,0.08); }
+
+/* ── Area-color overrides (--hab-color) ──────────────────────── */
+
+/* Check circle uses area color when done */
+.habit-area-section .habit-row-check.done {
+  background: var(--hab-color, var(--success, #5bb98c));
+  border-color: var(--hab-color, var(--success, #5bb98c));
+}
+
+/* Done button tinted with area color */
+.habit-area-section .habit-btn-done:not(.done) {
+  color: var(--hab-color, var(--success, #5bb98c));
+  border-color: rgba(from var(--hab-color, #5bb98c) r g b / 0.25);
+  background: rgba(from var(--hab-color, #5bb98c) r g b / 0.08);
+}
+.habit-area-section .habit-btn-done.done {
+  background: var(--hab-color, var(--success, #5bb98c));
+  border-color: var(--hab-color, var(--success, #5bb98c));
+  color: #fff;
+}
+
+/* Area section left border uses area color */
+.habit-area-section {
+  border-left-color: var(--hab-color, var(--primary));
+}
+
+/* ── Habitos page layout ──────────────────────────────────────── */
+
+/* Day progress strip */
+.habitos-day-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden;
+  margin: -4px 0 12px;
+}
+.habitos-day-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #e07c4a);
+  transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+.habitos-day-progress-fill.complete {
+  background: var(--success, #5bb98c);
+}
+
+/* Area chips row */
+.habitos-area-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.habitos-area-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  cursor: default;
+  transition: border-color 0.18s, background 0.18s;
+  white-space: nowrap;
+}
+.habitos-area-chip:hover {
+  border-color: var(--hab-color, var(--primary));
+  background: rgba(255,255,255,0.06);
+}
+.habitos-area-chip-icon {
+  color: var(--hab-color, var(--muted));
+  flex-shrink: 0;
+}
+.habitos-area-chip-label {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.habitos-area-chip-level {
+  font-size: 0.63rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.07);
+  color: var(--hab-color, var(--muted));
+  letter-spacing: 0.02em;
+}
+.habitos-area-chip-bar {
+  width: 32px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.habitos-area-chip-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--hab-color, var(--primary));
+  transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+
+/* Analysis toggle button */
+.habitos-analysis-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radius-md, 10px);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.habitos-analysis-btn:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.03);
+}
+
 
 /* ═══════════════════════════════════════════
    CANVAS — Diagramas e Mapas Mentais
