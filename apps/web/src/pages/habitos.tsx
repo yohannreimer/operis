@@ -76,9 +76,10 @@ function formatDisplayDate(dateStr: string) {
 interface AreaChipsRowProps {
   stats: HabitRadarStats | null;
   ready: boolean;
+  areaProgress: Record<HabitLifeArea, { done: number; total: number }>;
 }
 
-function AreaChipsRow({ stats, ready }: AreaChipsRowProps) {
+function AreaChipsRow({ stats, ready, areaProgress }: AreaChipsRowProps) {
   if (!ready) return <SkeletonBlock lines={1} height={40} />;
 
   return (
@@ -87,6 +88,7 @@ function AreaChipsRow({ stats, ready }: AreaChipsRowProps) {
         const info: HabitLevelInfo | null = stats?.[area.key] ?? null;
         const level = info?.level ?? 1;
         const pct = info?.progressPct ?? 0;
+        const prog = areaProgress[area.key];
         const tooltip = info
           ? `${area.label} · Nv.${level} · ${info.totalXp} XP${info.nextLevelXp !== null ? ` · faltam ${info.nextLevelXp - info.totalXp} XP` : ' · Nível máximo'}`
           : area.label;
@@ -95,12 +97,21 @@ function AreaChipsRow({ stats, ready }: AreaChipsRowProps) {
           <div
             key={area.key}
             className="habitos-area-chip"
-            style={{ '--hab-color': area.color } as React.CSSProperties}
+            style={{
+              '--hab-color': area.color,
+              background: `${area.color}1a`,     // ~10% opacity tint
+              border: `1px solid ${area.color}45`, // ~27% opacity border
+            } as React.CSSProperties}
             title={tooltip}
           >
             <area.Icon size={12} className="habitos-area-chip-icon" />
             <span className="habitos-area-chip-label">{area.label}</span>
             <span className="habitos-area-chip-level">Nv.{level}</span>
+            {prog.total > 0 && (
+              <span className="habitos-area-chip-progress">
+                {prog.done}/{prog.total}
+              </span>
+            )}
             <div className="habitos-area-chip-bar">
               <div className="habitos-area-chip-bar-fill" style={{ width: `${pct}%` }} />
             </div>
@@ -950,6 +961,14 @@ export function HabitosPage() {
   const doneH = habits.filter((h) => h.isCompletedToday).length;
   const dayPct = totalH > 0 ? Math.round((doneH / totalH) * 100) : 0;
 
+  // per-area today progress for chips
+  const areaProgress = Object.fromEntries(
+    LIFE_AREAS.map((area) => {
+      const aHabits = habits.filter((h) => h.lifeArea === area.key);
+      return [area.key, { done: aHabits.filter((h) => h.isCompletedToday).length, total: aHabits.length }];
+    })
+  ) as Record<HabitLifeArea, { done: number; total: number }>;
+
   return (
     <PremiumPage>
       {/* Header with date nav inline */}
@@ -986,18 +1005,25 @@ export function HabitosPage() {
         }
       />
 
-      {/* Thin day progress strip */}
+      {/* Day summary: text label + progress bar */}
       {ready && totalH > 0 && (
-        <div className="habitos-day-progress">
-          <div
-            className={`habitos-day-progress-fill${doneH === totalH ? ' complete' : ''}`}
-            style={{ width: `${dayPct}%` }}
-          />
+        <div className="habitos-day-summary">
+          <span className={`habitos-day-summary-text${doneH === totalH ? ' complete' : ''}`}>
+            {doneH === totalH
+              ? `✓ ${totalH} feitos`
+              : `${doneH} de ${totalH} · ${dayPct}%`}
+          </span>
+          <div className="habitos-day-progress">
+            <div
+              className={`habitos-day-progress-fill${doneH === totalH ? ' complete' : ''}`}
+              style={{ width: `${dayPct}%` }}
+            />
+          </div>
         </div>
       )}
 
-      {/* Area chips — compact XP overview */}
-      <AreaChipsRow stats={radar} ready={ready} />
+      {/* Area chips — per-area XP level + today progress */}
+      <AreaChipsRow stats={radar} ready={ready} areaProgress={areaProgress} />
 
       {/* Habit list */}
       {!ready ? (
@@ -1023,7 +1049,7 @@ export function HabitosPage() {
         <div>
           <button
             type="button"
-            className="habitos-analysis-btn ghost-button"
+            className="habitos-analysis-btn"
             onClick={() => setAnalysisOpen(!analysisOpen)}
           >
             <span>Análise de consistência</span>

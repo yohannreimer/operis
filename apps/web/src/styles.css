@@ -14820,13 +14820,29 @@ h4 {
 
 /* ── Habitos page layout ──────────────────────────────────────── */
 
-/* Day progress strip */
+/* Day summary row (text + progress bar) */
+.habitos-day-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 12px;
+}
+.habitos-day-summary-text {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.habitos-day-summary-text.complete {
+  color: var(--success, #5bb98c);
+}
 .habitos-day-progress {
-  height: 3px;
+  flex: 1;
+  height: 4px;
   border-radius: 999px;
   background: rgba(255,255,255,0.07);
   overflow: hidden;
-  margin: -4px 0 12px;
 }
 .habitos-day-progress-fill {
   height: 100%;
@@ -14849,52 +14865,62 @@ h4 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 10px 5px 8px;
+  padding: 6px 10px 6px 8px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.03);
+  /* background + border set inline per-area color */
   cursor: default;
-  transition: border-color 0.18s, background 0.18s;
+  transition: filter 0.18s, transform 0.15s;
   white-space: nowrap;
 }
 .habitos-area-chip:hover {
-  border-color: var(--hab-color, var(--primary));
-  background: rgba(255,255,255,0.06);
+  filter: brightness(1.15);
+  transform: translateY(-1px);
 }
 .habitos-area-chip-icon {
   color: var(--hab-color, var(--muted));
   flex-shrink: 0;
+  opacity: 0.9;
 }
 .habitos-area-chip-label {
   font-size: 0.73rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--hab-color, var(--text-secondary));
+  opacity: 0.85;
 }
 .habitos-area-chip-level {
-  font-size: 0.63rem;
+  font-size: 0.62rem;
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.12);
   color: var(--hab-color, var(--muted));
   letter-spacing: 0.02em;
 }
+.habitos-area-chip-progress {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  letter-spacing: 0.01em;
+}
 .habitos-area-chip-bar {
-  width: 32px;
+  width: 28px;
   height: 3px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.15);
   overflow: hidden;
   flex-shrink: 0;
 }
 .habitos-area-chip-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--hab-color, var(--primary));
+  background: rgba(255,255,255,0.7);
   transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
 }
 
-/* Analysis toggle button */
+/* Analysis toggle button — standalone, no ghost-button needed */
 .habitos-analysis-btn {
   display: flex;
   align-items: center;
@@ -14907,11 +14933,15 @@ h4 {
   font-weight: 500;
   color: var(--muted);
   margin-top: 4px;
+  /* override any ghost-button styles */
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   transition: color 0.15s, background 0.15s;
 }
 .habitos-analysis-btn:hover {
   color: var(--text);
-  background: rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.04) !important;
 }
 
 
