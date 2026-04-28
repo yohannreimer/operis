@@ -1,8 +1,6 @@
 import { SuggestionMenuController, useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { useMemo } from 'react';
-import '@blocknote/core/fonts/inter.css';
-import '@blocknote/mantine/style.css';
 import { legacyContentToBlocks } from './legacy-content-migration';
 import type { OperisBlock, OperisBlockEditorValue } from './operis-block-types';
 import { getOperisSlashMenuItems, type OperisEditorCommand } from './operis-block-commands';
@@ -13,6 +11,7 @@ export type OperisBlockEditorProps = {
   noteId: string | number | null | undefined;
   initialBlocks?: OperisBlock[] | null;
   legacyContent?: string | null;
+  documentKey?: string | number;
   onChange?: (value: OperisBlockEditorValue) => void;
   onCommand?: (command: OperisEditorCommand) => void;
 };
@@ -25,23 +24,36 @@ function initialDocument(initialBlocks?: OperisBlock[] | null, legacyContent?: s
   return legacyContentToBlocks(legacyContent);
 }
 
+function contentSignature(initialBlocks?: OperisBlock[] | null, legacyContent?: string | null) {
+  if (initialBlocks?.length) {
+    return JSON.stringify(initialBlocks);
+  }
+
+  return legacyContent ?? '';
+}
+
 export function OperisBlockEditor({
   noteId,
   initialBlocks,
   legacyContent,
+  documentKey,
   onChange,
   onCommand
 }: OperisBlockEditorProps) {
+  const documentKeyOrSignature = useMemo(
+    () => documentKey ?? contentSignature(initialBlocks, legacyContent),
+    [documentKey, initialBlocks, legacyContent]
+  );
   const initialContent = useMemo(
     () => initialDocument(initialBlocks, legacyContent),
-    [initialBlocks, legacyContent, noteId]
+    [initialBlocks, legacyContent, documentKeyOrSignature]
   );
   const editor = useCreateBlockNote(
     {
       initialContent: initialContent as any,
       schema: operisBlockSchema
     },
-    [noteId]
+    [noteId, documentKeyOrSignature]
   );
 
   const getItems = useMemo(() => getOperisSlashMenuItems(editor, { onCommand }), [editor, onCommand]);
@@ -58,7 +70,11 @@ export function OperisBlockEditor({
         });
       }}
     >
-      <SuggestionMenuController triggerCharacter="/" getItems={getItems} />
+      <SuggestionMenuController
+        triggerCharacter="/"
+        getItems={getItems}
+        shouldOpen={(tr) => !tr.selection.$from.parent.type.isInGroup('tableContent')}
+      />
     </BlockNoteView>
   );
 }

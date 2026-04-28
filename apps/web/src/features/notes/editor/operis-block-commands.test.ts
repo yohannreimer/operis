@@ -15,8 +15,9 @@ describe('Operis BlockNote commands', () => {
     ]);
     expect(OPERIS_BLOCK_SNIPPETS.decision[0]).toMatchObject({
       type: 'operisDecision',
-      props: { title: '', reason: '', nextStep: '' }
+      content: expect.any(String)
     });
+    expect(String(OPERIS_BLOCK_SNIPPETS.decision[0].content).trim()).not.toBe('');
   });
 
   it('groups slash commands and delegates page-level actions to callbacks', () => {

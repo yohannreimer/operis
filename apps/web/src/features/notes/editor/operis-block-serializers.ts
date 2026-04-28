@@ -5,32 +5,74 @@ type RenderContext = {
   depth: number;
 };
 
-function inlineText(content: unknown): string {
+type InlineRender = SerializedNoteBlocks;
+
+function textInline(value: string): InlineRender {
+  return {
+    text: value,
+    html: escapeHtml(value),
+    markdown: value,
+    whatsapp: value
+  };
+}
+
+function mergeInline(parts: InlineRender[]): InlineRender {
+  return {
+    text: parts.map((part) => part.text).join(''),
+    html: parts.map((part) => part.html).join(''),
+    markdown: parts.map((part) => part.markdown).join(''),
+    whatsapp: parts.map((part) => part.whatsapp).join('')
+  };
+}
+
+function renderInline(content: unknown): InlineRender {
   if (typeof content === 'string') {
-    return content;
+    return textInline(content);
   }
 
   if (Array.isArray(content)) {
-    return content
-      .map((part) => {
+    return mergeInline(
+      content.map((part) => {
         if (typeof part === 'string') {
-          return part;
+          return textInline(part);
         }
 
-        if (part && typeof part === 'object' && 'text' in part) {
-          return String((part as { text: unknown }).text ?? '');
+        if (
+          part &&
+          typeof part === 'object' &&
+          'type' in part &&
+          (part as { type: unknown }).type === 'link'
+        ) {
+          const link = part as { content?: unknown; href?: unknown; url?: unknown };
+          const href = String(link.href ?? link.url ?? '').trim();
+          const label = renderInline(link.content);
+
+          if (!href) {
+            return label;
+          }
+
+          return {
+            text: label.text,
+            html: `<a href="${escapeHtml(href)}">${label.html}</a>`,
+            markdown: `[${label.text}](${href})`,
+            whatsapp: `${label.text} (${href})`
+          };
         }
 
         if (part && typeof part === 'object' && 'content' in part) {
-          return inlineText((part as { content: unknown }).content);
+          return renderInline((part as { content: unknown }).content);
         }
 
-        return '';
+        if (part && typeof part === 'object' && 'text' in part) {
+          return textInline(String((part as { text: unknown }).text ?? ''));
+        }
+
+        return textInline('');
       })
-      .join('');
+    );
   }
 
-  return '';
+  return textInline('');
 }
 
 function escapeHtml(raw: string) {
@@ -49,6 +91,10 @@ function blockProps(block: OperisBlock) {
 function propText(value: unknown, fallback = '') {
   const text = String(value ?? '').trim();
   return text || fallback.trim();
+}
+
+function primaryText(contentText: string, propValue: unknown, fallback = '') {
+  return propText(contentText, propText(propValue, fallback));
 }
 
 function indent(depth: number) {
@@ -88,7 +134,8 @@ function childHtml(children: SerializedBlock[]) {
 
 function serializeBlock(block: OperisBlock, context: RenderContext): SerializedBlock {
   const p = blockProps(block);
-  const text = inlineText(block.content);
+  const inline = renderInline(block.content);
+  const text = inline.text;
   const children = (block.children ?? []).map((child) =>
     serializeBlock(child, {
       depth: context.depth + 1
@@ -102,9 +149,9 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
 
       return mergeParentAndChildren({
         text,
-        html: `<h${level}>${escapeHtml(text)}</h${level}>`,
-        markdown: `${'#'.repeat(markdownLevel)} ${text}`,
-        whatsapp: `*${text}*`
+        html: `<h${level}>${inline.html}</h${level}>`,
+        markdown: `${'#'.repeat(markdownLevel)} ${inline.markdown}`,
+        whatsapp: `*${inline.whatsapp}*`
       }, children);
     }
 
@@ -117,9 +164,9 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
         text: `${prefix}${checked ? '[x]' : '[ ]'} ${text}`,
         html: `<label><input type="checkbox"${
           checked ? ' checked' : ''
-        } disabled> ${escapeHtml(text)}</label>${nestedHtml ? `<div class="note-block-children">${nestedHtml}</div>` : ''}`,
-        markdown: `${prefix}- [${checked ? 'x' : ' '}] ${text}`,
-        whatsapp: `${prefix}${checked ? '[x]' : '[ ]'} ${text}`
+        } disabled> ${inline.html}</label>${nestedHtml ? `<div class="note-block-children">${nestedHtml}</div>` : ''}`,
+        markdown: `${prefix}- [${checked ? 'x' : ' '}] ${inline.markdown}`,
+        whatsapp: `${prefix}${checked ? '[x]' : '[ ]'} ${inline.whatsapp}`
       }, children.map((child) => ({ ...child, html: '' })));
     }
 
@@ -128,9 +175,9 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
       const nestedHtml = childHtml(children);
       return mergeParentAndChildren({
         text: `${prefix}- ${text}`,
-        html: `<ul><li>${escapeHtml(text)}${nestedHtml ? `\n${nestedHtml}` : ''}</li></ul>`,
-        markdown: `${prefix}- ${text}`,
-        whatsapp: `${prefix}- ${text}`
+        html: `<ul><li>${inline.html}${nestedHtml ? `\n${nestedHtml}` : ''}</li></ul>`,
+        markdown: `${prefix}- ${inline.markdown}`,
+        whatsapp: `${prefix}- ${inline.whatsapp}`
       }, children.map((child) => ({ ...child, html: '' })));
     }
 
@@ -139,14 +186,14 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
       const nestedHtml = childHtml(children);
       return mergeParentAndChildren({
         text: `${prefix}1. ${text}`,
-        html: `<ol><li>${escapeHtml(text)}${nestedHtml ? `\n${nestedHtml}` : ''}</li></ol>`,
-        markdown: `${prefix}1. ${text}`,
-        whatsapp: `${prefix}1. ${text}`
+        html: `<ol><li>${inline.html}${nestedHtml ? `\n${nestedHtml}` : ''}</li></ol>`,
+        markdown: `${prefix}1. ${inline.markdown}`,
+        whatsapp: `${prefix}1. ${inline.whatsapp}`
       }, children.map((child) => ({ ...child, html: '' })));
     }
 
     case 'operisDecision': {
-      const title = propText(p.title, text);
+      const title = primaryText(text, p.title);
       const reason = propText(p.reason);
       const nextStep = propText(p.nextStep);
       const lines = [
@@ -168,7 +215,7 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     }
 
     case 'operisNextStep': {
-      const value = propText(p.text, text);
+      const value = primaryText(text, p.text);
       const done = p.status === 'done';
 
       return mergeParentAndChildren({
@@ -180,7 +227,7 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     }
 
     case 'operisRisk': {
-      const risk = propText(p.risk, text);
+      const risk = primaryText(text, p.risk);
       const impact = propText(p.impact);
       const mitigation = propText(p.mitigation);
       const lines = [
@@ -198,7 +245,7 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     }
 
     case 'operisInsight': {
-      const value = propText(p.text, text);
+      const value = primaryText(text, p.text);
 
       return mergeParentAndChildren({
         text: `Insight: ${value}`,
@@ -209,7 +256,7 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     }
 
     case 'operisMeeting': {
-      const title = propText(p.title, 'Reunião');
+      const title = primaryText(text, p.title, 'Reunião');
       const participants = propText(p.participants);
       const agenda = propText(p.agenda);
       const lines = [
@@ -230,7 +277,7 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     }
 
     case 'operisExecutiveChecklist': {
-      const label = propText(p.label, 'Checklist executivo');
+      const label = primaryText(text, p.label, 'Checklist executivo');
 
       return mergeParentAndChildren({
         text: label,
@@ -241,7 +288,7 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     }
 
     case 'operisLinkedTask': {
-      const title = propText(p.title, text);
+      const title = primaryText(text, p.title);
       const status = propText(p.status);
 
       return mergeParentAndChildren({
@@ -257,9 +304,9 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     default:
       return mergeParentAndChildren({
         text,
-        html: `<p>${escapeHtml(text)}</p>`,
-        markdown: text,
-        whatsapp: text
+        html: `<p>${inline.html}</p>`,
+        markdown: inline.markdown,
+        whatsapp: inline.whatsapp
       }, children);
   }
 }

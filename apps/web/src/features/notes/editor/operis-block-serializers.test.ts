@@ -19,7 +19,7 @@ describe('serializeNoteBlocks', () => {
     expect(result.html).toContain('Priorizar onboarding');
   });
 
-  it('preserves BlockNote link inline content', () => {
+  it('serializes BlockNote link inline content as links where supported', () => {
     const result = serializeNoteBlocks([
       {
         type: 'paragraph',
@@ -35,9 +35,28 @@ describe('serializeNoteBlocks', () => {
     ]);
 
     expect(result.text).toBe('Veja docs');
-    expect(result.markdown).toBe('Veja docs');
-    expect(result.whatsapp).toBe('Veja docs');
-    expect(result.html).toBe('<p>Veja docs</p>');
+    expect(result.markdown).toBe('Veja [docs](https://example.com)');
+    expect(result.whatsapp).toBe('Veja docs (https://example.com)');
+    expect(result.html).toBe('<p>Veja <a href="https://example.com">docs</a></p>');
+  });
+
+  it('prefers editable inline content over stale custom block props', () => {
+    const result = serializeNoteBlocks([
+      {
+        type: 'operisDecision',
+        props: { title: 'Título antigo', reason: 'Dados de ativação', nextStep: '' },
+        content: 'Priorizar onboarding'
+      },
+      {
+        type: 'operisNextStep',
+        props: { text: '', status: 'open' },
+        content: 'Enviar plano'
+      }
+    ]);
+
+    expect(result.text).toContain('Decisão: Priorizar onboarding');
+    expect(result.text).toContain('Motivo: Dados de ativação');
+    expect(result.text).toContain('Próximo passo: Enviar plano');
   });
 
   it('serializes nested children with indentation instead of dropping hierarchy', () => {

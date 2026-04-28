@@ -125,7 +125,12 @@ export function buildOperisSlashMenuItems({
       aliases: ['tarefa', 'task', 'vinculada'],
       group: 'Operis',
       icon: icon(<Link2 size={18} />),
-      onItemClick: () => insertBlock(editor, { type: 'operisLinkedTask', props: { title: '', status: 'open', taskId: '' } })
+      onItemClick: () =>
+        insertBlock(editor, {
+          type: 'operisLinkedTask',
+          content: 'Título da tarefa vinculada',
+          props: { status: 'open', taskId: '' }
+        })
     },
     {
       title: 'Checklist comum',
