@@ -60,8 +60,24 @@ export function normalizeStringArray(values?: string[]) {
   return Array.from(new Set((values ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean))).sort();
 }
 
+function canonicalizeJson(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') {
+    return value ?? null;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalizeJson(item));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => [key, canonicalizeJson(entryValue)])
+  );
+}
+
 function stableJson(value: unknown) {
-  return JSON.stringify(value ?? null);
+  return JSON.stringify(canonicalizeJson(value));
 }
 
 export function hasNativeNoteSnapshotChanged(current: NativeNoteSnapshot, next: NativeNoteSnapshot) {
