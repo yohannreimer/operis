@@ -30,6 +30,7 @@ export type NoteType =
   | 'produto'
   | 'conclusao_tarefa'
   | 'referencia';
+export type NoteContentBlock = Record<string, unknown>;
 export type DeepWorkState = 'active' | 'completed' | 'broken';
 export type ReviewPeriodType = 'weekly' | 'monthly';
 export type CommitmentLevel = 'baixo' | 'medio' | 'alto';
@@ -167,6 +168,10 @@ export type Note = {
   id: string;
   title: string;
   content?: string | null;
+  contentBlocks?: NoteContentBlock[] | null;
+  contentText?: string | null;
+  contentHtml?: string | null;
+  contentVersion?: number;
   type: NoteType;
   tags: string[];
   pinned: boolean;
@@ -188,6 +193,10 @@ export type NoteRevision = {
   noteId: string;
   title: string;
   content?: string | null;
+  contentBlocks?: NoteContentBlock[] | null;
+  contentText?: string | null;
+  contentHtml?: string | null;
+  contentVersion?: number;
   type: NoteType;
   tags: string[];
   pinned: boolean;
@@ -1650,6 +1659,10 @@ export const api = {
   createNote: (input: {
     title: string;
     content?: string | null;
+    contentBlocks?: NoteContentBlock[] | null;
+    contentText?: string | null;
+    contentHtml?: string | null;
+    contentVersion?: number;
     type?: NoteType;
     tags?: string[];
     pinned?: boolean;
@@ -1667,6 +1680,10 @@ export const api = {
     input: Partial<{
       title: string;
       content: string | null;
+      contentBlocks: NoteContentBlock[] | null;
+      contentText: string | null;
+      contentHtml: string | null;
+      contentVersion: number;
       type: NoteType;
       tags: string[];
       pinned: boolean;
