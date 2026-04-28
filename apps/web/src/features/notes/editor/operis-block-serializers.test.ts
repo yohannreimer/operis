@@ -40,6 +40,26 @@ describe('serializeNoteBlocks', () => {
     expect(result.html).toBe('<p>Veja <a href="https://example.com">docs</a></p>');
   });
 
+  it('renders unsafe BlockNote link hrefs as plain text', () => {
+    const result = serializeNoteBlocks([
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'link',
+            href: 'javascript:alert(1)',
+            content: [{ type: 'text', text: 'abrir', styles: {} }]
+          }
+        ]
+      }
+    ]);
+
+    expect(result.text).toBe('abrir');
+    expect(result.markdown).toBe('abrir');
+    expect(result.whatsapp).toBe('abrir');
+    expect(result.html).toBe('<p>abrir</p>');
+  });
+
   it('prefers editable inline content over stale custom block props', () => {
     const result = serializeNoteBlocks([
       {

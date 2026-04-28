@@ -1,16 +1,43 @@
-import { BlockNoteSchema, defaultBlockSpecs } from '@blocknote/core';
+import { BlockNoteSchema, defaultBlockSpecs, type BlockNoteEditor } from '@blocknote/core';
 import { createReactBlockSpec } from '@blocknote/react';
+import type React from 'react';
 
-function Field({ label, value }: { label: string; value?: string }) {
-  if (!value?.trim()) {
-    return null;
-  }
+type PropEditorProps = {
+  block: { props: Record<string, string> };
+  editor: BlockNoteEditor<any, any, any>;
+  field: string;
+  label: string;
+  placeholder: string;
+  multiline?: boolean;
+};
+
+function PropEditor({ block, editor, field, label, placeholder, multiline = false }: PropEditorProps) {
+  const value = block.props[field] ?? '';
+  const commonProps = {
+    className: 'operis-block-field-input',
+    value,
+    placeholder,
+    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      editor.updateBlock(block as any, {
+        props: {
+          ...block.props,
+          [field]: event.currentTarget.value
+        }
+      } as any);
+    },
+    onMouseDown: (event: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      event.stopPropagation();
+    },
+    onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      event.stopPropagation();
+    }
+  };
 
   return (
-    <div className="operis-block-field">
+    <label className="operis-block-field">
       <span className="operis-block-field-label">{label}</span>
-      <span>{value}</span>
-    </div>
+      {multiline ? <textarea {...commonProps} rows={2} /> : <input {...commonProps} />}
+    </label>
   );
 }
 
@@ -25,12 +52,25 @@ const OperisDecision = createReactBlockSpec(
     content: 'inline'
   },
   {
-    render: ({ block, contentRef }) => (
+    render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-decision">
         <div className="operis-block-kicker">Decisão</div>
         <div className="operis-block-title" ref={contentRef} />
-        <Field label="Motivo" value={block.props.reason} />
-        <Field label="Próximo passo" value={block.props.nextStep} />
+        <PropEditor
+          block={block}
+          editor={editor}
+          field="reason"
+          label="Motivo"
+          placeholder="Contexto da decisão"
+          multiline
+        />
+        <PropEditor
+          block={block}
+          editor={editor}
+          field="nextStep"
+          label="Próximo passo"
+          placeholder="Ação recomendada"
+        />
       </section>
     )
   }
@@ -66,12 +106,26 @@ const OperisRisk = createReactBlockSpec(
     content: 'inline'
   },
   {
-    render: ({ block, contentRef }) => (
+    render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-risk">
         <div className="operis-block-kicker">Risco</div>
         <div className="operis-block-title" ref={contentRef} />
-        <Field label="Impacto" value={block.props.impact} />
-        <Field label="Mitigação" value={block.props.mitigation} />
+        <PropEditor
+          block={block}
+          editor={editor}
+          field="impact"
+          label="Impacto"
+          placeholder="Impacto esperado"
+          multiline
+        />
+        <PropEditor
+          block={block}
+          editor={editor}
+          field="mitigation"
+          label="Mitigação"
+          placeholder="Plano de mitigação"
+          multiline
+        />
       </section>
     )
   }
@@ -106,12 +160,25 @@ const OperisMeeting = createReactBlockSpec(
     content: 'inline'
   },
   {
-    render: ({ block, contentRef }) => (
+    render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-meeting">
         <div className="operis-block-kicker">{block.props.title || 'Reunião'}</div>
         <div className="operis-block-title" ref={contentRef} />
-        <Field label="Participantes" value={block.props.participants} />
-        <Field label="Pauta" value={block.props.agenda} />
+        <PropEditor
+          block={block}
+          editor={editor}
+          field="participants"
+          label="Participantes"
+          placeholder="Quem participou"
+        />
+        <PropEditor
+          block={block}
+          editor={editor}
+          field="agenda"
+          label="Pauta"
+          placeholder="Pontos principais"
+          multiline
+        />
       </section>
     )
   }
@@ -146,12 +213,12 @@ const OperisLinkedTask = createReactBlockSpec(
     content: 'inline'
   },
   {
-    render: ({ block, contentRef }) => (
+    render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-linked-task">
         <div className="operis-block-kicker">Tarefa vinculada</div>
         <div className="operis-block-title" ref={contentRef} />
-        <Field label="Status" value={block.props.status} />
-        <Field label="ID" value={block.props.taskId} />
+        <PropEditor block={block} editor={editor} field="status" label="Status" placeholder="Status da tarefa" />
+        <PropEditor block={block} editor={editor} field="taskId" label="ID" placeholder="ID interno" />
       </section>
     )
   }

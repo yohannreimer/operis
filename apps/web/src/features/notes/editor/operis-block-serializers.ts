@@ -44,7 +44,7 @@ function renderInline(content: unknown): InlineRender {
           (part as { type: unknown }).type === 'link'
         ) {
           const link = part as { content?: unknown; href?: unknown; url?: unknown };
-          const href = String(link.href ?? link.url ?? '').trim();
+          const href = safeLinkHref(link.href ?? link.url ?? '');
           const label = renderInline(link.content);
 
           if (!href) {
@@ -54,7 +54,7 @@ function renderInline(content: unknown): InlineRender {
           return {
             text: label.text,
             html: `<a href="${escapeHtml(href)}">${label.html}</a>`,
-            markdown: `[${label.text}](${href})`,
+            markdown: `[${label.text}](${escapeMarkdownLinkTarget(href)})`,
             whatsapp: `${label.text} (${href})`
           };
         }
@@ -73,6 +73,30 @@ function renderInline(content: unknown): InlineRender {
   }
 
   return textInline('');
+}
+
+function safeLinkHref(raw: unknown) {
+  const href = String(raw ?? '').trim();
+
+  if (!href) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(href, 'https://operis.local');
+
+    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+      return '';
+    }
+
+    return href;
+  } catch {
+    return '';
+  }
+}
+
+function escapeMarkdownLinkTarget(raw: string) {
+  return raw.replace(/\\/g, '\\\\').replace(/\)/g, '\\)');
 }
 
 function escapeHtml(raw: string) {
