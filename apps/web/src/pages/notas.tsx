@@ -446,7 +446,7 @@ function getChecklistProgress(content?: string | null) {
     };
   }
 
-  const rows = content.match(/^- \[( |x|X)\]/gm) ?? [];
+  const rows = content.match(/^(?:[-*]\s+)?\[( |x|X)\]/gm) ?? [];
   if (rows.length === 0) {
     return {
       total: 0,
@@ -2466,10 +2466,10 @@ export function NotasPage() {
     setTemplateModalMode('create');
     resetTemplateDraft();
     if (selectedNote) {
-      setTemplateTitleDraft(selectedNote.title.trim() || 'Template personalizado');
-      setTemplateTypeDraft(selectedNote.type);
-      setTemplateTagsDraft((selectedNote.tags ?? []).join(', '));
-      setTemplateContentDraft(notePlainText(selectedNote).trim());
+      setTemplateTitleDraft(title.trim() || selectedNote.title.trim() || 'Template personalizado');
+      setTemplateTypeDraft(type);
+      setTemplateTagsDraft(tagsRaw || (selectedNote.tags ?? []).join(', '));
+      setTemplateContentDraft((contentText || notePlainText(selectedNote)).trim());
       setTemplateSubtitleDraft('Template criado a partir de nota');
     }
     setTemplateModalOpen(true);
@@ -3670,8 +3670,19 @@ export function NotasPage() {
 
       const isAutosave = options?.source === 'autosave';
 
+      setNotes((current) =>
+        current.map((note) =>
+          note.id === updatedNote.id
+            ? {
+                ...note,
+                ...updatedNote
+              }
+            : note
+        )
+      );
+
       if (isAutosave) {
-        setEditorBase(nextSnapshot);
+        setEditorBase(normalizedSnapshot);
       } else {
         setTitle(normalizedSnapshot.title);
         setContent(normalizedSnapshot.content);
@@ -3689,18 +3700,6 @@ export function NotasPage() {
       }
 
       setLastSavedAt(updatedNote.updatedAt ?? new Date().toISOString());
-      if (!isAutosave) {
-        setNotes((current) =>
-          current.map((note) =>
-            note.id === updatedNote.id
-              ? {
-                  ...note,
-                  ...updatedNote
-                }
-              : note
-          )
-        );
-      }
       if (!isAutosave && historyOpen && updatedNote.id === selectedNoteId) {
         void loadRevisions(updatedNote.id);
       }
