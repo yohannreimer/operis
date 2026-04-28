@@ -3,6 +3,11 @@ import { NoteType, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { env } from '../config.js';
 import { getUserId } from '../middleware/auth.js';
+import {
+  hasNativeNoteSnapshotChanged,
+  normalizeNativeNoteContent,
+  normalizeStringArray
+} from '../services/note-content-service.js';
 
 const tagsSchema = z
   .array(z.string().min(1).max(32))
@@ -16,6 +21,13 @@ const tagsSchema = z
       )
     )
   );
+
+const nativeContentSchema = {
+  contentBlocks: z.unknown().optional().nullable(),
+  contentText: z.string().max(500000).optional().nullable(),
+  contentHtml: z.string().max(500000).optional().nullable(),
+  contentVersion: z.number().int().min(1).max(20).optional()
+};
 
 const folderCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -47,6 +59,7 @@ const folderUpdateSchema = z
 const noteCreateSchema = z.object({
   title: z.string().min(1).max(180),
   content: z.string().max(500000).optional().nullable(),
+  ...nativeContentSchema,
   type: z.nativeEnum(NoteType).optional(),
   tags: tagsSchema.optional(),
   pinned: z.boolean().optional(),
@@ -60,6 +73,7 @@ const noteUpdateSchema = z
   .object({
     title: z.string().min(1).max(180).optional(),
     content: z.string().max(500000).optional().nullable(),
+    ...nativeContentSchema,
     type: z.nativeEnum(NoteType).optional(),
     tags: tagsSchema.optional(),
     pinned: z.boolean().optional(),
@@ -74,6 +88,10 @@ const noteUpdateSchema = z
     (payload) =>
       payload.title !== undefined ||
       payload.content !== undefined ||
+      payload.contentBlocks !== undefined ||
+      payload.contentText !== undefined ||
+      payload.contentHtml !== undefined ||
+      payload.contentVersion !== undefined ||
       payload.type !== undefined ||
       payload.tags !== undefined ||
       payload.pinned !== undefined ||
@@ -133,6 +151,10 @@ const NOTE_REVISION_CORE_SELECT = {
   id: true,
   title: true,
   content: true,
+  contentBlocks: true,
+  contentText: true,
+  contentHtml: true,
+  contentVersion: true,
   type: true,
   tags: true,
   pinned: true,
@@ -265,53 +287,16 @@ function normalizeTranscriptionWebhookResponse(payload: unknown) {
   };
 }
 
-function normalizeStringArray(values?: string[]) {
-  return Array.from(new Set((values ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean))).sort();
-}
-
-function hasNoteSnapshotChanged(
-  current: {
-    title: string;
-    content: string | null;
-    type: NoteType;
-    tags: string[];
-    pinned: boolean;
-    folderId: string | null;
-    workspaceId: string | null;
-    projectId: string | null;
-    taskId: string | null;
-  },
-  next: {
-    title: string;
-    content: string | null;
-    type: NoteType;
-    tags: string[];
-    pinned: boolean;
-    folderId: string | null;
-    workspaceId: string | null;
-    projectId: string | null;
-    taskId: string | null;
-  }
-) {
-  return (
-    current.title !== next.title ||
-    (current.content ?? null) !== (next.content ?? null) ||
-    current.type !== next.type ||
-    JSON.stringify(normalizeStringArray(current.tags)) !== JSON.stringify(normalizeStringArray(next.tags)) ||
-    current.pinned !== next.pinned ||
-    current.folderId !== next.folderId ||
-    current.workspaceId !== next.workspaceId ||
-    current.projectId !== next.projectId ||
-    current.taskId !== next.taskId
-  );
-}
-
 async function createNoteRevisionSnapshot(
   db: any,
   note: {
     id: string;
     title: string;
     content: string | null;
+    contentBlocks: unknown | null;
+    contentText: string | null;
+    contentHtml: string | null;
+    contentVersion: number;
     type: NoteType;
     tags: string[];
     pinned: boolean;
@@ -327,6 +312,10 @@ async function createNoteRevisionSnapshot(
       noteId: note.id,
       title: note.title,
       content: note.content,
+      contentBlocks: note.contentBlocks as any,
+      contentText: note.contentText,
+      contentHtml: note.contentHtml,
+      contentVersion: note.contentVersion,
       type: note.type,
       tags: note.tags,
       pinned: note.pinned,
@@ -654,6 +643,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
                 {
                   OR: [
                     { title: { contains: query.q, mode: 'insensitive' as const } },
+                    { contentText: { contains: query.q, mode: 'insensitive' as const } },
                     { content: { contains: query.q, mode: 'insensitive' as const } },
                     { tags: { has: query.q.toLowerCase() } }
                   ]
@@ -673,12 +663,23 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   app.post('/notes', async (request, reply) => {
     const clerkUserId = getUserId(request);
     const payload = noteCreateSchema.parse(request.body);
+    const nativeContent = normalizeNativeNoteContent({
+      content: payload.content ?? null,
+      contentBlocks: payload.contentBlocks,
+      contentText: payload.contentText ?? null,
+      contentHtml: payload.contentHtml ?? null,
+      contentVersion: payload.contentVersion
+    });
 
     const note = await prisma.note.create({
       data: {
         clerkUserId,
         title: payload.title.trim(),
-        content: payload.content ?? null,
+        content: nativeContent.content,
+        contentBlocks: nativeContent.contentBlocks as any,
+        contentText: nativeContent.contentText,
+        contentHtml: nativeContent.contentHtml,
+        contentVersion: nativeContent.contentVersion,
         type: payload.type ?? NoteType.geral,
         tags: payload.tags ?? [],
         pinned: payload.pinned ?? false,
@@ -717,14 +718,24 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       });
     }
 
+    const nativeContent = normalizeNativeNoteContent({
+      content: payload.content === undefined ? current.content : payload.content,
+      contentBlocks: payload.contentBlocks === undefined ? current.contentBlocks : payload.contentBlocks,
+      contentText: payload.contentText === undefined ? current.contentText : payload.contentText,
+      contentHtml: payload.contentHtml === undefined ? current.contentHtml : payload.contentHtml,
+      contentVersion: payload.contentVersion === undefined ? current.contentVersion : payload.contentVersion
+    });
+    if (payload.content !== undefined && payload.contentBlocks === undefined) {
+      nativeContent.content = payload.content;
+    }
+
     const nextSnapshot = {
       title: payload.title?.trim() ?? current.title,
-      content:
-        payload.content === undefined
-          ? current.content
-          : payload.content === null
-            ? null
-            : payload.content,
+      content: nativeContent.content,
+      contentBlocks: nativeContent.contentBlocks,
+      contentText: nativeContent.contentText,
+      contentHtml: nativeContent.contentHtml,
+      contentVersion: nativeContent.contentVersion,
       type: payload.type ?? current.type,
       tags: payload.tags ?? current.tags,
       pinned: payload.pinned ?? current.pinned,
@@ -733,7 +744,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       projectId: payload.projectId ?? current.projectId,
       taskId: payload.taskId ?? current.taskId
     };
-    const changed = hasNoteSnapshotChanged(current, nextSnapshot);
+    const changed = hasNativeNoteSnapshotChanged(current, nextSnapshot);
     const saveSource = payload.saveSource ?? 'manual';
 
     const updated = await prisma.note.update({
@@ -743,11 +754,22 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       data: {
         title: payload.title?.trim(),
         content:
-          payload.content === undefined
+          payload.content === undefined && payload.contentBlocks === undefined
             ? undefined
-            : payload.content === null
-              ? null
-              : payload.content,
+            : nativeContent.content,
+        contentBlocks: payload.contentBlocks === undefined ? undefined : (nativeContent.contentBlocks as any),
+        contentText:
+          payload.contentText === undefined && payload.contentBlocks === undefined
+            ? undefined
+            : nativeContent.contentText,
+        contentHtml:
+          payload.contentHtml === undefined && payload.contentBlocks === undefined
+            ? undefined
+            : nativeContent.contentHtml,
+        contentVersion:
+          payload.contentVersion === undefined && payload.contentBlocks === undefined
+            ? undefined
+            : nativeContent.contentVersion,
         type: payload.type,
         tags: payload.tags,
         pinned: payload.pinned,
@@ -874,6 +896,10 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
         data: {
           title: revision.title,
           content: revision.content,
+          contentBlocks: revision.contentBlocks,
+          contentText: revision.contentText,
+          contentHtml: revision.contentHtml,
+          contentVersion: revision.contentVersion ?? 1,
           type: revision.type,
           tags: revision.tags,
           pinned: revision.pinned,

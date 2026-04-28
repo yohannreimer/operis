@@ -106,7 +106,8 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
     const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
     if (!note) return reply.status(404).send({ error: 'note_not_found' });
 
-    const plainText = extractPlainText(note.content ?? '');
+    const noteContent = note.contentText ?? note.content ?? '';
+    const plainText = extractPlainText(noteContent);
     if (plainText.length < 50) {
       return reply.status(422).send({ error: 'content_too_short', minLength: 50 });
     }
@@ -117,7 +118,7 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
     }
 
     try {
-      const data = await generateDiagram(note.content ?? '');
+      const data = await generateDiagram(noteContent);
       const diagram = await prisma.diagram.upsert({
         where: { noteId },
         create: { noteId, data: data as object },
@@ -275,7 +276,8 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
     const note = await assertNoteOwnership(prisma, noteId, clerkUserId);
     if (!note) return reply.status(404).send({ error: 'note_not_found' });
 
-    const plainText = extractPlainText(note.content ?? '');
+    const noteContent = note.contentText ?? note.content ?? '';
+    const plainText = extractPlainText(noteContent);
     if (plainText.length < 50) {
       return reply.status(422).send({ error: 'content_too_short', minLength: 50 });
     }
@@ -286,7 +288,7 @@ export async function registerCanvasRoutes(app: FastifyInstance, prisma: PrismaC
     }
 
     try {
-      const data = await generateMindMap(note.content ?? '');
+      const data = await generateMindMap(noteContent);
       const mindMap = await prisma.mindMap.upsert({
         where: { noteId },
         create: { noteId, data: data as object },
