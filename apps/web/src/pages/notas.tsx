@@ -48,6 +48,15 @@ import {
 import { EmptyState, PremiumCard, SkeletonBlock } from '../components/premium-ui';
 import { DiagramCanvas } from '../components/diagram-canvas';
 import { MindMapCanvas } from '../components/mindmap-canvas';
+import {
+  legacyContentToBlocks,
+  OPERIS_BLOCK_SNIPPETS,
+  OperisBlock,
+  OperisBlockEditor,
+  OperisBlockEditorValue,
+  serializeNoteBlocks
+} from '../features/notes/editor';
+import '../features/notes/editor/operis-block-editor-styles';
 const WhiteboardCanvas = lazy(() =>
   import('../components/whiteboard-canvas').then((m) => ({ default: m.WhiteboardCanvas }))
 );
@@ -106,6 +115,9 @@ type RelatedReason = {
 type EditorSnapshot = {
   title: string;
   content: string;
+  contentBlocksSignature: string;
+  contentText: string;
+  contentHtml: string;
   type: NoteType;
   tagsRaw: string;
   pinned: boolean;
@@ -359,12 +371,56 @@ const NOTE_TEMPLATES: NoteTemplate[] = [
 ];
 
 function noteExcerpt(note: Note) {
-  const content = extractPlainText(note.content ?? '').trim();
+  const content = notePlainText(note).trim();
   if (!content) {
     return 'Sem conteúdo';
   }
 
   return content.length <= 130 ? content : `${content.slice(0, 130)}...`;
+}
+
+function notePlainText(note: Pick<Note, 'content' | 'contentText'>) {
+  return note.contentText ?? extractPlainText(note.content ?? '');
+}
+
+function noteHtml(note: Pick<Note, 'content' | 'contentHtml'>) {
+  return note.contentHtml ?? normalizeEditorContent(note.content ?? '');
+}
+
+function noteBlocks(note: Pick<Note, 'content' | 'contentBlocks'>) {
+  return note.contentBlocks?.length ? (note.contentBlocks as OperisBlock[]) : legacyContentToBlocks(note.content ?? '');
+}
+
+function noteRevisionPlainText(revision: Pick<NoteRevision, 'content' | 'contentText'>) {
+  return revision.contentText ?? extractPlainText(revision.content ?? '');
+}
+
+function noteRevisionHtml(revision: Pick<NoteRevision, 'content' | 'contentHtml'>) {
+  return revision.contentHtml ?? normalizeEditorContent(revision.content ?? '');
+}
+
+function blockSignature(blocks: OperisBlock[] | null | undefined) {
+  return JSON.stringify(blocks ?? []);
+}
+
+function serializeLegacyContent(raw: string) {
+  const blocks = legacyContentToBlocks(raw);
+  if (!raw.trim()) {
+    return {
+      blocks,
+      text: '',
+      html: '',
+      markdown: '',
+      whatsapp: ''
+    };
+  }
+
+  const serialized = serializeNoteBlocks(blocks);
+
+  return {
+    blocks,
+    ...serialized
+  };
 }
 
 function isRecentDate(value?: string | null, windowDays = RECENT_WINDOW_DAYS) {
@@ -500,7 +556,7 @@ function normalizeTextTokens(raw: string) {
 function createTokenSetForNote(note: Note) {
   return new Set(
     normalizeTextTokens(
-      `${note.title} ${(note.tags ?? []).join(' ')} ${extractPlainText((note.content ?? '').slice(0, 420))}`
+      `${note.title} ${(note.tags ?? []).join(' ')} ${notePlainText(note).slice(0, 420)}`
     )
   );
 }
@@ -927,6 +983,10 @@ export function NotasPage() {
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [contentBlocks, setContentBlocks] = useState<OperisBlock[]>(() => legacyContentToBlocks(''));
+  const [contentText, setContentText] = useState('');
+  const [contentHtml, setContentHtml] = useState('');
+  const [editorDocumentKey, setEditorDocumentKey] = useState(0);
   const [type, setType] = useState<NoteType>('geral');
   const [tagsRaw, setTagsRaw] = useState('');
   const [pinned, setPinned] = useState(false);
@@ -1003,7 +1063,8 @@ export function NotasPage() {
   const [whiteboardState, setWhiteboardState] = useState<'idle' | 'loading' | 'empty' | 'ready' | 'error'>('idle');
   const [whiteboardData, setWhiteboardData] = useState<WhiteboardData | null>(null);
 
-  const contentPlain = useMemo(() => extractPlainText(content), [content]);
+  const contentBlocksSignature = useMemo(() => blockSignature(contentBlocks), [contentBlocks]);
+  const contentPlain = useMemo(() => contentText || extractPlainText(content), [content, contentText]);
 
   const voiceSupported = useMemo(
     () =>
@@ -1117,7 +1178,7 @@ export function NotasPage() {
       ).length,
       inbox: folderScopedNotes.filter((note) => note.type === 'inbox').length,
       longform: folderScopedNotes.filter(
-        (note) => (note.content?.trim().length ?? 0) >= LONGFORM_MIN_CHARS
+        (note) => notePlainText(note).length >= LONGFORM_MIN_CHARS
       ).length
     };
   }, [folderScopedNotes]);
@@ -1143,7 +1204,7 @@ export function NotasPage() {
       return folderScopedNotes.filter((note) => note.type === 'inbox');
     }
 
-    return folderScopedNotes.filter((note) => (note.content?.trim().length ?? 0) >= LONGFORM_MIN_CHARS);
+    return folderScopedNotes.filter((note) => notePlainText(note).length >= LONGFORM_MIN_CHARS);
   }, [folderScopedNotes, smartCollection]);
 
   const selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null;
@@ -1255,6 +1316,9 @@ export function NotasPage() {
     return (
       title !== editorBase.title ||
       content !== editorBase.content ||
+      contentBlocksSignature !== editorBase.contentBlocksSignature ||
+      contentText !== editorBase.contentText ||
+      contentHtml !== editorBase.contentHtml ||
       type !== editorBase.type ||
       normalizedTagText(tagsRaw) !== normalizedTagText(editorBase.tagsRaw) ||
       pinned !== editorBase.pinned ||
@@ -1268,6 +1332,9 @@ export function NotasPage() {
     editorBase,
     title,
     content,
+    contentBlocksSignature,
+    contentText,
+    contentHtml,
     type,
     tagsRaw,
     pinned,
@@ -1752,55 +1819,44 @@ export function NotasPage() {
     syncSlashMenuPosition(safeCursor);
   }
 
-  function insertSnippetAtCursor(snippet: string) {
-    const richEditor = writerRichEditorRef.current;
-    if (writerMode && richEditor) {
-      richEditor.focus();
-      const selection = window.getSelection();
-      if (!selection) {
-        return;
-      }
+  function applySerializedBlocks(blocks: OperisBlock[]) {
+    const serialized = serializeNoteBlocks(blocks);
+    setContentBlocks(blocks);
+    setContentText(serialized.text);
+    setContentHtml(serialized.html);
+    setContent(serialized.html);
+    setEditorDocumentKey((current) => current + 1);
+  }
 
-      if (selection.rangeCount === 0 || !richEditor.contains(selection.anchorNode)) {
-        const fallbackRange = document.createRange();
-        fallbackRange.selectNodeContents(richEditor);
-        fallbackRange.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(fallbackRange);
-      }
+  function applyLegacyContentToEditor(nextContent: string) {
+    const serialized = serializeLegacyContent(nextContent);
+    applySerializedBlocks(serialized.blocks);
+  }
 
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
-
-      const template = document.createElement('template');
-      template.innerHTML = plainTextToHtml(snippet);
-      const fragment = template.content.cloneNode(true) as DocumentFragment;
-      const lastNode = fragment.lastChild;
-      range.insertNode(fragment);
-
-      if (lastNode) {
-        const nextRange = document.createRange();
-        nextRange.setStartAfter(lastNode);
-        nextRange.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(nextRange);
-      }
-
-      setContent(richEditor.innerHTML);
+  function appendBlocksToEditor(blocks: OperisBlock[]) {
+    if (blocks.length === 0) {
       return;
     }
+    const currentBlocks = contentBlocks.length > 0 ? contentBlocks : legacyContentToBlocks(content);
+    applySerializedBlocks([...currentBlocks, ...blocks]);
+  }
 
-    const textarea = writerTextareaRef.current;
-    const start = textarea?.selectionStart ?? content.length;
-    const end = textarea?.selectionEnd ?? start;
-    const next = `${content.slice(0, start)}${snippet}${content.slice(end)}`;
-    const cursor = start + snippet.length;
+  function appendPlainTextAsBlocks(addition: string) {
+    appendBlocksToEditor(legacyContentToBlocks(addition));
+  }
 
-    setContent(next);
-    setTimeout(() => {
-      writerTextareaRef.current?.focus();
-      writerTextareaRef.current?.setSelectionRange(cursor, cursor);
-    }, 0);
+  function tableBlockFromBuilder(): OperisBlock {
+    return {
+      type: 'table',
+      content: {
+        type: 'tableContent',
+        rows: [tableColumns, ...tableRows].map((cells) => ({ cells }))
+      }
+    };
+  }
+
+  function insertSnippetAtCursor(snippet: string) {
+    appendPlainTextAsBlocks(snippet);
   }
 
   function applyHeading(level: 1 | 2 | 3) {
@@ -2128,7 +2184,7 @@ export function NotasPage() {
 
   function getNoteTextExportBody() {
     const safeTitle = title.trim() || 'Nova nota';
-    const safeBody = extractPlainTextWithBreaks(content).trim();
+    const safeBody = (contentText || extractPlainTextWithBreaks(content)).trim();
     if (!safeBody) {
       return safeTitle;
     }
@@ -2185,7 +2241,7 @@ export function NotasPage() {
   }
 
   function exportNoteAsPdf() {
-    const printableContent = normalizeEditorContent(content);
+    const printableContent = contentHtml || normalizeEditorContent(content);
     const printableTitle = escapeHtml(title.trim() || 'Nova nota');
     const html = `<!doctype html>
 <html lang="pt-BR">
@@ -2302,10 +2358,8 @@ export function NotasPage() {
   }
 
   function getWhatsAppExportBody() {
-    const container = document.createElement('div');
-    container.innerHTML = normalizeEditorContent(content);
-    const body = Array.from(container.childNodes).map(renderNodeToWhatsapp).join('');
-    const compactBody = normalizeWhatsappBody(body);
+    const serialized = serializeNoteBlocks(contentBlocks);
+    const compactBody = normalizeWhatsappBody(serialized.whatsapp || '');
     const safeTitle = (title.trim() || 'Nova nota').trim();
     return compactBody ? `*${safeTitle}*\n\n${compactBody}` : `*${safeTitle}*`;
   }
@@ -2395,8 +2449,7 @@ export function NotasPage() {
   }
 
   function insertTableFromBuilder() {
-    const markdownTable = buildMarkdownTable(tableColumns, tableRows);
-    insertSnippetAtCursor(`${markdownTable}\n`);
+    appendBlocksToEditor([tableBlockFromBuilder()]);
     setTableBuilderOpen(false);
   }
 
@@ -2416,7 +2469,7 @@ export function NotasPage() {
       setTemplateTitleDraft(selectedNote.title.trim() || 'Template personalizado');
       setTemplateTypeDraft(selectedNote.type);
       setTemplateTagsDraft((selectedNote.tags ?? []).join(', '));
-      setTemplateContentDraft((selectedNote.content ?? '').trim());
+      setTemplateContentDraft(notePlainText(selectedNote).trim());
       setTemplateSubtitleDraft('Template criado a partir de nota');
     }
     setTemplateModalOpen(true);
@@ -2549,8 +2602,13 @@ export function NotasPage() {
     setWhiteboardData(null);
 
     if (!selectedNote) {
+      const emptyBlocks = legacyContentToBlocks('');
       setTitle('');
       setContent('');
+      setContentBlocks(emptyBlocks);
+      setContentText('');
+      setContentHtml('');
+      setEditorDocumentKey((current) => current + 1);
       setType('geral');
       setTagsRaw('');
       setPinned(false);
@@ -2566,9 +2624,15 @@ export function NotasPage() {
       return;
     }
 
+    const nextBlocks = noteBlocks(selectedNote);
+    const serializedBlocks = serializeNoteBlocks(nextBlocks);
+    const nextContentHtml = selectedNote.contentHtml ?? normalizeEditorContent(selectedNote.content ?? serializedBlocks.html);
     const snapshot: EditorSnapshot = {
       title: selectedNote.title,
-      content: selectedNote.content ?? '',
+      content: selectedNote.content ?? nextContentHtml,
+      contentBlocksSignature: blockSignature(nextBlocks),
+      contentText: selectedNote.contentText ?? serializedBlocks.text,
+      contentHtml: nextContentHtml,
       type: selectedNote.type,
       tagsRaw: (selectedNote.tags ?? []).join(', '),
       pinned: Boolean(selectedNote.pinned),
@@ -2580,6 +2644,10 @@ export function NotasPage() {
 
     setTitle(snapshot.title);
     setContent(snapshot.content);
+    setContentBlocks(nextBlocks);
+    setContentText(snapshot.contentText);
+    setContentHtml(snapshot.contentHtml);
+    setEditorDocumentKey((current) => current + 1);
     setType(snapshot.type);
     setTagsRaw(snapshot.tagsRaw);
     setPinned(snapshot.pinned);
@@ -2730,7 +2798,24 @@ export function NotasPage() {
         autoSaveTimerRef.current = null;
       }
     };
-  }, [writerMode, selectedNoteId, hasUnsavedChanges, busy, title, content, type, tagsRaw, pinned, noteFolderId, linkWorkspaceId, linkProjectId, linkTaskId]);
+  }, [
+    writerMode,
+    selectedNoteId,
+    hasUnsavedChanges,
+    busy,
+    title,
+    content,
+    contentBlocksSignature,
+    contentText,
+    contentHtml,
+    type,
+    tagsRaw,
+    pinned,
+    noteFolderId,
+    linkWorkspaceId,
+    linkProjectId,
+    linkTaskId
+  ]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -2750,7 +2835,22 @@ export function NotasPage() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedNoteId, busy, title, content, type, tagsRaw, pinned, noteFolderId, linkWorkspaceId, linkProjectId, linkTaskId]);
+  }, [
+    selectedNoteId,
+    busy,
+    title,
+    content,
+    contentBlocksSignature,
+    contentText,
+    contentHtml,
+    type,
+    tagsRaw,
+    pinned,
+    noteFolderId,
+    linkWorkspaceId,
+    linkProjectId,
+    linkTaskId
+  ]);
 
   useEffect(() => {
     if (!selectedNoteId || writerMode) {
@@ -3221,9 +3321,15 @@ export function NotasPage() {
       setBusy(true);
       resetRecordingForNewNote();
 
+      const initialContent = options?.withPeopleTemplate ? PEOPLE_TEMPLATE : '';
+      const initialSerialized = serializeLegacyContent(initialContent);
       const created = await api.createNote({
         title: options?.withPeopleTemplate ? 'Gestão de pessoas' : 'Nova nota',
-        content: options?.withPeopleTemplate ? PEOPLE_TEMPLATE : '',
+        content: initialSerialized.html || null,
+        contentBlocks: initialSerialized.blocks,
+        contentText: initialSerialized.text || null,
+        contentHtml: initialSerialized.html || null,
+        contentVersion: 1,
         type: options?.withPeopleTemplate ? 'pessoas' : 'geral',
         tags: options?.withPeopleTemplate ? ['pessoas', 'gestao'] : [],
         folderId: isFolderScope(folderScope) ? folderScope : null
@@ -3257,9 +3363,14 @@ export function NotasPage() {
       setBusy(true);
       resetRecordingForNewNote();
 
+      const serializedTemplate = serializeLegacyContent(template.content);
       const created = await api.createNote({
         title: template.title,
-        content: template.content,
+        content: serializedTemplate.html || null,
+        contentBlocks: serializedTemplate.blocks,
+        contentText: serializedTemplate.text || null,
+        contentHtml: serializedTemplate.html || null,
+        contentVersion: 1,
         type: template.type,
         tags: template.tags,
         folderId: isFolderScope(folderScope) ? folderScope : null
@@ -3286,9 +3397,9 @@ export function NotasPage() {
       if (!shouldReplace) {
         return;
       }
-      setContent(normalizeEditorContent(template.content));
+      applyLegacyContentToEditor(template.content);
     } else {
-      setContent((current) => appendPlainTextToContent(current, template.content));
+      appendPlainTextAsBlocks(template.content);
     }
 
     if (!title.trim()) {
@@ -3361,6 +3472,29 @@ export function NotasPage() {
     }
 
     clearSlashState();
+  }
+
+  function handleOperisEditorChange(value: OperisBlockEditorValue) {
+    setContentBlocks(value.blocks);
+    setContentText(value.text);
+    setContentHtml(value.html);
+    setContent(value.html);
+  }
+
+  function handleOperisEditorCommand(command: 'templates' | 'details' | 'save') {
+    if (command === 'templates') {
+      setTemplatesOpen(true);
+      return;
+    }
+    if (command === 'details') {
+      setWriterMetaOpen((current) => !current);
+      return;
+    }
+    if (selectedNoteId && !busy) {
+      void saveNoteChanges({
+        source: 'manual'
+      });
+    }
   }
 
   function handleWriterEditorKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -3484,7 +3618,10 @@ export function NotasPage() {
 
     const nextSnapshot: EditorSnapshot = {
       title: title.trim(),
-      content,
+      content: contentHtml || content,
+      contentBlocksSignature,
+      contentText,
+      contentHtml,
       type,
       tagsRaw,
       pinned,
@@ -3503,6 +3640,10 @@ export function NotasPage() {
       const updatedNote = await api.updateNote(selectedNoteId, {
         title: nextSnapshot.title,
         content: nextSnapshot.content ? nextSnapshot.content : null,
+        contentBlocks,
+        contentText: contentText || null,
+        contentHtml: contentHtml || null,
+        contentVersion: 1,
         type,
         tags: parseTags(tagsRaw),
         pinned,
@@ -3514,7 +3655,10 @@ export function NotasPage() {
       });
       const normalizedSnapshot: EditorSnapshot = {
         title: updatedNote.title,
-        content: updatedNote.content ?? '',
+        content: updatedNote.content ?? updatedNote.contentHtml ?? '',
+        contentBlocksSignature: blockSignature((updatedNote.contentBlocks ?? []) as OperisBlock[]),
+        contentText: updatedNote.contentText ?? '',
+        contentHtml: updatedNote.contentHtml ?? updatedNote.content ?? '',
         type: updatedNote.type,
         tagsRaw: (updatedNote.tags ?? []).join(', '),
         pinned: Boolean(updatedNote.pinned),
@@ -3531,6 +3675,9 @@ export function NotasPage() {
       } else {
         setTitle(normalizedSnapshot.title);
         setContent(normalizedSnapshot.content);
+        setContentBlocks((updatedNote.contentBlocks ?? []) as OperisBlock[]);
+        setContentText(normalizedSnapshot.contentText);
+        setContentHtml(normalizedSnapshot.contentHtml);
         setType(normalizedSnapshot.type);
         setTagsRaw(normalizedSnapshot.tagsRaw);
         setPinned(normalizedSnapshot.pinned);
@@ -3622,7 +3769,7 @@ export function NotasPage() {
   function insertPeopleTemplate() {
     setType('pessoas');
     setTitle((current) => current.trim() || 'Gestão de pessoas');
-    setContent((current) => appendPlainTextToContent(current, PEOPLE_TEMPLATE));
+    appendPlainTextAsBlocks(PEOPLE_TEMPLATE);
   }
 
   function stopVoiceCapture() {
@@ -3658,7 +3805,7 @@ export function NotasPage() {
         }
 
         if (transcript.trim()) {
-          setContent((current) => appendPlainTextToContent(current, transcript.trim()));
+          appendPlainTextAsBlocks(transcript.trim());
         }
       };
 
@@ -3854,7 +4001,7 @@ export function NotasPage() {
         return;
       }
 
-      setContent((current) => appendPlainTextToContent(current, nextChunk));
+      appendPlainTextAsBlocks(nextChunk);
 
       const suggestedTitle = suggestTitleFromTranscription({
         titleSuggestion: result.titleSuggestion,
@@ -4245,14 +4392,14 @@ export function NotasPage() {
 
     const isCurrentRevision = revisions[0]?.id === revisionPreview.id;
     const previewTitle = displayNoteTitle(revisionPreview.title);
-    const previewContent = normalizeEditorContent(revisionPreview.content ?? '');
+    const previewContent = noteRevisionHtml(revisionPreview);
     const previewTagList = revisionPreview.tags ?? [];
     const currentTagList = parseTags(tagsRaw);
     const currentTitle = displayNoteTitle(title);
-    const currentContent = normalizeEditorContent(content ?? '');
+    const currentContent = contentHtml || normalizeEditorContent(content ?? '');
 
-    const selectedPlain = extractPlainTextWithBreaks(revisionPreview.content ?? '').trim();
-    const currentPlain = extractPlainTextWithBreaks(content ?? '').trim();
+    const selectedPlain = noteRevisionPlainText(revisionPreview).trim();
+    const currentPlain = (contentText || extractPlainTextWithBreaks(content ?? '')).trim();
     const titleChanged = (revisionPreview.title ?? '').trim() !== (title ?? '').trim();
     const typeChanged = revisionPreview.type !== type;
     const pinChanged = Boolean(revisionPreview.pinned) !== Boolean(pinned);
@@ -4852,89 +4999,6 @@ export function NotasPage() {
               </div>
 
               {canvasMode === 'text' && <div className="notes-writer-formatbar" role="toolbar" aria-label="Formatacao de texto">
-                <div className="notes-writer-format-group">
-                  <button
-                    type="button"
-                    className={`notes-icon-button ${writerFormatState.heading === 1 ? 'active' : ''}`}
-                    title="Heading 1"
-                    aria-label="Heading 1"
-                    onClick={() => applyHeading(1)}
-                  >
-                    <Heading1 size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`notes-icon-button ${writerFormatState.heading === 2 ? 'active' : ''}`}
-                    title="Heading 2"
-                    aria-label="Heading 2"
-                    onClick={() => applyHeading(2)}
-                  >
-                    <Heading2 size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`notes-icon-button ${writerFormatState.heading === 3 ? 'active' : ''}`}
-                    title="Heading 3"
-                    aria-label="Heading 3"
-                    onClick={() => applyHeading(3)}
-                  >
-                    <Heading3 size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className="notes-icon-button"
-                    title="Parágrafo normal"
-                    aria-label="Parágrafo normal"
-                    onClick={applyParagraphReset}
-                  >
-                    <Pilcrow size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`notes-icon-button ${writerFormatState.bold ? 'active' : ''}`}
-                    title="Negrito"
-                    aria-label="Negrito"
-                    onClick={applyBold}
-                  >
-                    <Bold size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`notes-icon-button ${writerFormatState.italic ? 'active' : ''}`}
-                    title="Itálico"
-                    aria-label="Itálico"
-                    onClick={applyItalic}
-                  >
-                    <Italic size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`notes-icon-button ${writerFormatState.strike ? 'active' : ''}`}
-                    title="Tachado"
-                    aria-label="Tachado"
-                    onClick={applyStrikeThrough}
-                  >
-                    <Strikethrough size={16} />
-                  </button>
-                </div>
-
-                <div className="notes-writer-color-palette" aria-label="Cores básicas">
-                  {WRITER_COLOR_OPTIONS.map((color) => (
-                    <button
-                      key={color.id}
-                      type="button"
-                      className={`notes-color-chip ${
-                        normalizeCssColor(color.value) === writerFormatState.color ? 'active' : ''
-                      }`}
-                      title={`Cor ${color.label}`}
-                      aria-label={`Cor ${color.label}`}
-                      onClick={() => applyTextColor(color.value)}
-                    >
-                      <span style={{ backgroundColor: color.value }} />
-                    </button>
-                  ))}
-                </div>
-
                 <div className="notes-writer-format-actions">
                   <button type="button" className="ghost-button" onClick={copyNoteContent} title="Copiar nota completa">
                     Copiar
@@ -4963,7 +5027,11 @@ export function NotasPage() {
               </div>} {/* end canvasMode === 'text' formatbar */}
 
               {canvasMode === 'text' && <div className="notes-writer-quickblocks">
-                <button type="button" className="ghost-button" onClick={() => insertSnippetAtCursor('- [ ] ')}>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => appendBlocksToEditor([{ type: 'checkListItem', props: { checked: false }, content: '' }])}
+                >
                   + Checklist
                 </button>
                 <button
@@ -4976,27 +5044,28 @@ export function NotasPage() {
                 <button
                   type="button"
                   className="ghost-button"
-                  onClick={() =>
-                    insertSnippetAtCursor(
-                      '## Decisão\n- O que foi decidido:\n- Motivo:\n- Próximo passo:\n'
-                    )
-                  }
+                  onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.decision)}
                 >
                   + Decisão
                 </button>
                 <button
                   type="button"
                   className="ghost-button"
-                  onClick={() =>
-                    insertSnippetAtCursor('## Retro rápida\n- Funcionou:\n- Não funcionou:\n- Ajuste:\n')
-                  }
+                  onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.retro)}
                 >
                   + Retro
                 </button>
                 <button
                   type="button"
                   className="ghost-button"
-                  onClick={() => insertSnippetAtCursor(`${new Date().toLocaleDateString('pt-BR')}\n`)}
+                  onClick={() =>
+                    appendBlocksToEditor([
+                      {
+                        type: 'paragraph',
+                        content: `Data: ${new Date().toLocaleDateString('pt-BR')}`
+                      }
+                    ])
+                  }
                 >
                   + Data
                 </button>
@@ -5128,55 +5197,15 @@ export function NotasPage() {
 
               {canvasMode === 'text' && (
               <div className="notes-writer-editor-wrap">
-                <div
-                  ref={writerRichEditorRef}
-                  className="notes-writer-editor"
-                  contentEditable
-                  role="textbox"
-                  aria-multiline="true"
-                  suppressContentEditableWarning
-                  onKeyDown={handleWriterEditorKeyDown}
-                  onInput={(event) => {
-                    const editor = event.currentTarget;
-                    if (ENABLE_AUTO_ACCENT) {
-                      autoAccentInRichEditor(editor);
-                    }
-                    setContent(editor.innerHTML);
-                    syncWriterFormatState();
-                  }}
-                  onMouseUp={syncWriterFormatState}
-                  onKeyUp={syncWriterFormatState}
-                  data-placeholder="Escreva livremente. Este espaço é seu segundo cérebro."
+                <OperisBlockEditor
+                  key={`${selectedNoteId || 'new'}-${editorDocumentKey}`}
+                  noteId={selectedNoteId}
+                  documentKey={editorDocumentKey}
+                  initialBlocks={contentBlocks}
+                  legacyContent={content}
+                  onChange={handleOperisEditorChange}
+                  onCommand={handleOperisEditorCommand}
                 />
-
-                {slashMenuOpen && (
-                  <section
-                    className="notes-slash-menu notes-slash-menu-floating"
-                    aria-label="Comandos rápidos"
-                    style={
-                      slashMenuPosition
-                        ? { top: `${slashMenuPosition.top}px`, left: `${slashMenuPosition.left}px` }
-                        : undefined
-                    }
-                  >
-                    <ul>
-                      {filteredSlashCommands.map((command, index) => (
-                        <li key={command.id}>
-                          <button
-                            type="button"
-                            className={index === slashIndex ? 'active' : ''}
-                            onClick={() => applySlashCommand(command)}
-                          >
-                            <div>
-                              <strong>{command.label}</strong>
-                              <small>{command.description}</small>
-                            </div>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
               </div>
               )} {/* end canvasMode === 'text' */}
 
@@ -5370,7 +5399,7 @@ export function NotasPage() {
                             <small>{formatDateTimeLabel(revision.createdAt)}</small>
                             <small>
                               {displayNoteTitle(revision.title)} •{' '}
-                              {extractPlainText(revision.content ?? '').slice(0, 80) || 'sem conteúdo'}
+                              {noteRevisionPlainText(revision).slice(0, 80) || 'sem conteúdo'}
                             </small>
                           </div>
                           <div className="inline-actions">
@@ -5549,7 +5578,7 @@ export function NotasPage() {
             <div className="notes-list-wrap">
             <ul className="notes-list" ref={notesListRef}>
               {sortedScopedNotes.map((note) => {
-                const checklist = getChecklistProgress(note.content);
+                const checklist = getChecklistProgress(notePlainText(note));
                 return (
                   <li key={note.id}>
                     <button
@@ -5643,8 +5672,8 @@ export function NotasPage() {
                   className="notes-preview-content"
                   dangerouslySetInnerHTML={{
                     __html:
-                      selectedNote.content?.trim()
-                        ? normalizeEditorContent(selectedNote.content)
+                      noteHtml(selectedNote).trim()
+                        ? noteHtml(selectedNote)
                         : '<p>Sem conteúdo.</p>'
                   }}
                 />

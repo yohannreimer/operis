@@ -7610,6 +7610,119 @@ h4 {
   position: relative;
 }
 
+.notes-writer-editor-wrap .bn-container {
+  --bn-colors-editor-text: var(--text);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-background: var(--surface);
+  --bn-colors-menu-text: var(--text);
+  --bn-colors-tooltip-background: var(--surface);
+  --bn-colors-tooltip-text: var(--text);
+  --bn-colors-hovered-background: rgba(255, 255, 255, 0.06);
+  --bn-colors-selected-background: rgba(79, 124, 255, 0.18);
+  --bn-colors-border: var(--border);
+  background: transparent;
+}
+
+.notes-writer-editor-wrap .bn-editor {
+  min-height: calc(100vh - 420px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px 120px;
+  line-height: 1.65;
+  font-size: 1rem;
+  background:
+    linear-gradient(180deg, transparent 31px, rgba(255, 255, 255, 0.03) 32px) 0 0 / 100% 32px,
+    var(--surface-soft);
+}
+
+.notes-writer-editor-wrap .bn-editor:focus-within {
+  border-color: rgba(79, 124, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.14);
+}
+
+.notes-writer-editor-wrap .bn-block-content {
+  color: var(--text);
+}
+
+.operis-block-card {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.operis-block-kicker {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.operis-block-title {
+  min-height: 1.5em;
+  color: var(--text);
+  font-weight: 650;
+}
+
+.operis-block-field {
+  display: grid;
+  gap: 5px;
+}
+
+.operis-block-field-label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.operis-block-field-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.18);
+  font: inherit;
+  line-height: 1.45;
+}
+
+textarea.operis-block-field-input {
+  resize: vertical;
+}
+
+.operis-block-field-input:focus {
+  border-color: rgba(79, 124, 255, 0.62);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.12);
+}
+
+.operis-block-decision {
+  border-left-color: #4f7cff;
+}
+
+.operis-block-risk {
+  border-left-color: #f59e0b;
+}
+
+.operis-block-next-step,
+.operis-block-executive-checklist {
+  border-left-color: #22c55e;
+}
+
+.operis-block-insight {
+  border-left-color: #06b6d4;
+}
+
+.operis-block-meeting,
+.operis-block-linked-task {
+  border-left-color: #a78bfa;
+}
+
 .notes-writer-meta {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -15360,6 +15473,9 @@ h4 {
   flex: 1 !important;
   overflow-y: auto !important;
   padding: 24px 32px !important;
+}
+.fullscreen-mode .notes-writer-editor-wrap .bn-editor {
+  min-height: calc(100vh - 180px);
 }
 .fullscreen-mode .notes-writer-formatbar,
 .fullscreen-mode .notes-writer-quickblocks {
