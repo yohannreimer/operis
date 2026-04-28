@@ -47,7 +47,8 @@ function blockProps(block: OperisBlock) {
 }
 
 function propText(value: unknown, fallback = '') {
-  return String(value ?? fallback).trim();
+  const text = String(value ?? '').trim();
+  return text || fallback.trim();
 }
 
 function indent(depth: number) {
