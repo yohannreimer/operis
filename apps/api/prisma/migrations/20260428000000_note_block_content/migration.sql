@@ -1,0 +1,11 @@
+ALTER TABLE "notes"
+  ADD COLUMN IF NOT EXISTS "content_blocks" JSONB,
+  ADD COLUMN IF NOT EXISTS "content_text" TEXT,
+  ADD COLUMN IF NOT EXISTS "content_html" TEXT,
+  ADD COLUMN IF NOT EXISTS "content_version" INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE "note_revisions"
+  ADD COLUMN IF NOT EXISTS "content_blocks" JSONB,
+  ADD COLUMN IF NOT EXISTS "content_text" TEXT,
+  ADD COLUMN IF NOT EXISTS "content_html" TEXT,
+  ADD COLUMN IF NOT EXISTS "content_version" INTEGER NOT NULL DEFAULT 1;

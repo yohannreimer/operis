@@ -406,6 +406,10 @@ model Note {
   clerkUserId String    @map("clerk_user_id") @default("legacy")
   title       String
   content     String?
+  contentBlocks  Json?   @map("content_blocks")
+  contentText    String? @map("content_text")
+  contentHtml    String? @map("content_html")
+  contentVersion Int     @default(1) @map("content_version")
   type        NoteType  @default(geral)
   tags        String[]  @default([])
   pinned      Boolean   @default(false)
@@ -440,6 +444,10 @@ model NoteRevision {
   noteId      String   @map("note_id")
   title       String
   content     String?
+  contentBlocks  Json?   @map("content_blocks")
+  contentText    String? @map("content_text")
+  contentHtml    String? @map("content_html")
+  contentVersion Int     @default(1) @map("content_version")
   type        NoteType @default(geral)
   tags        String[] @default([])
   pinned      Boolean  @default(false)
