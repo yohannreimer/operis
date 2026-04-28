@@ -54,7 +54,7 @@ function renderInline(content: unknown): InlineRender {
           return {
             text: label.text,
             html: `<a href="${escapeHtml(href)}">${label.html}</a>`,
-            markdown: `[${label.text}](${escapeMarkdownLinkTarget(href)})`,
+            markdown: `[${escapeMarkdownLinkLabel(label.text)}](${escapeMarkdownLinkTarget(href)})`,
             whatsapp: `${label.text} (${href})`
           };
         }
@@ -99,6 +99,15 @@ function escapeMarkdownLinkTarget(raw: string) {
   return raw.replace(/\\/g, '\\\\').replace(/\)/g, '\\)');
 }
 
+function escapeMarkdownLinkLabel(raw: string) {
+  return raw
+    .replace(/\\/g, '\\\\')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+}
+
 function escapeHtml(raw: string) {
   return raw
     .replace(/&/g, '&amp;')
@@ -132,6 +141,55 @@ function boundedHeadingLevel(value: unknown) {
   }
 
   return Math.max(1, Math.min(6, Math.floor(level)));
+}
+
+function tableRows(content: unknown) {
+  if (!content || typeof content !== 'object' || !('rows' in content)) {
+    return [] as string[][];
+  }
+
+  const rows = (content as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows.map((row) => {
+    if (!row || typeof row !== 'object' || !('cells' in row)) {
+      return [] as string[];
+    }
+
+    const cells = (row as { cells?: unknown }).cells;
+    if (!Array.isArray(cells)) {
+      return [];
+    }
+
+    return cells.map((cell) => renderInline(cell).text.trim());
+  });
+}
+
+function markdownTable(rows: string[][]) {
+  if (rows.length === 0) {
+    return '';
+  }
+
+  const width = Math.max(...rows.map((row) => row.length), 1);
+  const normalized = rows.map((row) => Array.from({ length: width }, (_, index) => row[index] ?? ''));
+  const [header, ...body] = normalized;
+  const separator = Array.from({ length: width }, () => '---');
+  return [header, separator, ...body].map((row) => `| ${row.join(' | ')} |`).join('\n');
+}
+
+function htmlTable(rows: string[][]) {
+  if (rows.length === 0) {
+    return '';
+  }
+
+  const [header, ...body] = rows;
+  const headerHtml = `<thead><tr>${header.map((cell) => `<th>${escapeHtml(cell)}</th>`).join('')}</tr></thead>`;
+  const bodyHtml = `<tbody>${body
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
+    .join('')}</tbody>`;
+  return `<table>${headerHtml}${bodyHtml}</table>`;
 }
 
 function mergeParentAndChildren(parent: SerializedBlock, children: SerializedBlock[]): SerializedBlock {
@@ -214,6 +272,19 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
         markdown: `${prefix}1. ${inline.markdown}`,
         whatsapp: `${prefix}1. ${inline.whatsapp}`
       }, children.map((child) => ({ ...child, html: '' })));
+    }
+
+    case 'table': {
+      const rows = tableRows(block.content);
+      const tableText = rows.map((row) => row.join(' | ')).join('\n');
+      const tableMarkdown = markdownTable(rows);
+
+      return mergeParentAndChildren({
+        text: tableText,
+        html: htmlTable(rows),
+        markdown: tableMarkdown,
+        whatsapp: tableText
+      }, children);
     }
 
     case 'operisDecision': {

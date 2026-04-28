@@ -60,6 +60,24 @@ describe('serializeNoteBlocks', () => {
     expect(result.html).toBe('<p>abrir</p>');
   });
 
+  it('escapes markdown control characters in BlockNote link labels', () => {
+    const result = serializeNoteBlocks([
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'link',
+            href: 'https://example.com',
+            content: [{ type: 'text', text: 'x](javascript:alert(1))', styles: {} }]
+          }
+        ]
+      }
+    ]);
+
+    expect(result.markdown).toBe('[x\\]\\(javascript:alert\\(1\\)\\)](https://example.com)');
+    expect(result.html).toBe('<p><a href="https://example.com">x](javascript:alert(1))</a></p>');
+  });
+
   it('prefers editable inline content over stale custom block props', () => {
     const result = serializeNoteBlocks([
       {
@@ -99,6 +117,24 @@ describe('serializeNoteBlocks', () => {
     expect(result.whatsapp).toContain('- Pai\n  [x] Filho');
     expect(result.html).toContain(
       '<ul><li>Pai\n<label><input type="checkbox" checked disabled> Filho</label></li></ul>'
+    );
+  });
+
+  it('serializes table blocks for export surfaces', () => {
+    const result = serializeNoteBlocks([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: ['Campo', 'Valor'] }, { cells: ['Prioridade', 'Alta'] }]
+        }
+      }
+    ]);
+
+    expect(result.text).toBe('Campo | Valor\nPrioridade | Alta');
+    expect(result.markdown).toBe('| Campo | Valor |\n| --- | --- |\n| Prioridade | Alta |');
+    expect(result.html).toBe(
+      '<table><thead><tr><th>Campo</th><th>Valor</th></tr></thead><tbody><tr><td>Prioridade</td><td>Alta</td></tr></tbody></table>'
     );
   });
 
