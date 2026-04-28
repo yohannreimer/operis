@@ -58,8 +58,9 @@ describe('serializeNoteBlocks', () => {
     expect(result.text).toContain('- Pai\n  [x] Filho');
     expect(result.markdown).toContain('- Pai\n  - [x] Filho');
     expect(result.whatsapp).toContain('- Pai\n  [x] Filho');
-    expect(result.html).toContain('<ul><li>Pai</li></ul>');
-    expect(result.html).toContain('<label><input type="checkbox" checked disabled> Filho</label>');
+    expect(result.html).toContain(
+      '<ul><li>Pai\n<label><input type="checkbox" checked disabled> Filho</label></li></ul>'
+    );
   });
 
   it('escapes hostile inline text in html output', () => {

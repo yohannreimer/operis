@@ -81,6 +81,10 @@ function mergeParentAndChildren(parent: SerializedBlock, children: SerializedBlo
   };
 }
 
+function childHtml(children: SerializedBlock[]) {
+  return children.map((child) => child.html).filter(Boolean).join('\n');
+}
+
 function serializeBlock(block: OperisBlock, context: RenderContext): SerializedBlock {
   const p = blockProps(block);
   const text = inlineText(block.content);
@@ -106,33 +110,38 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
     case 'checkListItem': {
       const checked = Boolean(p.checked);
       const prefix = indent(context.depth);
+      const nestedHtml = childHtml(children);
 
       return mergeParentAndChildren({
         text: `${prefix}${checked ? '[x]' : '[ ]'} ${text}`,
-        html: `<label><input type="checkbox"${checked ? ' checked' : ''} disabled> ${escapeHtml(text)}</label>`,
+        html: `<label><input type="checkbox"${
+          checked ? ' checked' : ''
+        } disabled> ${escapeHtml(text)}</label>${nestedHtml ? `<div class="note-block-children">${nestedHtml}</div>` : ''}`,
         markdown: `${prefix}- [${checked ? 'x' : ' '}] ${text}`,
         whatsapp: `${prefix}${checked ? '[x]' : '[ ]'} ${text}`
-      }, children);
+      }, children.map((child) => ({ ...child, html: '' })));
     }
 
     case 'bulletListItem': {
       const prefix = indent(context.depth);
+      const nestedHtml = childHtml(children);
       return mergeParentAndChildren({
         text: `${prefix}- ${text}`,
-        html: `<ul><li>${escapeHtml(text)}</li></ul>`,
+        html: `<ul><li>${escapeHtml(text)}${nestedHtml ? `\n${nestedHtml}` : ''}</li></ul>`,
         markdown: `${prefix}- ${text}`,
         whatsapp: `${prefix}- ${text}`
-      }, children);
+      }, children.map((child) => ({ ...child, html: '' })));
     }
 
     case 'numberedListItem': {
       const prefix = indent(context.depth);
+      const nestedHtml = childHtml(children);
       return mergeParentAndChildren({
         text: `${prefix}1. ${text}`,
-        html: `<ol><li>${escapeHtml(text)}</li></ol>`,
+        html: `<ol><li>${escapeHtml(text)}${nestedHtml ? `\n${nestedHtml}` : ''}</li></ol>`,
         markdown: `${prefix}1. ${text}`,
         whatsapp: `${prefix}1. ${text}`
-      }, children);
+      }, children.map((child) => ({ ...child, html: '' })));
     }
 
     case 'operisDecision': {
