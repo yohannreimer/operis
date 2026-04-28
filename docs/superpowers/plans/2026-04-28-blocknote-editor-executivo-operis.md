@@ -111,27 +111,27 @@ Expected: packages are added to `apps/web/package.json` and `package-lock.json`.
 Run:
 
 ```bash
-npm install -D vitest --workspace @execution-os/web
-npm install -D vitest --workspace @execution-os/api
+npm install -D vitest@^2.1.9 --workspace @execution-os/web
+npm install -D vitest@^2.1.9 --workspace @execution-os/api
 ```
 
-Expected: `vitest` appears in both workspace dev dependencies.
+Expected: `vitest` appears in both workspace dev dependencies. Use the Vite 5-compatible Vitest line to avoid pulling a second Vite 8 toolchain into the repo.
 
 - [ ] **Step 3: Add test scripts**
 
 In `apps/web/package.json`, add:
 
 ```json
-"test": "vitest run"
+"test": "vitest run --passWithNoTests"
 ```
 
 In `apps/api/package.json`, add:
 
 ```json
-"test": "vitest run"
+"test": "vitest run --passWithNoTests"
 ```
 
-Preserve existing scripts.
+Preserve existing scripts. `--passWithNoTests` is required because tests are introduced in later tasks.
 
 - [ ] **Step 4: Verify dependency graph**
 
