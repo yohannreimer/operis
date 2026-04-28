@@ -23,7 +23,7 @@ async function assertNoteOwnership(prisma: PrismaClient, noteId: string, clerkUs
       OR: [
         { workspace: { clerkUserId } },
         { workspaceId: null, folder: { clerkUserId } },
-        { workspaceId: null, folderId: null },
+        { workspaceId: null, folderId: null, clerkUserId },
       ],
     },
   });

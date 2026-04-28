@@ -127,6 +127,7 @@ const noteRevisionCreateSchema = z.object({
 });
 
 const MAX_NOTES_AUDIO_BYTES = 10 * 1024 * 1024;
+const NOTE_BLOCKS_TOO_LARGE_ERROR = 'note_content_blocks_too_large';
 
 const NOTE_RELATION_INCLUDE = {
   folder: {
@@ -326,6 +327,97 @@ async function createNoteRevisionSnapshot(
       source
     }
   });
+}
+
+function isNativeContentPayloadError(error: unknown) {
+  return error instanceof Error && error.message === NOTE_BLOCKS_TOO_LARGE_ERROR;
+}
+
+async function validateNoteRelations(
+  prisma: PrismaClient,
+  clerkUserId: string,
+  input: {
+    folderId?: string | null;
+    workspaceId?: string | null;
+    projectId?: string | null;
+    taskId?: string | null;
+  }
+) {
+  const folderId = input.folderId ?? null;
+  const workspaceId = input.workspaceId ?? null;
+  const projectId = input.projectId ?? null;
+  const taskId = input.taskId ?? null;
+
+  const [folder, workspace, project, task] = await Promise.all([
+    folderId
+      ? prisma.noteFolder.findFirst({
+          where: {
+            id: folderId,
+            clerkUserId,
+            archivedAt: null
+          },
+          select: { id: true }
+        })
+      : Promise.resolve(null),
+    workspaceId
+      ? prisma.workspace.findFirst({
+          where: {
+            id: workspaceId,
+            clerkUserId
+          },
+          select: { id: true }
+        })
+      : Promise.resolve(null),
+    projectId
+      ? prisma.project.findFirst({
+          where: {
+            id: projectId,
+            workspace: { clerkUserId }
+          },
+          select: {
+            id: true,
+            workspaceId: true
+          }
+        })
+      : Promise.resolve(null),
+    taskId
+      ? prisma.task.findFirst({
+          where: {
+            id: taskId,
+            workspace: { clerkUserId }
+          },
+          select: {
+            id: true,
+            workspaceId: true,
+            projectId: true
+          }
+        })
+      : Promise.resolve(null)
+  ]);
+
+  if (folderId && !folder) {
+    return 'folder_not_found';
+  }
+  if (workspaceId && !workspace) {
+    return 'workspace_not_found';
+  }
+  if (projectId && !project) {
+    return 'project_not_found';
+  }
+  if (taskId && !task) {
+    return 'task_not_found';
+  }
+  if (workspaceId && project && project.workspaceId !== workspaceId) {
+    return 'project_workspace_mismatch';
+  }
+  if (workspaceId && task && task.workspaceId !== workspaceId) {
+    return 'task_workspace_mismatch';
+  }
+  if (projectId && task && task.projectId !== projectId) {
+    return 'task_project_mismatch';
+  }
+
+  return null;
 }
 
 export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
@@ -663,13 +755,37 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   app.post('/notes', async (request, reply) => {
     const clerkUserId = getUserId(request);
     const payload = noteCreateSchema.parse(request.body);
-    const nativeContent = normalizeNativeNoteContent({
-      content: payload.content ?? null,
-      contentBlocks: payload.contentBlocks,
-      contentText: payload.contentText ?? null,
-      contentHtml: payload.contentHtml ?? null,
-      contentVersion: payload.contentVersion
+    let nativeContent;
+    try {
+      nativeContent = normalizeNativeNoteContent({
+        content: payload.content ?? null,
+        contentBlocks: payload.contentBlocks,
+        contentText: payload.contentText ?? null,
+        contentHtml: payload.contentHtml ?? null,
+        contentVersion: payload.contentVersion
+      });
+    } catch (error) {
+      if (isNativeContentPayloadError(error)) {
+        return reply.code(413).send({
+          error: NOTE_BLOCKS_TOO_LARGE_ERROR,
+          message: 'Conteúdo da nota excede o limite permitido.'
+        });
+      }
+      throw error;
+    }
+
+    const relationError = await validateNoteRelations(prisma, clerkUserId, {
+      folderId: payload.folderId ?? null,
+      workspaceId: payload.workspaceId ?? null,
+      projectId: payload.projectId ?? null,
+      taskId: payload.taskId ?? null
     });
+    if (relationError) {
+      return reply.code(422).send({
+        error: relationError,
+        message: 'Vínculo inválido para esta nota.'
+      });
+    }
 
     const note = await prisma.note.create({
       data: {
@@ -718,13 +834,38 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       });
     }
 
-    const nativeContent = normalizeNativeNoteContent({
-      content: payload.content === undefined ? current.content : payload.content,
-      contentBlocks: payload.contentBlocks === undefined ? current.contentBlocks : payload.contentBlocks,
-      contentText: payload.contentText === undefined ? current.contentText : payload.contentText,
-      contentHtml: payload.contentHtml === undefined ? current.contentHtml : payload.contentHtml,
-      contentVersion: payload.contentVersion === undefined ? current.contentVersion : payload.contentVersion
-    });
+    const isNativeBlockUpdate = payload.contentBlocks !== undefined;
+    let nativeContent;
+    try {
+      nativeContent = normalizeNativeNoteContent({
+        content: isNativeBlockUpdate
+          ? payload.content ?? null
+          : payload.content === undefined
+            ? current.content
+            : payload.content,
+        contentBlocks: isNativeBlockUpdate ? payload.contentBlocks : current.contentBlocks,
+        contentText: isNativeBlockUpdate
+          ? payload.contentText ?? null
+          : payload.contentText === undefined
+            ? current.contentText
+            : payload.contentText,
+        contentHtml: isNativeBlockUpdate
+          ? payload.contentHtml ?? null
+          : payload.contentHtml === undefined
+            ? current.contentHtml
+            : payload.contentHtml,
+        contentVersion:
+          payload.contentVersion === undefined ? current.contentVersion : payload.contentVersion
+      });
+    } catch (error) {
+      if (isNativeContentPayloadError(error)) {
+        return reply.code(413).send({
+          error: NOTE_BLOCKS_TOO_LARGE_ERROR,
+          message: 'Conteúdo da nota excede o limite permitido.'
+        });
+      }
+      throw error;
+    }
     if (payload.content !== undefined && payload.contentBlocks === undefined) {
       nativeContent.content = payload.content;
     }
@@ -739,11 +880,30 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       type: payload.type ?? current.type,
       tags: payload.tags ?? current.tags,
       pinned: payload.pinned ?? current.pinned,
-      folderId: payload.folderId ?? current.folderId,
-      workspaceId: payload.workspaceId ?? current.workspaceId,
-      projectId: payload.projectId ?? current.projectId,
-      taskId: payload.taskId ?? current.taskId
+      folderId: payload.folderId === undefined ? current.folderId : payload.folderId,
+      workspaceId: payload.workspaceId === undefined ? current.workspaceId : payload.workspaceId,
+      projectId: payload.projectId === undefined ? current.projectId : payload.projectId,
+      taskId: payload.taskId === undefined ? current.taskId : payload.taskId
     };
+    const relationChanged =
+      payload.folderId !== undefined ||
+      payload.workspaceId !== undefined ||
+      payload.projectId !== undefined ||
+      payload.taskId !== undefined;
+    if (relationChanged) {
+      const relationError = await validateNoteRelations(prisma, clerkUserId, {
+        folderId: nextSnapshot.folderId,
+        workspaceId: nextSnapshot.workspaceId,
+        projectId: nextSnapshot.projectId,
+        taskId: nextSnapshot.taskId
+      });
+      if (relationError) {
+        return reply.code(422).send({
+          error: relationError,
+          message: 'Vínculo inválido para esta nota.'
+        });
+      }
+    }
     const changed = hasNativeNoteSnapshotChanged(current, nextSnapshot);
     const saveSource = payload.saveSource ?? 'manual';
 
@@ -883,6 +1043,19 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     if (!revision) {
       return reply.code(404).send({
         message: 'Revisão não encontrada para esta nota.'
+      });
+    }
+
+    const relationError = await validateNoteRelations(prisma, clerkUserId, {
+      folderId: revision.folderId,
+      workspaceId: revision.workspaceId,
+      projectId: revision.projectId,
+      taskId: revision.taskId
+    });
+    if (relationError) {
+      return reply.code(422).send({
+        error: relationError,
+        message: 'A revisão possui vínculo inválido para esta nota.'
       });
     }
 
