@@ -4802,7 +4802,10 @@ export function NotasPage() {
           <button
             type="button"
             className="notes-folder-node-main"
-            onClick={() => setFolderScope(folder.id)}
+            onClick={() => {
+              setFolderScope(folder.id);
+              setSmartCollection('all');
+            }}
           >
             <span className="notes-folder-color" style={{ background: folder.color ?? DEFAULT_FOLDER_COLOR }} />
             <span className="notes-folder-node-label">{folder.name}</span>
@@ -5975,130 +5978,133 @@ export function NotasPage() {
     <>
       <main className="notes-app-shell">
         <header className="notes-app-topbar">
-        <div className="notes-app-brand">
-          <button type="button" className="ghost-button" onClick={backToOperes}>
-            Voltar ao Operis
-          </button>
-          <div>
-            <strong>Notas</strong>
-            <small>Segundo cérebro independente</small>
+          <div className="notes-app-brand">
+            <button type="button" className="notes-back-button" onClick={backToOperes}>
+              Voltar
+            </button>
+            <div>
+              <strong>Notas</strong>
+              <small>Segundo cérebro independente</small>
+            </div>
           </div>
-        </div>
-        <div className="inline-actions">
-          <button
-            type="button"
-            className={templatesOpen ? 'ghost-button task-filter active' : 'ghost-button'}
-            onClick={() => setTemplatesOpen((current) => !current)}
-            disabled={busy}
-          >
-            {templatesOpen ? 'Ocultar templates' : 'Templates'}
-          </button>
-          <button type="button" className="ghost-button" onClick={() => openCreateFolderModal(null)} disabled={busy}>
-            Nova pasta
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={() => openCreateFolderModal(activeFolder?.id ?? null)}
-            disabled={busy || !activeFolder}
-          >
-            Nova subpasta
-          </button>
-          <button type="button" onClick={() => void createNote({ focusWriter: true })} disabled={busy}>
-            Nova nota
-          </button>
-        </div>
-      </header>
+          <div className="notes-topbar-actions">
+            <button
+              type="button"
+              className={`notes-secondary-action ${templatesOpen ? 'active' : ''}`}
+              onClick={() => setTemplatesOpen((current) => !current)}
+              disabled={busy}
+            >
+              {templatesOpen ? 'Ocultar templates' : 'Templates'}
+            </button>
+            <button type="button" className="notes-primary-action" onClick={() => void createNote({ focusWriter: true })} disabled={busy}>
+              Nova nota
+            </button>
+          </div>
+        </header>
 
         {error && <p className="surface-error">{error}</p>}
         {renderTemplatesPanel()}
 
         <section className="notes-app-body">
         <aside className="notes-app-sidebar">
-          <div className="notes-sidebar-head">
-            <h3>Pastas</h3>
-            <span>{folders.length} estrutura(s)</span>
-          </div>
+          <section className="notes-sidebar-section">
+            <div className="notes-sidebar-head">
+              <h3>Coleções</h3>
+              <span>{folderCounts.all} notas</span>
+            </div>
 
-          <ul className="notes-folder-tree">
-            <li>
-              <button
-                type="button"
-                className={folderScope === 'all' ? 'active' : ''}
-                onClick={() => setFolderScope('all')}
-              >
-                <span>Biblioteca</span>
-                <strong>{folderCounts.all}</strong>
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                className={`${folderScope === 'unfiled' ? 'active' : ''} ${
-                  folderDropTarget === 'unfiled' && draggingNoteId ? 'drop-target' : ''
-                }`}
-                onClick={() => setFolderScope('unfiled')}
-                onDragOver={(event) => {
-                  if (!draggingNoteId) {
-                    return;
-                  }
-                  event.preventDefault();
-                  setFolderDropTarget('unfiled');
-                }}
-                onDragLeave={() => {
-                  setFolderDropTarget((current) => (current === 'unfiled' ? null : current));
-                }}
-                onDrop={(event) => void handleFolderDrop(event, null)}
-              >
-                <span>Sem pasta</span>
-                <strong>{folderCounts.unfiled}</strong>
-              </button>
-            </li>
-            {rootFolders.map((folder) => renderFolderNode(folder, 0, new Set()))}
-          </ul>
+            <ul className="notes-folder-tree notes-collection-list">
+              {[
+                { id: 'all', label: 'Biblioteca', count: folderCounts.all },
+                { id: 'pinned', label: 'Fixadas', count: smartCollectionCounts.pinned },
+                { id: 'recent', label: 'Recentes', count: smartCollectionCounts.recent },
+                { id: 'inbox', label: 'Inbox', count: smartCollectionCounts.inbox },
+                { id: 'longform', label: 'Longas', count: smartCollectionCounts.longform }
+              ].map((collection) => (
+                <li key={collection.id}>
+                  <button
+                    type="button"
+                    className={folderScope === 'all' && smartCollection === collection.id ? 'active' : ''}
+                    onClick={() => {
+                      setFolderScope('all');
+                      setSmartCollection(collection.id as SmartCollectionId);
+                    }}
+                  >
+                    <span>{collection.label}</span>
+                    <strong>{collection.count}</strong>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
 
+          <section className="notes-sidebar-section">
+            <div className="notes-sidebar-head">
+              <h3>Pastas</h3>
+              <div className="notes-sidebar-actions-inline">
+                <button type="button" onClick={() => openCreateFolderModal(null)} disabled={busy} title="Nova pasta">
+                  + Pasta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openCreateFolderModal(activeFolder?.id ?? null)}
+                  disabled={busy || !activeFolder}
+                  title="Nova subpasta"
+                >
+                  + Sub
+                </button>
+              </div>
+            </div>
+
+            <ul className="notes-folder-tree">
+              <li>
+                <button
+                  type="button"
+                  className={`${folderScope === 'unfiled' ? 'active' : ''} ${
+                    folderDropTarget === 'unfiled' && draggingNoteId ? 'drop-target' : ''
+                  }`}
+                  onClick={() => {
+                    setFolderScope('unfiled');
+                    setSmartCollection('all');
+                  }}
+                  onDragOver={(event) => {
+                    if (!draggingNoteId) {
+                      return;
+                    }
+                    event.preventDefault();
+                    setFolderDropTarget('unfiled');
+                  }}
+                  onDragLeave={() => {
+                    setFolderDropTarget((current) => (current === 'unfiled' ? null : current));
+                  }}
+                  onDrop={(event) => void handleFolderDrop(event, null)}
+                >
+                  <span>Sem pasta</span>
+                  <strong>{folderCounts.unfiled}</strong>
+                </button>
+              </li>
+              {rootFolders.map((folder) => renderFolderNode(folder, 0, new Set()))}
+            </ul>
+          </section>
         </aside>
 
         <section className="notes-app-list">
           <div className="notes-list-headline">
             <div>
-              <h3>{activeScopeLabel}</h3>
+              <h3>{smartCollection === 'all' ? activeScopeLabel : activeCollectionLabel}</h3>
               <small>
-                {sortedScopedNotes.length} nota(s) • coleção {activeCollectionLabel}
+                {sortedScopedNotes.length} nota(s) • {activeScopeLabel}
               </small>
             </div>
-            <button type="button" className="ghost-button" onClick={() => void createNote({ focusWriter: true })}>
-              + Nota
-            </button>
           </div>
 
           <input
+            className="notes-list-search"
             ref={noteSearchInputRef}
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Buscar por título, texto ou tag"
           />
-
-          <div className="notes-smart-collections">
-            {[
-              { id: 'all', label: 'Todas', count: smartCollectionCounts.all },
-              { id: 'pinned', label: 'Fixadas', count: smartCollectionCounts.pinned },
-              { id: 'recent', label: 'Recentes', count: smartCollectionCounts.recent },
-              { id: 'linked', label: 'Ligadas', count: smartCollectionCounts.linked },
-              { id: 'inbox', label: 'Inbox', count: smartCollectionCounts.inbox },
-              { id: 'longform', label: 'Longas', count: smartCollectionCounts.longform }
-            ].map((collection) => (
-              <button
-                key={collection.id}
-                type="button"
-                className={`notes-smart-chip ${smartCollection === collection.id ? 'active' : ''}`}
-                onClick={() => setSmartCollection(collection.id as SmartCollectionId)}
-              >
-                <span>{collection.label}</span>
-                <strong>{collection.count}</strong>
-              </button>
-            ))}
-          </div>
 
           <div className="notes-list-toolbar">
             <select value={sortMode} onChange={(event) => setSortMode(event.target.value as NoteSortMode)}>
@@ -6138,8 +6144,10 @@ export function NotasPage() {
                       <div>
                         <strong className={(note.title ?? '').trim().length === 0 ? 'notes-untitled' : ''}>{displayNoteTitle(note.title)}</strong>
                         <small>{noteExcerpt(note)}</small>
-                        <small className="notes-list-date">{resolveFolderPath(note.folderId)}</small>
-                        <small className="notes-list-date">Atualizada em {formatDateLabel(note.updatedAt)}</small>
+                        <span className="notes-list-meta-line">
+                          <small>{formatDateLabel(note.updatedAt)}</small>
+                          <small>{resolveFolderPath(note.folderId)}</small>
+                        </span>
                         {checklist.total > 0 && (
                           <small className="notes-list-date">
                             Checklist: {checklist.done}/{checklist.total} ({checklist.percent}%)
@@ -6162,63 +6170,57 @@ export function NotasPage() {
 
         <section className="notes-app-preview">
           {!selectedNote ? (
-            <PremiumCard title="Preview" subtitle="Selecione uma nota para abrir contexto">
+            <article className="notes-document-preview empty">
               <EmptyState
                 title="Nenhuma nota selecionada"
                 description="Abra uma nota da lista para visualizar detalhes ou entrar no modo escrita."
               />
-            </PremiumCard>
+            </article>
           ) : (
-            <PremiumCard
-              title={displayNoteTitle(selectedNote.title)}
-              subtitle={`Atualizada em ${formatDateTimeLabel(selectedNote.updatedAt)}`}
-              actions={
-                <div className="inline-actions">
-                  <button type="button" className="ghost-button" onClick={() => startWriterForNote(selectedNote.id)}>
-                    Abrir modo escrita
-                  </button>
-                  <button type="button" className="danger-button" onClick={() => void deleteNote(selectedNote.id)}>
-                    Excluir
-                  </button>
-                </div>
-              }
-            >
-              <article className="notes-preview-article">
-                <header className="notes-preview-header-meta">
+            <article className="notes-document-preview">
+              <header className="notes-document-head">
+                <div className="notes-document-title-block">
                   <span className="status-tag">{noteTypeLabel(selectedNote.type)}</span>
-                  {selectedNote.tags.length > 0 && (
-                    <div className="notes-preview-tags">
-                      {selectedNote.tags.slice(0, 10).map((tag) => (
-                        <span key={tag}>#{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                </header>
-
-                <div className="notes-preview-meta-grid">
-                  <small>
-                    <strong>Pasta:</strong> {resolveFolderPath(selectedNote.folderId)}
-                  </small>
-                  <small>
-                    <strong>Frente:</strong> {selectedNote.workspace?.name ?? 'sem vínculo'}
-                  </small>
-                  <small>
-                    <strong>Projeto:</strong> {selectedNote.project?.title ?? 'sem vínculo'}
-                  </small>
-                  <small>
-                    <strong>Tarefa:</strong> {selectedNote.task?.title ?? 'sem vínculo'}
-                  </small>
+                  <h1>{displayNoteTitle(selectedNote.title)}</h1>
+                  <p>Atualizada em {formatDateTimeLabel(selectedNote.updatedAt)}</p>
                 </div>
+                <div className="notes-document-actions">
+                  <button type="button" className="notes-secondary-action" onClick={() => startWriterForNote(selectedNote.id)}>
+                    Escrever
+                  </button>
+                  <details className="notes-preview-menu">
+                    <summary aria-label="Ações da nota">•••</summary>
+                    <button type="button" onClick={() => void deleteNote(selectedNote.id)}>
+                      Excluir nota
+                    </button>
+                  </details>
+                </div>
+              </header>
 
-                <div
-                  className="notes-preview-content"
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      noteHtml(selectedNote).trim()
-                        ? noteHtml(selectedNote)
-                        : '<p>Sem conteúdo.</p>'
-                  }}
-                />
+              <div className="notes-document-meta">
+                <span>{resolveFolderPath(selectedNote.folderId)}</span>
+                <span>{selectedNote.workspace?.name ?? 'sem frente'}</span>
+                <span>{selectedNote.project?.title ?? 'sem projeto'}</span>
+                <span>{selectedNote.task?.title ?? 'sem tarefa'}</span>
+              </div>
+
+              {selectedNote.tags.length > 0 && (
+                <div className="notes-preview-tags">
+                  {selectedNote.tags.slice(0, 10).map((tag) => (
+                    <span key={tag}>#{tag}</span>
+                  ))}
+                </div>
+              )}
+
+              <div
+                className="notes-preview-content"
+                dangerouslySetInnerHTML={{
+                  __html:
+                    noteHtml(selectedNote).trim()
+                      ? noteHtml(selectedNote)
+                      : '<p>Sem conteúdo.</p>'
+                }}
+              />
 
                 <section className="notes-related-section">
                   <header>
@@ -6258,8 +6260,7 @@ export function NotasPage() {
                     </ul>
                   )}
                 </section>
-              </article>
-            </PremiumCard>
+            </article>
           )}
         </section>
         </section>
