@@ -29,6 +29,7 @@ import {
   Pilcrow,
   Save,
   Sparkles,
+  Star,
   Strikethrough,
   Trash2
 } from 'lucide-react';
@@ -179,6 +180,7 @@ const DEFAULT_FOLDER_COLOR = '#4f7cff';
 const RECENT_WINDOW_DAYS = 7;
 const LONGFORM_MIN_CHARS = 1200;
 const CUSTOM_NOTE_TEMPLATES_STORAGE_KEY = 'execution-os.custom-note-templates.v1';
+const FAVORITE_NOTE_TEMPLATES_STORAGE_KEY = 'execution-os.favorite-note-templates.v1';
 const PLACEHOLDER_NOTE_TITLES = new Set(['nova nota', 'sem título', 'sem titulo']);
 const TEXT_TOKEN_STOP_WORDS = new Set([
   'de',
@@ -366,6 +368,512 @@ const NOTE_TEMPLATES: NoteTemplate[] = [
 
 ## Prazo de revisão
 - `
+  }
+];
+
+const PREMIUM_NOTE_TEMPLATES: NoteTemplate[] = [
+  {
+    id: 'founder-daily-command',
+    title: 'Comando diário fundador',
+    subtitle: 'Clareza de foco antes do dia virar incêndio',
+    type: 'produto',
+    tags: ['fundador', 'foco', 'execucao'],
+    content: `# Comando diário
+
+## Resultado que faz o dia valer
+-
+
+## Alavanca principal
+- O que mais move receita, produto ou distribuição hoje:
+
+## Agenda de decisões
+- Decisão:
+- Deadline:
+- Critério:
+- Dono:
+
+## Riscos do dia
+- Risco:
+- Resposta:
+
+## Encerramento
+- [ ] Deleguei o que não precisava estar comigo
+- [ ] Fechei o próximo passo das conversas abertas
+- [ ] Registrei aprendizados relevantes`
+  },
+  {
+    id: 'leadership-1-1-senior',
+    title: '1:1 liderança sênior',
+    subtitle: 'Autonomia, pressão e performance sem enrolação',
+    type: 'pessoas',
+    tags: ['lideranca', 'pessoas', 'performance'],
+    content: `# 1:1 liderança sênior
+
+## Energia e contexto
+- Como a pessoa chega:
+- Pressão principal:
+
+## Responsabilidades críticas
+- Frente:
+- Saúde da frente:
+- Sinal observado:
+- Próximo ajuste:
+
+## Decisões que precisam destravar
+-
+
+## Feedback direto
+- Continuar:
+- Ajustar:
+- Próximo nível esperado:
+
+## Compromissos
+- [ ] Líder:
+- [ ] Eu:`
+  },
+  {
+    id: 'authority-content-brief',
+    title: 'Brief de autoridade',
+    subtitle: 'Transformar expertise em narrativa publicável',
+    type: 'conteudo',
+    tags: ['autoridade', 'conteudo', 'narrativa'],
+    content: `# Brief de autoridade
+
+## Ponto de vista
+- Eu acredito que:
+- O mercado normalmente erra quando:
+
+## Prova
+- Experiência real:
+- Dado, caso ou bastidor:
+
+## Estrutura do post
+1. Gancho:
+2. Tensão:
+3. Virada:
+4. Framework:
+5. CTA:
+
+## Recortes
+- LinkedIn:
+- Reels/Shorts:
+- Newsletter:
+
+## Métrica de sucesso
+- Conversas qualificadas, salvamentos ou respostas esperadas:`
+  },
+  {
+    id: 'offer-positioning-lab',
+    title: 'Laboratório de oferta',
+    subtitle: 'Refinar promessa, público e prova antes de vender',
+    type: 'conteudo',
+    tags: ['oferta', 'posicionamento', 'vendas'],
+    content: `# Laboratório de oferta
+
+## Cliente ideal
+- Quem compra mais rápido:
+- Dor com custo financeiro:
+- Situação que cria urgência:
+
+## Promessa
+- De:
+- Para:
+- Sem:
+
+## Provas
+- Prova 1:
+- Força:
+- Onde usar:
+
+## Objeções
+- Preço:
+- Tempo:
+- Confiança:
+
+## Próximo experimento
+- Canal:
+- Mensagem:
+- Critério de vitória:`
+  },
+  {
+    id: 'product-discovery-sprint',
+    title: 'Sprint de descoberta',
+    subtitle: 'Problema, evidência e aposta antes de construir',
+    type: 'produto',
+    tags: ['produto', 'discovery', 'cliente'],
+    content: `# Sprint de descoberta
+
+## Problema
+- Cliente afetado:
+- Dor:
+- Frequência:
+- Custo de não resolver:
+
+## Evidências
+- Fonte:
+- Sinal:
+- Força:
+
+## Hipótese
+- Se entregarmos:
+- Então o usuário:
+- Porque:
+
+## Teste mínimo
+- Formato:
+- Prazo:
+- Métrica:
+
+## Decisão
+- Construir, ajustar ou descartar:`
+  },
+  {
+    id: 'launch-war-room',
+    title: 'Sala de lançamento',
+    subtitle: 'Plano de campanha, riscos e cadência de execução',
+    type: 'produto',
+    tags: ['lancamento', 'go-to-market', 'campanha'],
+    content: `# Sala de lançamento
+
+## Oferta do lançamento
+- Produto:
+- Público:
+- Transformação prometida:
+
+## Narrativa
+- Inimigo comum:
+- Nova crença:
+- Prova:
+
+## Canais
+- Canal:
+- Ativo:
+- Dono:
+- Status:
+
+## Riscos
+- Baixa demanda:
+- Gargalo operacional:
+- Mensagem fraca:
+
+## Cadência
+- [ ] Pré-aquecimento
+- [ ] Abertura
+- [ ] Prova social
+- [ ] Fechamento
+- [ ] Retro`
+  },
+  {
+    id: 'revenue-war-room',
+    title: 'War room de receita',
+    subtitle: 'Pipeline, gargalos comerciais e apostas da semana',
+    type: 'produto',
+    tags: ['receita', 'vendas', 'pipeline'],
+    content: `# War room de receita
+
+## Meta da semana
+- Receita alvo:
+- Gap atual:
+- Principal fonte de crescimento:
+
+## Pipeline
+- Conta:
+- Valor:
+- Etapa:
+- Risco:
+- Próxima ação:
+
+## Gargalo dominante
+- Aquisição, conversão, ticket, ciclo ou retenção:
+
+## Apostas
+- [ ] Aposta 1:
+- [ ] Aposta 2:
+- [ ] Aposta 3:
+
+## Decisão comercial
+- O que vamos parar de fazer:`
+  },
+  {
+    id: 'sales-call-debrief',
+    title: 'Debrief de call comercial',
+    subtitle: 'Diagnóstico, objeções e follow-up que fecha',
+    type: 'referencia',
+    tags: ['vendas', 'call', 'crm'],
+    content: `# Debrief comercial
+
+## Conta
+- Empresa:
+- Pessoa:
+- Contexto:
+- Valor potencial:
+
+## Dor e impacto
+- Dor declarada:
+- Custo de manter igual:
+- Urgência:
+
+## Objeções
+- Objeção:
+- Resposta combinada:
+- Prova necessária:
+
+## Próximo passo
+- Ação:
+- Dono:
+- Data:
+
+## Mensagem de follow-up
+>`
+  },
+  {
+    id: 'customer-interview',
+    title: 'Entrevista com cliente',
+    subtitle: 'Perguntas, sinais e oportunidades reais',
+    type: 'referencia',
+    tags: ['cliente', 'pesquisa', 'insight'],
+    content: `# Entrevista com cliente
+
+## Perfil
+- Cliente:
+- Segmento:
+- Momento da jornada:
+
+## Perguntas essenciais
+1. O que disparou a busca por solução?
+2. O que já tentou antes?
+3. Onde perde dinheiro, tempo ou confiança hoje?
+4. Como mede sucesso?
+
+## Frases exatas
+>
+
+## Sinais
+- Dor forte:
+- Linguagem de compra:
+- Objeção:
+
+## Oportunidade
+- Produto:
+- Conteúdo:
+- Oferta:`
+  },
+  {
+    id: 'board-memo',
+    title: 'Memo para conselho',
+    subtitle: 'Resumo executivo para investidores e advisors',
+    type: 'referencia',
+    tags: ['conselho', 'investidores', 'memo'],
+    content: `# Memo para conselho
+
+## Resumo executivo
+- O que mudou desde o último update:
+- O que precisa de atenção:
+
+## Métricas
+- Receita atual:
+- Crescimento:
+- Caixa:
+- Leitura executiva:
+
+## Decisões em aberto
+-
+
+## Pedidos ao conselho
+- Introduções:
+- Feedback:
+- Decisão:
+
+## Próximos 30 dias
+- [ ] Prioridade 1
+- [ ] Prioridade 2
+- [ ] Prioridade 3`
+  },
+  {
+    id: 'investor-update',
+    title: 'Update para investidores',
+    subtitle: 'Tração, aprendizados, riscos e pedidos objetivos',
+    type: 'referencia',
+    tags: ['investidores', 'update', 'tracao'],
+    content: `# Update para investidores
+
+## TL;DR
+-
+
+## Tração
+- Receita:
+- Clientes:
+- Produto:
+- Distribuição:
+
+## Aprendizados
+- O que validamos:
+- O que invalidamos:
+
+## Riscos
+-
+
+## Pedidos
+- Introdução 1:
+- Introdução 2:
+- Conselho específico:
+
+## Próximo marco
+-`
+  },
+  {
+    id: 'hiring-scorecard',
+    title: 'Scorecard de contratação',
+    subtitle: 'Critérios para decidir sem depender de feeling',
+    type: 'pessoas',
+    tags: ['contratacao', 'pessoas', 'scorecard'],
+    content: `# Scorecard de contratação
+
+## Papel
+- Cargo:
+- Missão em 90 dias:
+- Resultado esperado:
+
+## Critérios
+- Competência técnica:
+- Ownership:
+- Comunicação:
+- Cultura:
+- Evidência decisiva:
+
+## Riscos do candidato
+-
+
+## Decisão
+- Contratar, avançar, manter em pipeline ou recusar:
+- Motivo:`
+  },
+  {
+    id: 'delegation-brief',
+    title: 'Brief de delegação',
+    subtitle: 'Transferir contexto sem perder qualidade',
+    type: 'pessoas',
+    tags: ['delegacao', 'operacao', 'gestao'],
+    content: `# Brief de delegação
+
+## Resultado esperado
+- Entrega:
+- Por que importa:
+- Padrão de qualidade:
+
+## Contexto necessário
+-
+
+## Limites
+- Pode decidir sozinho:
+- Precisa validar comigo:
+- Não fazer:
+
+## Recursos
+- Links:
+- Pessoas:
+- Exemplos:
+
+## Checkpoints
+- [ ] Alinhamento inicial
+- [ ] Revisão intermediária
+- [ ] Entrega final`
+  },
+  {
+    id: 'operating-system-audit',
+    title: 'Auditoria do sistema operacional',
+    subtitle: 'Diagnosticar gargalos de rotina, foco e gestão',
+    type: 'produto',
+    tags: ['operacao', 'sistema', 'produtividade'],
+    content: `# Auditoria do sistema operacional
+
+## Sintoma principal
+- O que está travando:
+
+## Rotinas
+- Planejamento semanal:
+- Revisão diária:
+- Pipeline de decisões:
+- Ajuste prioritário:
+
+## Gargalos
+- Informação:
+- Decisão:
+- Execução:
+- Energia:
+
+## Mudança de sistema
+- Regra nova:
+- Ritual:
+- Métrica de controle:`
+  },
+  {
+    id: 'crisis-command-center',
+    title: 'Centro de crise',
+    subtitle: 'Decidir rápido quando reputação, caixa ou entrega apertam',
+    type: 'produto',
+    tags: ['crise', 'risco', 'decisao'],
+    content: `# Centro de crise
+
+## Situação
+- O que aconteceu:
+- Quem foi afetado:
+- Janela de resposta:
+
+## Fatos confirmados
+-
+
+## Hipóteses não confirmadas
+-
+
+## Plano de resposta
+- Cliente:
+- Operação:
+- Comunicação:
+- Dono:
+- Deadline:
+
+## Mensagem oficial
+>
+
+## Pós-crise
+- Aprendizado:
+- Prevenção:`
+  },
+  {
+    id: 'quarterly-strategy-review',
+    title: 'Revisão estratégica trimestral',
+    subtitle: 'Escolher prioridades e matar distrações',
+    type: 'produto',
+    tags: ['estrategia', 'trimestre', 'prioridades'],
+    content: `# Revisão estratégica trimestral
+
+## Norte
+- Objetivo do trimestre:
+- Métrica que define sucesso:
+
+## Leitura do trimestre anterior
+- Ganhamos porque:
+- Perdemos porque:
+- Surpresa relevante:
+
+## Apostas
+- Aposta:
+- Potencial:
+- Custo:
+- Convicção:
+
+## Não-prioridades
+-
+
+## Decisões
+- Continuar:
+- Começar:
+- Parar:
+
+## Cadência
+- Ritual semanal:
+- Revisão mensal:`
   }
 ];
 
@@ -891,6 +1399,26 @@ function loadCustomTemplatesFromStorage() {
   }
 }
 
+function loadFavoriteTemplateIdsFromStorage() {
+  if (typeof window === 'undefined') {
+    return [] as string[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(FAVORITE_NOTE_TEMPLATES_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.map((entry) => String(entry)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function isFolderScope(scope: FolderScope): scope is string {
   return scope !== 'all' && scope !== 'unfiled';
 }
@@ -957,6 +1485,7 @@ export function NotasPage() {
   const [writerMetaOpen, setWriterMetaOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [customTemplates, setCustomTemplates] = useState<NoteTemplate[]>([]);
+  const [favoriteTemplateIds, setFavoriteTemplateIds] = useState<string[]>([]);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateModalMode, setTemplateModalMode] = useState<TemplateModalMode>('create');
   const [templateEditId, setTemplateEditId] = useState('');
@@ -1451,18 +1980,39 @@ export function NotasPage() {
   }, [smartCollection]);
 
   const allTemplates = useMemo<NoteTemplateRecord[]>(
-    () => [
-      ...NOTE_TEMPLATES.map((template) => ({
-        ...template,
-        kind: 'base' as const
-      })),
-      ...customTemplates.map((template) => ({
-        ...template,
-        kind: 'custom' as const
-      }))
-    ],
-    [customTemplates]
+    () => {
+      const favoriteOrder = new Map(favoriteTemplateIds.map((id, index) => [id, index]));
+      const templates = [
+        ...NOTE_TEMPLATES.map((template) => ({
+          ...template,
+          kind: 'base' as const
+        })),
+        ...PREMIUM_NOTE_TEMPLATES.map((template) => ({
+          ...template,
+          kind: 'base' as const
+        })),
+        ...customTemplates.map((template) => ({
+          ...template,
+          kind: 'custom' as const
+        }))
+      ];
+      const templateOrder = new Map(templates.map((template, index) => [template.id, index]));
+
+      return templates.sort((a, b) => {
+        const aFavorite = favoriteOrder.has(a.id);
+        const bFavorite = favoriteOrder.has(b.id);
+        if (aFavorite !== bFavorite) {
+          return aFavorite ? -1 : 1;
+        }
+        if (aFavorite && bFavorite) {
+          return (favoriteOrder.get(a.id) ?? 0) - (favoriteOrder.get(b.id) ?? 0);
+        }
+        return (templateOrder.get(a.id) ?? 0) - (templateOrder.get(b.id) ?? 0);
+      });
+    },
+    [customTemplates, favoriteTemplateIds]
   );
+  const favoriteTemplateIdSet = useMemo(() => new Set(favoriteTemplateIds), [favoriteTemplateIds]);
 
   const slashCommands = useMemo<SlashCommand[]>(
     () => [
@@ -2522,6 +3072,16 @@ export function NotasPage() {
       return;
     }
     setCustomTemplates((current) => current.filter((template) => template.id !== templateId));
+    setFavoriteTemplateIds((current) => current.filter((id) => id !== templateId));
+  }
+
+  function toggleFavoriteTemplate(templateId: string) {
+    setFavoriteTemplateIds((current) => {
+      if (current.includes(templateId)) {
+        return current.filter((id) => id !== templateId);
+      }
+      return [templateId, ...current];
+    });
   }
 
   useEffect(() => {
@@ -2530,6 +3090,7 @@ export function NotasPage() {
 
   useEffect(() => {
     setCustomTemplates(loadCustomTemplatesFromStorage());
+    setFavoriteTemplateIds(loadFavoriteTemplateIdsFromStorage());
   }, []);
 
   useEffect(() => {
@@ -2538,6 +3099,13 @@ export function NotasPage() {
     }
     window.localStorage.setItem(CUSTOM_NOTE_TEMPLATES_STORAGE_KEY, JSON.stringify(customTemplates));
   }, [customTemplates]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(FAVORITE_NOTE_TEMPLATES_STORAGE_KEY, JSON.stringify(favoriteTemplateIds));
+  }, [favoriteTemplateIds]);
 
   useEffect(() => {
     api
@@ -4072,13 +4640,15 @@ export function NotasPage() {
       return null;
     }
 
+    const favoriteCount = allTemplates.filter((template) => favoriteTemplateIdSet.has(template.id)).length;
+
     return (
       <section className="notes-template-panel">
         <header>
           <div>
             <strong>Templates executivos</strong>
             <small>
-              {allTemplates.length} template(s): base + personalizados para acelerar sua escrita.
+              {allTemplates.length} modelos de alto impacto • {favoriteCount} favorito(s) no topo
             </small>
           </div>
           <div className="notes-template-head-actions">
@@ -4091,12 +4661,30 @@ export function NotasPage() {
           </div>
         </header>
 
-        <div className="notes-template-grid">
-          {allTemplates.map((template) => (
-            <article key={template.id} className="notes-template-card">
-              <div>
-                <h4>{template.title}</h4>
-                <small>{template.subtitle}</small>
+        <div className="notes-template-rail" aria-label="Biblioteca de templates">
+          {allTemplates.map((template, index) => {
+            const isFavorite = favoriteTemplateIdSet.has(template.id);
+
+            return (
+              <article
+                key={template.id}
+                className={`notes-template-card ${isFavorite ? 'favorite' : ''}`}
+                style={{ '--template-index': index } as CSSProperties}
+              >
+                <div className="notes-template-card-head">
+                  <div>
+                    <h4>{template.title}</h4>
+                    <small>{template.subtitle}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className={`notes-template-favorite ${isFavorite ? 'active' : ''}`}
+                    onClick={() => toggleFavoriteTemplate(template.id)}
+                    title={isFavorite ? 'Remover dos favoritos' : 'Favoritar template'}
+                    aria-label={isFavorite ? 'Remover dos favoritos' : 'Favoritar template'}
+                  >
+                    <Star size={15} fill={isFavorite ? 'currentColor' : 'none'} />
+                  </button>
               </div>
               <div className="notes-template-meta">
                 <span className={`notes-template-origin ${template.kind === 'custom' ? 'custom' : 'base'}`}>
@@ -4161,8 +4749,9 @@ export function NotasPage() {
                   </>
                 )}
               </footer>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </section>
     );
