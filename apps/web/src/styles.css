@@ -7673,7 +7673,12 @@ h4 {
 
 .notes-folder-node {
   gap: 3px;
-  padding-left: calc(var(--depth, 0) * 12px);
+  padding-left: calc(var(--depth, 0) * 8px);
+}
+
+.notes-folder-children {
+  margin: 3px 0 0;
+  gap: 3px;
 }
 
 .notes-folder-node-label {
@@ -7681,16 +7686,24 @@ h4 {
 }
 
 .notes-folder-toggle {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-color: transparent;
   border-radius: 7px;
   background: transparent;
   color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .notes-folder-context-btn {
-  opacity: 0.42;
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+}
+
+.notes-folder-node:hover .notes-folder-context-btn,
+.notes-folder-node.active .notes-folder-context-btn {
+  opacity: 0.58;
 }
 
 .notes-app-list {
