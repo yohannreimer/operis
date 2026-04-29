@@ -7575,8 +7575,8 @@ h4 {
 
 .notes-writer-document-head {
   display: grid;
-  gap: 8px;
-  padding: clamp(12px, 3vh, 28px) clamp(8px, 2vw, 24px) 4px;
+  gap: 6px;
+  padding: clamp(8px, 2vh, 18px) clamp(8px, 2vw, 24px) 2px;
 }
 
 .notes-writer-title {
@@ -7584,8 +7584,8 @@ h4 {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  padding: 4px 0;
-  font-size: clamp(2.2rem, 5vw, 4.2rem);
+  padding: 2px 0;
+  font-size: clamp(1.75rem, 3.4vw, 2.85rem);
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 760;
   color: var(--text);
@@ -7602,21 +7602,50 @@ h4 {
 }
 
 .notes-writer-modebar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0 clamp(8px, 2vw, 24px) 8px;
+  padding: 0 clamp(8px, 2vw, 24px) 10px;
 }
 
-.notes-writer-contextbar {
-  display: flex;
+.notes-writer-export-actions {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 40px;
-  padding: 2px clamp(8px, 2vw, 24px);
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.notes-writer-export-actions button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.notes-writer-export-actions button:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.notes-writer-export-actions .notes-copy-feedback {
+  min-height: 30px;
+  margin-left: 4px;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 0.74rem;
 }
 
 .notes-writer-editor {
@@ -7662,7 +7691,7 @@ h4 {
 }
 
 .notes-writer-editor-wrap .bn-editor {
-  min-height: calc(100vh - 340px);
+  min-height: calc(100vh - 286px);
   border: 0;
   border-radius: 8px;
   outline: none;
@@ -8407,16 +8436,23 @@ textarea.operis-block-field-input {
 
   .notes-writer-document-head,
   .notes-writer-modebar,
-  .notes-writer-contextbar,
   .notes-writer-editor-wrap {
     padding-left: 0;
     padding-right: 0;
   }
 
-  .notes-writer-modebar,
-  .notes-writer-contextbar {
+  .notes-writer-modebar {
     align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .notes-writer-export-actions {
+    justify-content: stretch;
+    overflow-x: auto;
+  }
+
+  .notes-writer-export-actions button {
+    flex: 1;
   }
 
   .notes-template-head-actions {

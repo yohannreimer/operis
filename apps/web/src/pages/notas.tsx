@@ -50,7 +50,6 @@ import { DiagramCanvas } from '../components/diagram-canvas';
 import { MindMapCanvas } from '../components/mindmap-canvas';
 import {
   legacyContentToBlocks,
-  OPERIS_BLOCK_SNIPPETS,
   OperisBlock,
   OperisBlockEditor,
   OperisBlockEditorValue,
@@ -4996,72 +4995,18 @@ export function NotasPage() {
                     onClick={() => handleModeChange('whiteboard')}
                   >Lousa</button>
                 </div>
-                <button
-                  type="button"
-                  className="canvas-fullscreen-btn"
-                  title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
-                  onClick={toggleFullscreen}
-                >{isFullscreen ? 'Sair' : 'Tela cheia'}</button>
-              </div>
-
-              {canvasMode === 'text' && (
-                <div className="notes-writer-contextbar" role="toolbar" aria-label="Acoes de escrita">
-                  <div className="notes-writer-quickblocks">
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => appendBlocksToEditor([{ type: 'checkListItem', props: { checked: false }, content: '' }])}
-                    >
-                      Checklist
-                    </button>
-                    <button type="button" className="ghost-button" onClick={openTableBuilder}>
-                      Tabela
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.decision)}
-                    >
-                      Decisão
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.retro)}
-                    >
-                      Retro
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() =>
-                        appendBlocksToEditor([
-                          {
-                            type: 'paragraph',
-                            content: `Data: ${new Date().toLocaleDateString('pt-BR')}`
-                          }
-                        ])
-                      }
-                    >
-                      Data
-                    </button>
-                  </div>
-                  <div className="notes-writer-format-actions">
-                    <button type="button" className="ghost-button" onClick={copyNoteContent} title="Copiar nota completa">
+                {canvasMode === 'text' && (
+                  <div className="notes-writer-export-actions" role="toolbar" aria-label="Exportar nota">
+                    <button type="button" onClick={copyNoteContent} title="Copiar nota completa">
                       Copiar
                     </button>
-                    <button type="button" className="ghost-button" onClick={exportNoteAsTxt} title="Exportar TXT">
+                    <button type="button" onClick={exportNoteAsTxt} title="Exportar TXT">
                       TXT
                     </button>
-                    <button type="button" className="ghost-button" onClick={exportNoteAsPdf} title="Exportar PDF">
+                    <button type="button" onClick={exportNoteAsPdf} title="Exportar PDF">
                       PDF
                     </button>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={exportNoteToWhatsApp}
-                      title="Copiar formato WhatsApp"
-                    >
+                    <button type="button" onClick={exportNoteToWhatsApp} title="Copiar formato WhatsApp">
                       WhatsApp
                     </button>
                     {clipboardFeedback !== 'idle' && (
@@ -5070,8 +5015,14 @@ export function NotasPage() {
                       </span>
                     )}
                   </div>
-                </div>
-              )}
+                )}
+                <button
+                  type="button"
+                  className="canvas-fullscreen-btn"
+                  title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                  onClick={toggleFullscreen}
+                >{isFullscreen ? 'Sair' : 'Tela cheia'}</button>
+              </div>
 
               <div className="canvas-area" style={{ display: canvasMode === 'diagram' ? '' : 'none' }}>
                   {diagramState === 'loading' && (
