@@ -7672,8 +7672,18 @@ h4 {
 }
 
 .notes-folder-node {
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 2px;
   padding-left: calc(var(--depth, 0) * 8px);
+}
+
+.notes-folder-node-main {
+  min-width: 0;
+}
+
+.notes-folder-context-wrap {
+  align-self: center;
+  justify-self: end;
 }
 
 .notes-folder-children {
