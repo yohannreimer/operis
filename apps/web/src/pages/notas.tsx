@@ -4847,13 +4847,6 @@ export function NotasPage() {
           ) : (
             <section className="notes-writer-shell">
             <form className={`notes-writer-form${isFullscreen ? ' fullscreen-mode' : ''}`} onSubmit={saveNote}>
-              <div className="notes-writer-meta-line">
-                <span>Atualização: {formatDateTimeLabel(lastSavedAt ?? selectedNote.updatedAt)}</span>
-                <span>
-                  {contentPlain.trim().split(/\s+/).filter(Boolean).length} palavra(s) • {contentPlain.length} caractere(s)
-                </span>
-              </div>
-
               {recordingOpen && (
                 <section className="notes-recording-panel">
                   <header>
@@ -4964,111 +4957,121 @@ export function NotasPage() {
                 </section>
               )}
 
-              <input
-                className="notes-writer-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Título da nota"
-                required
-              />
+              <section className="notes-writer-document-head">
+                <input
+                  className="notes-writer-title"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Untitled"
+                  required
+                />
+                <div className="notes-writer-meta-line">
+                  <span>Atualizado {formatDateTimeLabel(lastSavedAt ?? selectedNote.updatedAt)}</span>
+                  <span>
+                    {contentPlain.trim().split(/\s+/).filter(Boolean).length} palavra(s) • {contentPlain.length} caractere(s)
+                  </span>
+                </div>
+              </section>
 
-              {/* Canvas mode toggle */}
-              <div className="canvas-mode-toggle">
+              <div className="notes-writer-modebar">
+                <div className="canvas-mode-toggle" role="tablist" aria-label="Modo da nota">
+                  <button
+                    type="button"
+                    className={`canvas-mode-btn ${canvasMode === 'text' ? 'active' : ''}`}
+                    onClick={() => handleModeChange('text')}
+                  >Texto</button>
+                  <button
+                    type="button"
+                    className={`canvas-mode-btn ${canvasMode === 'diagram' ? 'active' : ''}`}
+                    onClick={() => handleModeChange('diagram')}
+                  >Diagrama</button>
+                  <button
+                    type="button"
+                    className={`canvas-mode-btn ${canvasMode === 'mindmap' ? 'active' : ''}`}
+                    onClick={() => handleModeChange('mindmap')}
+                  >Mapa Mental</button>
+                  <button
+                    type="button"
+                    className={`canvas-mode-btn ${canvasMode === 'whiteboard' ? 'active' : ''}`}
+                    onClick={() => handleModeChange('whiteboard')}
+                  >Lousa</button>
+                </div>
                 <button
-                  className={`canvas-mode-btn ${canvasMode === 'text' ? 'active' : ''}`}
-                  onClick={() => handleModeChange('text')}
-                >≡ Texto</button>
-                <button
-                  className={`canvas-mode-btn ${canvasMode === 'diagram' ? 'active' : ''}`}
-                  onClick={() => handleModeChange('diagram')}
-                >⬡ Diagrama</button>
-                <button
-                  className={`canvas-mode-btn ${canvasMode === 'mindmap' ? 'active' : ''}`}
-                  onClick={() => handleModeChange('mindmap')}
-                >✦ Mapa Mental</button>
-                <button
-                  className={`canvas-mode-btn ${canvasMode === 'whiteboard' ? 'active' : ''}`}
-                  onClick={() => handleModeChange('whiteboard')}
-                >✏ Lousa</button>
-                <button
+                  type="button"
                   className="canvas-fullscreen-btn"
                   title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
                   onClick={toggleFullscreen}
-                >{isFullscreen ? '⊠' : '⛶'}</button>
+                >{isFullscreen ? 'Sair' : 'Tela cheia'}</button>
               </div>
 
-              {canvasMode === 'text' && <div className="notes-writer-formatbar" role="toolbar" aria-label="Formatacao de texto">
-                <div className="notes-writer-format-actions">
-                  <button type="button" className="ghost-button" onClick={copyNoteContent} title="Copiar nota completa">
-                    Copiar
-                  </button>
-                  <button type="button" className="ghost-button" onClick={exportNoteAsTxt} title="Exportar TXT">
-                    TXT
-                  </button>
-                  <button type="button" className="ghost-button" onClick={exportNoteAsPdf} title="Exportar PDF">
-                    PDF
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={exportNoteToWhatsApp}
-                    title="Copiar formato WhatsApp"
-                  >
-                    WhatsApp
-                  </button>
-                  {clipboardFeedback !== 'idle' && (
-                    <span className="notes-copy-feedback" role="status" aria-live="polite">
-                      {clipboardFeedback === 'copy' ? 'Copiado' : 'WhatsApp copiado'}
-                    </span>
-                  )}
-                </div>
-
-              </div>} {/* end canvasMode === 'text' formatbar */}
-
-              {canvasMode === 'text' && <div className="notes-writer-quickblocks">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => appendBlocksToEditor([{ type: 'checkListItem', props: { checked: false }, content: '' }])}
-                >
-                  + Checklist
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={openTableBuilder}
-                >
-                  + Tabela
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.decision)}
-                >
-                  + Decisão
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.retro)}
-                >
-                  + Retro
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() =>
-                    appendBlocksToEditor([
-                      {
-                        type: 'paragraph',
-                        content: `Data: ${new Date().toLocaleDateString('pt-BR')}`
+              {canvasMode === 'text' && (
+                <div className="notes-writer-contextbar" role="toolbar" aria-label="Acoes de escrita">
+                  <div className="notes-writer-quickblocks">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => appendBlocksToEditor([{ type: 'checkListItem', props: { checked: false }, content: '' }])}
+                    >
+                      Checklist
+                    </button>
+                    <button type="button" className="ghost-button" onClick={openTableBuilder}>
+                      Tabela
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.decision)}
+                    >
+                      Decisão
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => appendBlocksToEditor(OPERIS_BLOCK_SNIPPETS.retro)}
+                    >
+                      Retro
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() =>
+                        appendBlocksToEditor([
+                          {
+                            type: 'paragraph',
+                            content: `Data: ${new Date().toLocaleDateString('pt-BR')}`
+                          }
+                        ])
                       }
-                    ])
-                  }
-                >
-                  + Data
-                </button>
-              </div>} {/* end canvasMode === 'text' quickblocks */}
+                    >
+                      Data
+                    </button>
+                  </div>
+                  <div className="notes-writer-format-actions">
+                    <button type="button" className="ghost-button" onClick={copyNoteContent} title="Copiar nota completa">
+                      Copiar
+                    </button>
+                    <button type="button" className="ghost-button" onClick={exportNoteAsTxt} title="Exportar TXT">
+                      TXT
+                    </button>
+                    <button type="button" className="ghost-button" onClick={exportNoteAsPdf} title="Exportar PDF">
+                      PDF
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={exportNoteToWhatsApp}
+                      title="Copiar formato WhatsApp"
+                    >
+                      WhatsApp
+                    </button>
+                    {clipboardFeedback !== 'idle' && (
+                      <span className="notes-copy-feedback" role="status" aria-live="polite">
+                        {clipboardFeedback === 'copy' ? 'Copiado' : 'WhatsApp copiado'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="canvas-area" style={{ display: canvasMode === 'diagram' ? '' : 'none' }}>
                   {diagramState === 'loading' && (
