@@ -7614,38 +7614,42 @@ h4 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 9px;
-  padding: 3px;
-  background: rgba(255, 255, 255, 0.025);
+  gap: 4px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .notes-writer-export-actions button {
-  min-height: 30px;
+  min-height: 32px;
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--muted);
-  padding: 5px 9px;
+  color: var(--text-muted);
+  padding: 6px 9px;
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .notes-writer-export-actions button:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text);
 }
 
 .notes-writer-export-actions .notes-copy-feedback {
-  min-height: 30px;
-  margin-left: 4px;
+  min-height: 32px;
+  margin-left: 2px;
   border-radius: 7px;
-  padding: 5px 8px;
-  font-size: 0.74rem;
+  padding: 6px 9px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1;
 }
 
 .notes-writer-editor {
