@@ -7628,6 +7628,7 @@ h4 {
   background: transparent;
   color: var(--text-muted);
   padding: 6px 9px;
+  box-shadow: none;
   font: inherit;
   font-size: 0.84rem;
   font-weight: 650;
@@ -7638,7 +7639,9 @@ h4 {
 
 .notes-writer-export-actions button:hover {
   background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
   color: var(--text);
+  transform: none;
 }
 
 .notes-writer-export-actions .notes-copy-feedback {
@@ -7714,29 +7717,146 @@ h4 {
   color: var(--text);
 }
 
+.notes-writer-editor-wrap .bn-block-content:has(.operis-block-card) {
+  width: min(740px, 100%);
+}
+
 .operis-block-card {
   display: grid;
+  gap: 12px;
+  width: min(740px, 100%);
+  margin: 10px 0;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 10px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.operis-block-head {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 10px;
-  margin: 8px 0;
+}
+
+.operis-block-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 3px solid var(--accent);
   border-radius: 8px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+}
+
+.operis-block-icon-decision {
+  color: #93c5fd;
+  background: rgba(79, 124, 255, 0.11);
+  border-color: rgba(79, 124, 255, 0.22);
+}
+
+.operis-block-icon-risk {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.11);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+
+.operis-block-icon-next-step,
+.operis-block-icon-checklist {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.operis-block-icon-insight {
+  color: #fcd34d;
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.2);
+}
+
+.operis-block-icon-meeting {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+.operis-block-icon-task {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.2);
 }
 
 .operis-block-kicker {
-  color: var(--muted);
-  font-size: 0.72rem;
+  display: block;
+  color: var(--text);
+  font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
 }
 
+.operis-block-caption {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.operis-block-head-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.operis-block-status {
+  min-height: 26px;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.operis-block-status.done {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+}
+
+.operis-block-status:hover {
+  transform: none;
+  box-shadow: none;
+  filter: brightness(1.08);
+}
+
 .operis-block-title {
   min-height: 1.5em;
   color: var(--text);
-  font-weight: 650;
+  font-size: 1.03rem;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.operis-block-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.operis-block-fields-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .operis-block-field {
@@ -7746,18 +7866,20 @@ h4 {
 
 .operis-block-field-label {
   color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-transform: uppercase;
 }
 
 .operis-block-field-input {
   width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   color: var(--text);
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.14);
   font: inherit;
+  font-size: 0.9rem;
   line-height: 1.45;
 }
 
@@ -7766,31 +7888,34 @@ textarea.operis-block-field-input {
 }
 
 .operis-block-field-input:focus {
-  border-color: rgba(79, 124, 255, 0.62);
+  border-color: rgba(249, 115, 22, 0.42);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.12);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
 }
 
 .operis-block-decision {
-  border-left-color: #4f7cff;
+  border-color: rgba(79, 124, 255, 0.16);
 }
 
 .operis-block-risk {
-  border-left-color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.16);
 }
 
 .operis-block-next-step,
 .operis-block-executive-checklist {
-  border-left-color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.14);
 }
 
 .operis-block-insight {
-  border-left-color: #06b6d4;
+  border-color: rgba(234, 179, 8, 0.16);
 }
 
-.operis-block-meeting,
+.operis-block-meeting {
+  border-color: rgba(139, 92, 246, 0.14);
+}
+
 .operis-block-linked-task {
-  border-left-color: #a78bfa;
+  border-color: rgba(249, 115, 22, 0.14);
 }
 
 .notes-writer-meta {
@@ -8457,6 +8582,19 @@ textarea.operis-block-field-input {
 
   .notes-writer-export-actions button {
     flex: 1;
+  }
+
+  .operis-block-head {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .operis-block-head-action {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .operis-block-fields-two {
+    grid-template-columns: 1fr;
   }
 
   .notes-template-head-actions {

@@ -1,5 +1,14 @@
 import { BlockNoteSchema, defaultBlockSpecs, type BlockNoteEditor } from '@blocknote/core';
 import { createReactBlockSpec } from '@blocknote/react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardCheck,
+  Lightbulb,
+  Link2,
+  ListChecks,
+  Users
+} from 'lucide-react';
 import type React from 'react';
 
 type PropEditorProps = {
@@ -41,6 +50,58 @@ function PropEditor({ block, editor, field, label, placeholder, multiline = fals
   );
 }
 
+type BlockChromeProps = {
+  tone: 'decision' | 'next-step' | 'risk' | 'insight' | 'meeting' | 'checklist' | 'task';
+  icon: React.ReactNode;
+  label: string;
+  caption: string;
+  children?: React.ReactNode;
+};
+
+function BlockChrome({ tone, icon, label, caption, children }: BlockChromeProps) {
+  return (
+    <div className="operis-block-head">
+      <span className={`operis-block-icon operis-block-icon-${tone}`} aria-hidden="true">
+        {icon}
+      </span>
+      <span>
+        <span className="operis-block-kicker">{label}</span>
+        <span className="operis-block-caption">{caption}</span>
+      </span>
+      {children ? <span className="operis-block-head-action">{children}</span> : null}
+    </div>
+  );
+}
+
+function StatusToggle({
+  block,
+  editor
+}: {
+  block: { props: Record<string, string> };
+  editor: BlockNoteEditor<any, any, any>;
+}) {
+  const done = block.props.status === 'done';
+
+  return (
+    <button
+      type="button"
+      className={`operis-block-status ${done ? 'done' : ''}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        editor.updateBlock(block as any, {
+          props: {
+            ...block.props,
+            status: done ? 'open' : 'done'
+          }
+        } as any);
+      }}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      {done ? 'Feito' : 'Aberto'}
+    </button>
+  );
+}
+
 const OperisDecision = createReactBlockSpec(
   {
     type: 'operisDecision',
@@ -54,23 +115,30 @@ const OperisDecision = createReactBlockSpec(
   {
     render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-decision">
-        <div className="operis-block-kicker">Decisão</div>
+        <BlockChrome
+          tone="decision"
+          icon={<ClipboardCheck size={16} />}
+          label="Decisão"
+          caption="Escolha tomada, motivo e saída operacional"
+        />
         <div className="operis-block-title" ref={contentRef} />
-        <PropEditor
-          block={block}
-          editor={editor}
-          field="reason"
-          label="Motivo"
-          placeholder="Contexto da decisão"
-          multiline
-        />
-        <PropEditor
-          block={block}
-          editor={editor}
-          field="nextStep"
-          label="Próximo passo"
-          placeholder="Ação recomendada"
-        />
+        <div className="operis-block-fields">
+          <PropEditor
+            block={block}
+            editor={editor}
+            field="reason"
+            label="Motivo"
+            placeholder="Contexto, trade-off ou critério usado"
+            multiline
+          />
+          <PropEditor
+            block={block}
+            editor={editor}
+            field="nextStep"
+            label="Próximo passo"
+            placeholder="Ação, dono ou data de revisão"
+          />
+        </div>
       </section>
     )
   }
@@ -86,9 +154,16 @@ const OperisNextStep = createReactBlockSpec(
     content: 'inline'
   },
   {
-    render: ({ block, contentRef }) => (
+    render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-next-step">
-        <div className="operis-block-kicker">{block.props.status === 'done' ? 'Próximo passo feito' : 'Próximo passo'}</div>
+        <BlockChrome
+          tone="next-step"
+          icon={<CheckCircle2 size={16} />}
+          label="Próximo passo"
+          caption="Ação executável derivada da nota"
+        >
+          <StatusToggle block={block} editor={editor} />
+        </BlockChrome>
         <div className="operis-block-title" ref={contentRef} />
       </section>
     )
@@ -108,24 +183,31 @@ const OperisRisk = createReactBlockSpec(
   {
     render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-risk">
-        <div className="operis-block-kicker">Risco</div>
+        <BlockChrome
+          tone="risk"
+          icon={<AlertTriangle size={16} />}
+          label="Risco"
+          caption="Sinal, impacto provável e resposta"
+        />
         <div className="operis-block-title" ref={contentRef} />
-        <PropEditor
-          block={block}
-          editor={editor}
-          field="impact"
-          label="Impacto"
-          placeholder="Impacto esperado"
-          multiline
-        />
-        <PropEditor
-          block={block}
-          editor={editor}
-          field="mitigation"
-          label="Mitigação"
-          placeholder="Plano de mitigação"
-          multiline
-        />
+        <div className="operis-block-fields operis-block-fields-two">
+          <PropEditor
+            block={block}
+            editor={editor}
+            field="impact"
+            label="Impacto"
+            placeholder="O que muda se acontecer"
+            multiline
+          />
+          <PropEditor
+            block={block}
+            editor={editor}
+            field="mitigation"
+            label="Mitigação"
+            placeholder="Como reduzir ou contornar"
+            multiline
+          />
+        </div>
       </section>
     )
   }
@@ -142,7 +224,12 @@ const OperisInsight = createReactBlockSpec(
   {
     render: ({ contentRef }) => (
       <blockquote className="operis-block-card operis-block-insight">
-        <div className="operis-block-kicker">Insight</div>
+        <BlockChrome
+          tone="insight"
+          icon={<Lightbulb size={16} />}
+          label="Insight"
+          caption="Aprendizado, padrão percebido ou hipótese"
+        />
         <div className="operis-block-title" ref={contentRef} />
       </blockquote>
     )
@@ -162,23 +249,30 @@ const OperisMeeting = createReactBlockSpec(
   {
     render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-meeting">
-        <div className="operis-block-kicker">{block.props.title || 'Reunião'}</div>
+        <BlockChrome
+          tone="meeting"
+          icon={<Users size={16} />}
+          label={block.props.title || 'Reunião'}
+          caption="Resumo, pessoas envolvidas e pauta"
+        />
         <div className="operis-block-title" ref={contentRef} />
-        <PropEditor
-          block={block}
-          editor={editor}
-          field="participants"
-          label="Participantes"
-          placeholder="Quem participou"
-        />
-        <PropEditor
-          block={block}
-          editor={editor}
-          field="agenda"
-          label="Pauta"
-          placeholder="Pontos principais"
-          multiline
-        />
+        <div className="operis-block-fields">
+          <PropEditor
+            block={block}
+            editor={editor}
+            field="participants"
+            label="Participantes"
+            placeholder="Quem participou"
+          />
+          <PropEditor
+            block={block}
+            editor={editor}
+            field="agenda"
+            label="Pauta"
+            placeholder="Pontos tratados ou decisões esperadas"
+            multiline
+          />
+        </div>
       </section>
     )
   }
@@ -195,7 +289,12 @@ const OperisExecutiveChecklist = createReactBlockSpec(
   {
     render: ({ block, contentRef }) => (
       <section className="operis-block-card operis-block-executive-checklist">
-        <div className="operis-block-kicker">{block.props.label}</div>
+        <BlockChrome
+          tone="checklist"
+          icon={<ListChecks size={16} />}
+          label={block.props.label}
+          caption="Critérios de revisão antes de avançar"
+        />
         <div className="operis-block-title" ref={contentRef} />
       </section>
     )
@@ -215,10 +314,17 @@ const OperisLinkedTask = createReactBlockSpec(
   {
     render: ({ block, editor, contentRef }) => (
       <section className="operis-block-card operis-block-linked-task">
-        <div className="operis-block-kicker">Tarefa vinculada</div>
+        <BlockChrome
+          tone="task"
+          icon={<Link2 size={16} />}
+          label="Tarefa vinculada"
+          caption="Conexão manual com uma tarefa do Operis"
+        />
         <div className="operis-block-title" ref={contentRef} />
-        <PropEditor block={block} editor={editor} field="status" label="Status" placeholder="Status da tarefa" />
-        <PropEditor block={block} editor={editor} field="taskId" label="ID" placeholder="ID interno" />
+        <div className="operis-block-fields operis-block-fields-two">
+          <PropEditor block={block} editor={editor} field="status" label="Status" placeholder="open, doing ou done" />
+          <PropEditor block={block} editor={editor} field="taskId" label="ID da tarefa" placeholder="ID interno" />
+        </div>
       </section>
     )
   }

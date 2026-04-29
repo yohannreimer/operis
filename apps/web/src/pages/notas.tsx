@@ -4997,16 +4997,16 @@ export function NotasPage() {
                 </div>
                 {canvasMode === 'text' && (
                   <div className="notes-writer-export-actions" role="toolbar" aria-label="Exportar nota">
-                    <button type="button" onClick={copyNoteContent} title="Copiar nota completa">
+                    <button className="notes-writer-export-btn" type="button" onClick={copyNoteContent} title="Copiar nota completa">
                       Copiar
                     </button>
-                    <button type="button" onClick={exportNoteAsTxt} title="Exportar TXT">
+                    <button className="notes-writer-export-btn" type="button" onClick={exportNoteAsTxt} title="Exportar TXT">
                       TXT
                     </button>
-                    <button type="button" onClick={exportNoteAsPdf} title="Exportar PDF">
+                    <button className="notes-writer-export-btn" type="button" onClick={exportNoteAsPdf} title="Exportar PDF">
                       PDF
                     </button>
-                    <button type="button" onClick={exportNoteToWhatsApp} title="Copiar formato WhatsApp">
+                    <button className="notes-writer-export-btn" type="button" onClick={exportNoteToWhatsApp} title="Copiar formato WhatsApp">
                       WhatsApp
                     </button>
                     {clipboardFeedback !== 'idle' && (
