@@ -11,9 +11,26 @@ import {
   getEngineVariant,
   getProjectTypeConfig,
   methodologyDisplayLabel,
-  methodologyIcon,
 } from '../project-engines';
 import type { WizardField } from '../project-engines';
+import {
+  BadgeDollarSign,
+  Funnel,
+  GitBranch,
+  Globe2,
+  GraduationCap,
+  Megaphone,
+  PackageCheck,
+  Repeat2,
+  Scale,
+  SearchCheck,
+  ShieldCheck,
+  Target,
+  Timer,
+  TrendingUp,
+  Trophy,
+  type LucideIcon
+} from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -55,6 +72,44 @@ import { workspaceQuery } from '../utils/workspace';
 
 type CreateEntity = 'project' | 'task';
 type ProjectCreateStep = 1 | 2 | 3;
+
+const PROJECT_METHODOLOGY_ICONS: Partial<Record<ProjectMethodology, LucideIcon>> = {
+  fourdx: Target,
+  entrega: PackageCheck,
+  exploracao: SearchCheck,
+  pipeline: GitBranch,
+  captacao: BadgeDollarSign,
+  campanha: Megaphone,
+  processo: Repeat2,
+  okr: Trophy,
+  decisao: Scale,
+  mentoria: GraduationCap,
+  autoridade: ShieldCheck,
+  cenario: Globe2,
+  runway: Timer,
+  sistema_receita: TrendingUp,
+  funil: Funnel,
+  delivery: PackageCheck,
+  launch: Megaphone,
+  discovery: SearchCheck,
+  growth: TrendingUp
+};
+
+const PROJECT_REDESIGN_PREVIEW = false;
+
+function ProjectMethodologyIcon({
+  methodology,
+  className = 'project-methodology-icon',
+  size = 18
+}: {
+  methodology?: ProjectMethodology | null;
+  className?: string;
+  size?: number;
+}) {
+  const Icon = (methodology ? PROJECT_METHODOLOGY_ICONS[methodology] : null) ?? Target;
+  return <Icon className={className} size={size} strokeWidth={2} aria-hidden="true" />;
+}
+
 type FrameworkExtraFieldConfig = {
   key: string;
   label: string;
@@ -2577,7 +2632,7 @@ export function ProjetosPage() {
     const methodPreview = PROJECT_METHOD_PANEL_PREVIEW[newProjectMethodology] ?? PROJECT_METHOD_PANEL_PREVIEW['fourdx']!;
 
     // Header badge for both legacy and new types
-    const typeLabel = typeConfig ? `${typeConfig.icon} ${typeConfig.label}` : methodologyMeta.label;
+    const typeLabel = typeConfig ? typeConfig.label : methodologyMeta.label;
     const typeTagline = typeConfig?.tagline ?? methodologyMeta.subtitle;
 
     return (
@@ -2603,7 +2658,10 @@ export function ProjetosPage() {
         {/* Current type badge */}
         <div className="project-methodology-current compact">
           <div className="project-methodology-current-head">
-            <strong>{typeLabel}</strong>
+            <div className="project-methodology-title">
+              <ProjectMethodologyIcon methodology={newProjectMethodology} size={17} />
+              <strong>{typeLabel}</strong>
+            </div>
             <small>{typeTagline}</small>
           </div>
           <button type="button" className="ghost-button" onClick={reopenMethodologyPickerFromForm}>
@@ -2871,7 +2929,9 @@ export function ProjetosPage() {
             className={`project-type-card${newProjectMethodology === typeConfig.key ? ' selected' : ''}`}
             onClick={() => startCreateProjectWithMethodology(typeConfig.key)}
           >
-            <span className="project-type-card-icon">{typeConfig.icon}</span>
+            <span className="project-type-card-icon">
+              <ProjectMethodologyIcon methodology={typeConfig.key} size={19} />
+            </span>
             <strong className="project-type-card-label">{typeConfig.label}</strong>
             <span className="project-type-card-tagline">{typeConfig.tagline}</span>
             <span className="project-type-card-example">{typeConfig.example}</span>
@@ -3789,6 +3849,546 @@ export function ProjetosPage() {
     }
   }
 
+  function renderDeliveryPreviewStudio(md: MethodologyData) {
+    if (!selectedProject) return null;
+    const milestones = [...(md.milestones ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const blockers = md.blockers ?? [];
+    const openBlockers = blockers.filter((blocker) => !blocker.resolvedAt);
+    const done = milestones.filter((milestone) => milestone.done).length;
+    const total = milestones.length;
+    const progress = total > 0 ? Math.round((done / total) * 100) : 0;
+    const daysLeft = daysRemaining(selectedProject.timeHorizonEnd);
+    const nextMilestone =
+      milestones.find((milestone) => !milestone.done && milestone.critical) ??
+      milestones.find((milestone) => !milestone.done) ??
+      null;
+    const statusLabel =
+      total === 0
+        ? 'Sem plano de entrega'
+        : progress === 100
+          ? 'Entrega concluída'
+          : openBlockers.length > 0
+            ? 'Com bloqueios ativos'
+            : nextMilestone?.critical
+              ? 'Marco crítico pendente'
+              : 'Em execução';
+
+    return (
+      <div className="project-redesign-shell delivery-os-preview">
+        <section className="project-redesign-hero">
+          <div className="project-redesign-hero-copy">
+            <span className="project-redesign-kicker">Entrega OS · preview</span>
+            <h3>{statusLabel}</h3>
+            <p>
+              {selectedProject.objective ||
+                'Transforme a entrega em marcos claros, bloqueios visíveis e uma definição de pronto que evita ambiguidade.'}
+            </p>
+          </div>
+          <div className="project-redesign-hero-metrics">
+            <div>
+              <span>Progresso</span>
+              <strong>{progress}%</strong>
+            </div>
+            <div>
+              <span>Marcos</span>
+              <strong>{done}/{total}</strong>
+            </div>
+            <div className={openBlockers.length > 0 ? 'is-warn' : ''}>
+              <span>Bloqueios</span>
+              <strong>{openBlockers.length}</strong>
+            </div>
+            <div className={daysLeft !== null && daysLeft < 7 ? 'is-warn' : ''}>
+              <span>Prazo</span>
+              <strong>{daysLeft === null ? 'sem' : daysLeft >= 0 ? `D-${daysLeft}` : `+${Math.abs(daysLeft)}d`}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="project-redesign-next">
+          <div>
+            <span className="project-redesign-section-label">Próximo avanço</span>
+            <strong>
+              {nextMilestone
+                ? nextMilestone.title
+                : total === 0
+                  ? 'Definir o primeiro marco da entrega'
+                  : 'Revisar e encerrar a entrega'}
+            </strong>
+            <p>
+              {openBlockers.length > 0
+                ? `${openBlockers.length} bloqueio(s) ainda travando a execução.`
+                : nextMilestone?.critical
+                  ? 'Este é o ponto crítico que decide se a entrega anda ou atrasa.'
+                  : 'A tela sempre deixa claro qual peça precisa andar agora.'}
+            </p>
+          </div>
+          <div className="project-redesign-actions">
+            <button type="button" onClick={() => openQuickAdd('milestone')}>
+              + Marco
+            </button>
+            <button type="button" className="secondary" onClick={() => openQuickAdd('blocker')}>
+              + Bloqueio
+            </button>
+          </div>
+        </section>
+
+        {engineQuickAdd.type === 'milestone' && (
+          <div className="project-redesign-inline-form">
+            <input
+              autoFocus
+              placeholder="Novo marco da entrega..."
+              value={engineQuickAdd.draft.title ?? ''}
+              onChange={e => setQuickDraft('title', e.target.value)}
+              onKeyDown={async e => {
+                if (e.key === 'Enter' && engineQuickAdd.draft.title?.trim()) {
+                  setBusy(true);
+                  try {
+                    await api.addMethodologyItem(selectedProject.id, {
+                      arrayKey: 'milestones',
+                      item: { title: engineQuickAdd.draft.title.trim(), done: false, critical: engineQuickAdd.draft.critical === '1', order: milestones.length }
+                    });
+                    closeQuickAdd();
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }
+                if (e.key === 'Escape') closeQuickAdd();
+              }}
+            />
+            <label>
+              <input
+                type="checkbox"
+                checked={engineQuickAdd.draft.critical === '1'}
+                onChange={e => setQuickDraft('critical', e.target.checked ? '1' : '')}
+              />
+              crítico
+            </label>
+            <button
+              type="button"
+              disabled={busy || !engineQuickAdd.draft.title?.trim()}
+              onClick={async () => {
+                if (!engineQuickAdd.draft.title?.trim()) return;
+                setBusy(true);
+                try {
+                  await api.addMethodologyItem(selectedProject.id, {
+                    arrayKey: 'milestones',
+                    item: { title: engineQuickAdd.draft.title.trim(), done: false, critical: engineQuickAdd.draft.critical === '1', order: milestones.length }
+                  });
+                  closeQuickAdd();
+                  await refetchProject();
+                } finally { setBusy(false); }
+              }}
+            >
+              Adicionar
+            </button>
+          </div>
+        )}
+
+        {engineQuickAdd.type === 'blocker' && (
+          <div className="project-redesign-inline-form">
+            <input
+              autoFocus
+              placeholder="O que está bloqueando a entrega?"
+              value={engineQuickAdd.draft.title ?? ''}
+              onChange={e => setQuickDraft('title', e.target.value)}
+              onKeyDown={async e => {
+                if (e.key === 'Enter' && engineQuickAdd.draft.title?.trim()) {
+                  setBusy(true);
+                  try {
+                    await api.addMethodologyItem(selectedProject.id, {
+                      arrayKey: 'blockers',
+                      item: { title: engineQuickAdd.draft.title.trim(), resolvedAt: null }
+                    });
+                    closeQuickAdd();
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }
+                if (e.key === 'Escape') closeQuickAdd();
+              }}
+            />
+            <button
+              type="button"
+              disabled={busy || !engineQuickAdd.draft.title?.trim()}
+              onClick={async () => {
+                if (!engineQuickAdd.draft.title?.trim()) return;
+                setBusy(true);
+                try {
+                  await api.addMethodologyItem(selectedProject.id, {
+                    arrayKey: 'blockers',
+                    item: { title: engineQuickAdd.draft.title.trim(), resolvedAt: null }
+                  });
+                  closeQuickAdd();
+                  await refetchProject();
+                } finally { setBusy(false); }
+              }}
+            >
+              Registrar
+            </button>
+          </div>
+        )}
+
+        <section className="delivery-os-grid">
+          <article className="project-redesign-panel delivery-os-plan">
+            <header>
+              <div>
+                <span className="project-redesign-section-label">Plano de entrega</span>
+                <h4>Marcos</h4>
+              </div>
+              <span>{done}/{total}</span>
+            </header>
+
+            {milestones.length === 0 ? (
+              <div className="project-redesign-empty">
+                Crie 3 a 7 marcos que definam a entrega em linguagem concreta.
+              </div>
+            ) : (
+              <div className="delivery-os-milestones">
+                {milestones.map((milestone, index) => (
+                  <div key={milestone.id} className={`delivery-os-milestone ${milestone.done ? 'done' : ''} ${milestone.critical ? 'critical' : ''}`}>
+                    <button
+                      type="button"
+                      className="delivery-os-check"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await api.updateMethodologyItem(selectedProject.id, milestone.id, {
+                            arrayKey: 'milestones',
+                            item: { done: !milestone.done, doneAt: !milestone.done ? new Date().toISOString() : null }
+                          });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >
+                      {milestone.done ? '✓' : index + 1}
+                    </button>
+                    <div>
+                      <strong>{milestone.title}</strong>
+                      <small>{milestone.critical ? 'Marco crítico' : milestone.done ? 'Concluído' : 'Pendente'}</small>
+                    </div>
+                    <button
+                      type="button"
+                      className="item-delete-btn"
+                      disabled={busy}
+                      title="Excluir marco"
+                      onClick={async () => {
+                        if (!window.confirm(`Excluir marco "${milestone.title}"?`)) return;
+                        setBusy(true);
+                        try {
+                          await api.deleteMethodologyItem(selectedProject.id, milestone.id, { arrayKey: 'milestones' });
+                          await refetchProject();
+                        } finally { setBusy(false); }
+                      }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <aside className="project-redesign-side">
+            <article className="project-redesign-panel">
+              <header>
+                <div>
+                  <span className="project-redesign-section-label">Definição de pronto</span>
+                  <h4>Critério de aceite</h4>
+                </div>
+              </header>
+              <p className="delivery-os-dod">
+                {selectedProject.methodologyExtraOne || 'Defina como saber que isso realmente está entregue.'}
+              </p>
+            </article>
+
+            <article className="project-redesign-panel">
+              <header>
+                <div>
+                  <span className="project-redesign-section-label">Riscos</span>
+                  <h4>Bloqueios</h4>
+                </div>
+                <span>{openBlockers.length} ativos</span>
+              </header>
+
+              {blockers.length === 0 ? (
+                <div className="project-redesign-empty compact">Nenhum bloqueio registrado.</div>
+              ) : (
+                <div className="delivery-os-blockers">
+                  {blockers.map((blocker) => (
+                    <div key={blocker.id} className={`delivery-os-blocker ${blocker.resolvedAt ? 'resolved' : ''}`}>
+                      <span>{blocker.resolvedAt ? '✓' : '!'}</span>
+                      <strong>{blocker.title}</strong>
+                      {!blocker.resolvedAt && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true);
+                            try {
+                              await api.updateMethodologyItem(selectedProject.id, blocker.id, {
+                                arrayKey: 'blockers',
+                                item: { resolvedAt: new Date().toISOString() }
+                              });
+                              await refetchProject();
+                            } finally { setBusy(false); }
+                          }}
+                        >
+                          resolver
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          </aside>
+        </section>
+      </div>
+    );
+  }
+
+  function renderPipelinePreviewStudio(md: MethodologyData) {
+    if (!selectedProject) return null;
+    const stages = [...(md.stages ?? [])].sort((a, b) => a.order - b.order);
+    const deals = md.deals ?? [];
+    const lastStage = stages[stages.length - 1] ?? null;
+    const closedDeals = lastStage ? deals.filter((deal) => deal.stageId === lastStage.id).length : 0;
+    const conversion = deals.length > 0 ? Math.round((closedDeals / deals.length) * 100) : 0;
+    const stageStats = stages.map((stage) => {
+      const stageDeals = deals.filter((deal) => deal.stageId === stage.id);
+      const avgDays = stageDeals.length
+        ? Math.round(stageDeals.reduce((sum, deal) => sum + (deal.stageEnteredAt ? Math.floor((Date.now() - new Date(deal.stageEnteredAt).getTime()) / 86400000) : 0), 0) / stageDeals.length)
+        : 0;
+      return { stage, deals: stageDeals, avgDays };
+    });
+    const stuckStage = stageStats
+      .filter((entry) => entry.stage.id !== lastStage?.id && entry.deals.length > 0)
+      .sort((a, b) => b.avgDays - a.avgDays)[0];
+    const nextDeal = deals
+      .filter((deal) => deal.stageId !== lastStage?.id)
+      .sort((a, b) => {
+        const left = a.stageEnteredAt ? new Date(a.stageEnteredAt).getTime() : Date.now();
+        const right = b.stageEnteredAt ? new Date(b.stageEnteredAt).getTime() : Date.now();
+        return left - right;
+      })[0] ?? null;
+    const nextDealStage = nextDeal ? stages.find((stage) => stage.id === nextDeal.stageId) : null;
+    const nextDealStageIndex = nextDealStage ? stages.findIndex((stage) => stage.id === nextDealStage.id) : -1;
+    const nextStageForDeal = nextDealStageIndex >= 0 ? stages[nextDealStageIndex + 1] : null;
+
+    return (
+      <div className="project-redesign-shell pipeline-os-preview">
+        <section className="project-redesign-hero">
+          <div className="project-redesign-hero-copy">
+            <span className="project-redesign-kicker">Pipeline OS · preview</span>
+            <h3>{deals.length > 0 ? 'Pipeline em movimento' : 'Pipeline vazio'}</h3>
+            <p>
+              {selectedProject.objective ||
+                'Gerencie oportunidades como fluxo: estágio atual, idade, gargalo e próxima ação sempre visíveis.'}
+            </p>
+          </div>
+          <div className="project-redesign-hero-metrics">
+            <div>
+              <span>Deals</span>
+              <strong>{deals.length}</strong>
+            </div>
+            <div>
+              <span>Estágios</span>
+              <strong>{stages.length}</strong>
+            </div>
+            <div>
+              <span>Fechados</span>
+              <strong>{closedDeals}</strong>
+            </div>
+            <div className={conversion < 20 && deals.length > 0 ? 'is-warn' : ''}>
+              <span>Conversão</span>
+              <strong>{deals.length > 0 ? `${conversion}%` : 'n/d'}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="project-redesign-next">
+          <div>
+            <span className="project-redesign-section-label">Próximo avanço</span>
+            <strong>{nextDeal ? nextDeal.name : 'Adicionar a primeira oportunidade'}</strong>
+            <p>
+              {nextDeal && nextStageForDeal
+                ? `Mover de ${nextDealStage?.label ?? 'estágio atual'} para ${nextStageForDeal.label}, ou registrar a próxima ação.`
+                : stuckStage
+                  ? `Gargalo em ${stuckStage.stage.label}: ${stuckStage.deals.length} deal(s), média de ${stuckStage.avgDays}d.`
+                  : 'A interface precisa deixar claro qual oportunidade merece atenção agora.'}
+            </p>
+          </div>
+          <div className="project-redesign-actions">
+            {nextDeal && nextStageForDeal && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api.updateMethodologyItem(selectedProject.id, nextDeal.id, {
+                      arrayKey: 'deals',
+                      item: { stageId: nextStageForDeal.id, stageEnteredAt: new Date().toISOString() }
+                    });
+                    await refetchProject();
+                  } finally { setBusy(false); }
+                }}
+              >
+                Avançar deal
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={() => document.querySelector<HTMLInputElement>('.pipeline-os-add input')?.focus()}>
+              + Deal
+            </button>
+          </div>
+        </section>
+
+        <section className="pipeline-os-board">
+          {stages.length === 0 ? (
+            <div className="project-redesign-empty">Configure os estágios para transformar este projeto em um pipeline operacional.</div>
+          ) : (
+            stageStats.map(({ stage, deals: stageDeals, avgDays }, index) => {
+              const prevStage = stages[index - 1] ?? null;
+              const nextStage = stages[index + 1] ?? null;
+              return (
+                <article key={stage.id} className="pipeline-os-column">
+                  <header>
+                    <div>
+                      <span>{String(index + 1).padStart(2, '0')}</span>
+                      <strong>{stage.label}</strong>
+                    </div>
+                    <em>{stageDeals.length}</em>
+                  </header>
+
+                  {stageDeals.length > 0 && (
+                    <div className="pipeline-os-column-meta">
+                      média {avgDays}d neste estágio
+                    </div>
+                  )}
+
+                  <div className="pipeline-os-deals">
+                    {stageDeals.length === 0 ? (
+                      <div className="pipeline-os-empty-stage">sem oportunidades</div>
+                    ) : (
+                      stageDeals.map((deal) => {
+                        const daysInStage = deal.stageEnteredAt
+                          ? Math.floor((Date.now() - new Date(deal.stageEnteredAt).getTime()) / 86400000)
+                          : null;
+                        return (
+                          <div key={deal.id} className="pipeline-os-deal-card">
+                            <div className="pipeline-os-deal-main">
+                              <strong>{deal.name}</strong>
+                              <small>
+                                {daysInStage === null
+                                  ? 'sem data de entrada'
+                                  : daysInStage === 0
+                                    ? 'entrou hoje'
+                                    : `${daysInStage}d neste estágio`}
+                              </small>
+                            </div>
+                            <div className="pipeline-os-deal-actions">
+                              {prevStage && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={async () => {
+                                    setBusy(true);
+                                    try {
+                                      await api.updateMethodologyItem(selectedProject.id, deal.id, {
+                                        arrayKey: 'deals',
+                                        item: { stageId: prevStage.id, stageEnteredAt: new Date().toISOString() }
+                                      });
+                                      await refetchProject();
+                                    } finally { setBusy(false); }
+                                  }}
+                                >
+                                  ←
+                                </button>
+                              )}
+                              {nextStage && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={async () => {
+                                    setBusy(true);
+                                    try {
+                                      await api.updateMethodologyItem(selectedProject.id, deal.id, {
+                                        arrayKey: 'deals',
+                                        item: { stageId: nextStage.id, stageEnteredAt: new Date().toISOString() }
+                                      });
+                                      await refetchProject();
+                                    } finally { setBusy(false); }
+                                  }}
+                                >
+                                  {nextStage.label} →
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="danger"
+                                disabled={busy}
+                                title="Excluir deal"
+                                onClick={async () => {
+                                  if (!window.confirm(`Excluir "${deal.name}"?`)) return;
+                                  setBusy(true);
+                                  try {
+                                    await api.deleteMethodologyItem(selectedProject.id, deal.id, { arrayKey: 'deals' });
+                                    await refetchProject();
+                                  } finally { setBusy(false); }
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </section>
+
+        <div className="pipeline-os-add">
+          <input
+            placeholder="Nova oportunidade, lead ou parceria..."
+            value={newDealName}
+            onChange={e => setNewDealName(e.target.value)}
+            onKeyDown={async e => {
+              if (e.key !== 'Enter' || !newDealName.trim() || stages.length === 0) return;
+              setBusy(true);
+              try {
+                await api.addMethodologyItem(selectedProject.id, {
+                  arrayKey: 'deals',
+                  item: { name: newDealName.trim(), stageId: stages[0].id, stageEnteredAt: new Date().toISOString(), amount: null, probability: 50 }
+                });
+                setNewDealName('');
+                await refetchProject();
+              } finally { setBusy(false); }
+            }}
+          />
+          <button
+            type="button"
+            disabled={busy || !newDealName.trim() || stages.length === 0}
+            onClick={async () => {
+              if (!newDealName.trim() || stages.length === 0) return;
+              setBusy(true);
+              try {
+                await api.addMethodologyItem(selectedProject.id, {
+                  arrayKey: 'deals',
+                  item: { name: newDealName.trim(), stageId: stages[0].id, stageEnteredAt: new Date().toISOString(), amount: null, probability: 50 }
+                });
+                setNewDealName('');
+                await refetchProject();
+              } finally { setBusy(false); }
+            }}
+          >
+            Adicionar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── ENGINE ZONE A: header with progress ───────────────────────────────
   function renderEngineHeader() {
     if (!selectedProject) return null;
@@ -3818,7 +4418,8 @@ export function ProjetosPage() {
       <div className={`engine-zone-header ${engineClass}`}>
         <div className="engine-header-top">
           <span className="engine-type-badge">
-            {methodologyIcon(selectedProject.methodology)} {methodologyDisplayLabel(selectedProject.methodology)}
+            <ProjectMethodologyIcon methodology={selectedProject.methodology} size={13} />
+            {methodologyDisplayLabel(selectedProject.methodology)}
           </span>
           <span className={`engine-status-tag status-tag ${selectedProject.status}`}>{selectedProject.status}</span>
           {/* 4DX: week badge in header top */}
@@ -4097,6 +4698,14 @@ export function ProjetosPage() {
     const engine = getEngine(selectedProject.methodology);
     const variant = getEngineVariant(selectedProject.methodology);
     const md: MethodologyData = (selectedProject.methodologyData as MethodologyData | null) ?? {};
+
+    if (PROJECT_REDESIGN_PREVIEW && engine === 'milestone' && variant !== 'authority') {
+      return renderDeliveryPreviewStudio(md);
+    }
+
+    if (PROJECT_REDESIGN_PREVIEW && engine === 'pipeline' && variant === 'standard') {
+      return renderPipelinePreviewStudio(md);
+    }
 
     // ── METRIC engine (4DX) — Scoreboard UI ────────────────────────────
     if (engine === 'metric') {

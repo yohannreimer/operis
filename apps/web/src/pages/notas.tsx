@@ -14,19 +14,28 @@ import {
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  Archive,
   Bold,
   BookOpen,
+  ChevronDown,
+  Clock3,
   Eye,
   EyeOff,
+  FileText,
   Flag,
+  Folder,
+  FolderOpen,
   Heading1,
   Heading2,
   Heading3,
   History,
+  Inbox,
   Italic,
   Layers3,
   Mic,
   Pilcrow,
+  Pin,
+  Plus,
   Save,
   Sparkles,
   Star,
@@ -1480,6 +1489,8 @@ export function NotasPage() {
   const [smartCollection, setSmartCollection] = useState<SmartCollectionId>('all');
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
+  const [notesNavigatorCollapsed, setNotesNavigatorCollapsed] = useState(false);
+  const [noteDetailsOpen, setNoteDetailsOpen] = useState(false);
 
   const [writerMode, setWriterMode] = useState(false);
   const [writerMetaOpen, setWriterMetaOpen] = useState(false);
@@ -3336,7 +3347,7 @@ export function NotasPage() {
   }, [hasUnsavedChanges]);
 
   useEffect(() => {
-    if (!writerMode || !selectedNoteId || !hasUnsavedChanges || busy) {
+    if (!selectedNoteId || !hasUnsavedChanges || busy) {
       if (autoSaveTimerRef.current) {
         window.clearTimeout(autoSaveTimerRef.current);
         autoSaveTimerRef.current = null;
@@ -3366,7 +3377,6 @@ export function NotasPage() {
       }
     };
   }, [
-    writerMode,
     selectedNoteId,
     hasUnsavedChanges,
     busy,
@@ -4312,7 +4322,7 @@ export function NotasPage() {
     }
   }
 
-  function startWriterForNote(noteId: string) {
+  function startWriterForNote(noteId: string, nextCanvasMode: 'text' | 'diagram' | 'mindmap' | 'whiteboard' = 'text') {
     if (selectedNoteId && selectedNoteId !== noteId && hasUnsavedChanges) {
       const shouldSwitch = window.confirm(
         'Você tem alterações não salvas na nota atual. Deseja trocar mesmo assim?'
@@ -4324,12 +4334,35 @@ export function NotasPage() {
 
     setSelectedNoteId(noteId);
     setWriterMode(true);
-    // Reset canvas state when switching notes
-    setCanvasMode('text');
+    setCanvasMode(nextCanvasMode);
     setDiagramState('idle');
     setDiagramData(null);
     setMindmapState('idle');
     setMindmapData(null);
+
+    if (nextCanvasMode === 'diagram') {
+      void loadDiagram(noteId);
+    }
+    if (nextCanvasMode === 'mindmap') {
+      void loadMindMap(noteId);
+    }
+    if (nextCanvasMode === 'whiteboard') {
+      void loadWhiteboard(noteId);
+    }
+  }
+
+  async function selectNoteFromNavigator(noteId: string) {
+    if (noteId === selectedNoteId) {
+      return;
+    }
+
+    if (selectedNoteId && hasUnsavedChanges) {
+      await saveNoteChanges({ silent: true, source: 'autosave' });
+    }
+
+    setSelectedNoteId(noteId);
+    setWriterMode(false);
+    setCanvasMode('text');
   }
 
   function insertPeopleTemplate() {
@@ -4783,7 +4816,10 @@ export function NotasPage() {
       <li key={folder.id}>
         <div
           className={`notes-folder-node ${isActive ? 'active' : ''} ${isDropTarget ? 'drop-target' : ''}`}
-          style={{ '--depth': depth } as CSSProperties}
+          style={{
+            '--depth': depth,
+            '--folder-color': folder.color ?? DEFAULT_FOLDER_COLOR,
+          } as CSSProperties}
           onDragOver={(event) => {
             if (!draggingNoteId) {
               return;
@@ -4807,7 +4843,11 @@ export function NotasPage() {
               setSmartCollection('all');
             }}
           >
-            <span className="notes-folder-color" style={{ background: folder.color ?? DEFAULT_FOLDER_COLOR }} />
+            {expanded || isActive ? (
+              <FolderOpen className="notes-folder-icon" size={15} />
+            ) : (
+              <Folder className="notes-folder-icon" size={15} />
+            )}
             <span className="notes-folder-node-label">{folder.name}</span>
             <strong>{count}</strong>
           </button>
@@ -5996,7 +6036,7 @@ export function NotasPage() {
             >
               {templatesOpen ? 'Ocultar templates' : 'Templates'}
             </button>
-            <button type="button" className="notes-primary-action" onClick={() => void createNote({ focusWriter: true })} disabled={busy}>
+            <button type="button" className="notes-primary-action" onClick={() => void createNote({ focusWriter: false })} disabled={busy}>
               Nova nota
             </button>
           </div>
@@ -6005,8 +6045,25 @@ export function NotasPage() {
         {error && <p className="surface-error">{error}</p>}
         {renderTemplatesPanel()}
 
-        <section className="notes-app-body">
-        <aside className="notes-app-sidebar">
+        <section className={`notes-app-body ${notesNavigatorCollapsed ? 'notes-navigator-collapsed' : ''}`}>
+        <aside className={`notes-navigator ${notesNavigatorCollapsed ? 'collapsed' : ''}`}>
+          <div className="notes-navigator-head">
+            <div>
+              <strong>{notesNavigatorCollapsed ? 'Notas' : 'Navegador'}</strong>
+              <small>{sortedScopedNotes.length} nota(s) neste recorte</small>
+            </div>
+            <button
+              type="button"
+              className="notes-navigator-toggle"
+              onClick={() => setNotesNavigatorCollapsed((current) => !current)}
+              aria-label={notesNavigatorCollapsed ? 'Mostrar pastas' : 'Ocultar pastas'}
+              title={notesNavigatorCollapsed ? 'Mostrar pastas' : 'Ocultar pastas'}
+            >
+              {notesNavigatorCollapsed ? '›' : '‹'}
+            </button>
+          </div>
+
+        <section className="notes-app-sidebar">
           <section className="notes-sidebar-section">
             <div className="notes-sidebar-head">
               <h3>Coleções</h3>
@@ -6015,12 +6072,14 @@ export function NotasPage() {
 
             <ul className="notes-folder-tree notes-collection-list">
               {[
-                { id: 'all', label: 'Biblioteca', count: folderCounts.all },
-                { id: 'pinned', label: 'Fixadas', count: smartCollectionCounts.pinned },
-                { id: 'recent', label: 'Recentes', count: smartCollectionCounts.recent },
-                { id: 'inbox', label: 'Inbox', count: smartCollectionCounts.inbox },
-                { id: 'longform', label: 'Longas', count: smartCollectionCounts.longform }
-              ].map((collection) => (
+                { id: 'all', label: 'Biblioteca', count: folderCounts.all, icon: BookOpen },
+                { id: 'pinned', label: 'Fixadas', count: smartCollectionCounts.pinned, icon: Pin },
+                { id: 'recent', label: 'Recentes', count: smartCollectionCounts.recent, icon: Clock3 },
+                { id: 'inbox', label: 'Inbox', count: smartCollectionCounts.inbox, icon: Inbox },
+                { id: 'longform', label: 'Longas', count: smartCollectionCounts.longform, icon: FileText }
+              ].map((collection) => {
+                const CollectionIcon = collection.icon;
+                return (
                 <li key={collection.id}>
                   <button
                     type="button"
@@ -6030,11 +6089,13 @@ export function NotasPage() {
                       setSmartCollection(collection.id as SmartCollectionId);
                     }}
                   >
+                    <CollectionIcon className="notes-sidebar-icon" size={15} />
                     <span>{collection.label}</span>
                     <strong>{collection.count}</strong>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
 
@@ -6042,16 +6103,17 @@ export function NotasPage() {
             <div className="notes-sidebar-head">
               <h3>Pastas</h3>
               <div className="notes-sidebar-actions-inline">
-                <button type="button" onClick={() => openCreateFolderModal(null)} disabled={busy} title="Nova pasta">
-                  + Pasta
+                <button type="button" onClick={() => openCreateFolderModal(null)} disabled={busy} title="Nova pasta" aria-label="Nova pasta">
+                  <Plus size={13} />
                 </button>
                 <button
                   type="button"
                   onClick={() => openCreateFolderModal(activeFolder?.id ?? null)}
                   disabled={busy || !activeFolder}
                   title="Nova subpasta"
+                  aria-label="Nova subpasta"
                 >
-                  + Sub
+                  <Folder size={13} />
                 </button>
               </div>
             </div>
@@ -6079,6 +6141,7 @@ export function NotasPage() {
                   }}
                   onDrop={(event) => void handleFolderDrop(event, null)}
                 >
+                  <Archive className="notes-sidebar-icon" size={15} />
                   <span>Sem pasta</span>
                   <strong>{folderCounts.unfiled}</strong>
                 </button>
@@ -6086,7 +6149,7 @@ export function NotasPage() {
               {rootFolders.map((folder) => renderFolderNode(folder, 0, new Set()))}
             </ul>
           </section>
-        </aside>
+        </section>
 
         <section className="notes-app-list">
           <div className="notes-list-headline">
@@ -6120,7 +6183,7 @@ export function NotasPage() {
               title="Sem notas aqui"
               description="Crie uma nota neste espaço ou selecione outra pasta."
               actionLabel="Nova nota"
-              onAction={() => void createNote({ focusWriter: true })}
+              onAction={() => void createNote({ focusWriter: false })}
             />
           ) : (
             <div className="notes-list-wrap">
@@ -6136,7 +6199,7 @@ export function NotasPage() {
                       className={`${selectedNoteId === note.id ? 'active' : ''} ${
                         draggingNoteId === note.id ? 'dragging' : ''
                       }`}
-                      onClick={() => setSelectedNoteId(note.id)}
+                      onClick={() => void selectNoteFromNavigator(note.id)}
                       draggable
                       onDragStart={(event) => handleNoteDragStart(event, note.id)}
                       onDragEnd={handleNoteDragEnd}
@@ -6167,26 +6230,39 @@ export function NotasPage() {
             </div>
           )}
         </section>
+        </aside>
 
-        <section className="notes-app-preview">
+        <section className="notes-app-workspace">
           {!selectedNote ? (
-            <article className="notes-document-preview empty">
+            <article className="notes-document-editor empty">
               <EmptyState
                 title="Nenhuma nota selecionada"
-                description="Abra uma nota da lista para visualizar detalhes ou entrar no modo escrita."
+                description="Escolha uma nota na lateral ou crie uma nova para começar a escrever."
               />
             </article>
           ) : (
-            <article className="notes-document-preview">
+            <form className="notes-document-editor" onSubmit={saveNote}>
               <header className="notes-document-head">
                 <div className="notes-document-title-block">
-                  <span className="status-tag">{noteTypeLabel(selectedNote.type)}</span>
-                  <h1>{displayNoteTitle(selectedNote.title)}</h1>
-                  <p>Atualizada em {formatDateTimeLabel(selectedNote.updatedAt)}</p>
+                  <input
+                    className="notes-document-title-input"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Untitled"
+                    required
+                  />
+                  <p>
+                    Atualizada em {formatDateTimeLabel(lastSavedAt ?? selectedNote.updatedAt)} •{' '}
+                    {contentPlain.trim().split(/\s+/).filter(Boolean).length} palavra(s)
+                    {autoSaveStatus === 'error' ? ' • erro ao salvar' : hasUnsavedChanges ? ' • salvando' : ' • autosave'}
+                  </p>
                 </div>
                 <div className="notes-document-actions">
+                  <button type="submit" className="notes-secondary-action" disabled={busy || !hasUnsavedChanges}>
+                    Salvar
+                  </button>
                   <button type="button" className="notes-secondary-action" onClick={() => startWriterForNote(selectedNote.id)}>
-                    Escrever
+                    Expandir
                   </button>
                   <details className="notes-preview-menu">
                     <summary aria-label="Ações da nota">•••</summary>
@@ -6197,31 +6273,92 @@ export function NotasPage() {
                 </div>
               </header>
 
-              <div className="notes-document-meta">
-                <span>{resolveFolderPath(selectedNote.folderId)}</span>
-                <span>{selectedNote.workspace?.name ?? 'sem frente'}</span>
-                <span>{selectedNote.project?.title ?? 'sem projeto'}</span>
-                <span>{selectedNote.task?.title ?? 'sem tarefa'}</span>
+              <div className="notes-document-commandbar">
+                <div className="canvas-mode-toggle" role="tablist" aria-label="Modo da nota">
+                  <button type="button" className="canvas-mode-btn active">Texto</button>
+                  <button type="button" className="canvas-mode-btn" onClick={() => startWriterForNote(selectedNote.id, 'diagram')}>
+                    Diagrama
+                  </button>
+                  <button type="button" className="canvas-mode-btn" onClick={() => startWriterForNote(selectedNote.id, 'mindmap')}>
+                    Mapa Mental
+                  </button>
+                  <button type="button" className="canvas-mode-btn" onClick={() => startWriterForNote(selectedNote.id, 'whiteboard')}>
+                    Lousa
+                  </button>
+                </div>
+                <div className="notes-writer-export-actions" role="toolbar" aria-label="Exportar nota">
+                  <button className="notes-writer-export-btn" type="button" onClick={copyNoteContent} title="Copiar nota completa">
+                    Copiar
+                  </button>
+                  <button className="notes-writer-export-btn" type="button" onClick={exportNoteAsTxt} title="Exportar TXT">
+                    TXT
+                  </button>
+                  <button className="notes-writer-export-btn" type="button" onClick={exportNoteAsPdf} title="Exportar PDF">
+                    PDF
+                  </button>
+                  <button className="notes-writer-export-btn" type="button" onClick={exportNoteToWhatsApp} title="Copiar formato WhatsApp">
+                    WhatsApp
+                  </button>
+                  <button
+                    className={`notes-document-details-toggle ${noteDetailsOpen ? 'active' : ''}`}
+                    type="button"
+                    onClick={() => setNoteDetailsOpen((current) => !current)}
+                    aria-expanded={noteDetailsOpen}
+                    title={noteDetailsOpen ? 'Ocultar detalhes' : 'Mostrar detalhes'}
+                  >
+                    <ChevronDown size={15} />
+                  </button>
+                </div>
               </div>
 
-              {selectedNote.tags.length > 0 && (
-                <div className="notes-preview-tags">
-                  {selectedNote.tags.slice(0, 10).map((tag) => (
-                    <span key={tag}>#{tag}</span>
-                  ))}
-                </div>
+              {noteDetailsOpen && (
+                <section className="notes-document-details-panel">
+                  <div className="notes-document-meta">
+                    <span>{noteTypeLabel(type)}</span>
+                    <span>{resolveFolderPath(noteFolderId || selectedNote.folderId)}</span>
+                    <span>{selectedNote.workspace?.name ?? 'sem frente'}</span>
+                    <span>{selectedNote.project?.title ?? 'sem projeto'}</span>
+                    <span>{selectedNote.task?.title ?? 'sem tarefa'}</span>
+                  </div>
+
+                  <div className="notes-document-inline-meta">
+                    <label>
+                      Tipo
+                      <select value={type} onChange={(event) => setType(event.target.value as NoteType)}>
+                        <option value="geral">Geral</option>
+                        <option value="inbox">Inbox</option>
+                        <option value="pessoas">Pessoas</option>
+                        <option value="conteudo">Conteúdo</option>
+                        <option value="produto">Produto</option>
+                        <option value="referencia">Referência</option>
+                        <option value="conclusao_tarefa">Conclusão de tarefa</option>
+                      </select>
+                    </label>
+                    <label>
+                      Tags
+                      <input
+                        value={tagsRaw}
+                        onChange={(event) => setTagsRaw(event.target.value)}
+                        placeholder="ceo, estrategia, playbook"
+                      />
+                    </label>
+                  </div>
+                </section>
               )}
 
-              <div
-                className="notes-preview-content"
-                dangerouslySetInnerHTML={{
-                  __html:
-                    noteHtml(selectedNote).trim()
-                      ? noteHtml(selectedNote)
-                      : '<p>Sem conteúdo.</p>'
-                }}
-              />
+              <div className="notes-document-editor-wrap">
+                <OperisBlockEditor
+                  key={`library-${selectedNoteId || 'new'}-${editorDocumentKey}`}
+                  noteId={selectedNoteId}
+                  documentKey={editorDocumentKey}
+                  initialBlocks={contentBlocks}
+                  legacyContent={content}
+                  onChange={handleOperisEditorChange}
+                  onCommand={handleOperisEditorCommand}
+                />
+              </div>
 
+                {noteDetailsOpen && (
                 <section className="notes-related-section">
                   <header>
                     <strong>Notas relacionadas</strong>
@@ -6239,7 +6376,7 @@ export function NotasPage() {
                             <button
                               type="button"
                               className="ghost-button"
-                              onClick={() => setSelectedNoteId(row.note.id)}
+                              onClick={() => void selectNoteFromNavigator(row.note.id)}
                             >
                               {displayNoteTitle(row.note.title)}
                             </button>
@@ -6260,7 +6397,8 @@ export function NotasPage() {
                     </ul>
                   )}
                 </section>
-            </article>
+                )}
+            </form>
           )}
         </section>
         </section>
