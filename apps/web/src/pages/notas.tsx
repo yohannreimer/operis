@@ -1488,6 +1488,7 @@ export function NotasPage() {
   const [folderScope, setFolderScope] = useState<FolderScope>('all');
   const [smartCollection, setSmartCollection] = useState<SmartCollectionId>('all');
   const [selectedNoteId, setSelectedNoteId] = useState('');
+  const selectedNoteIdRef = useRef('');
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
   const [notesNavigatorCollapsed, setNotesNavigatorCollapsed] = useState(false);
   const [noteDetailsOpen, setNoteDetailsOpen] = useState(false);
@@ -1747,6 +1748,10 @@ export function NotasPage() {
   }, [folderScopedNotes, smartCollection]);
 
   const selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null;
+
+  useEffect(() => {
+    selectedNoteIdRef.current = selectedNoteId;
+  }, [selectedNoteId]);
   const relatedNotes = useMemo(() => {
     if (!selectedNote) {
       return [] as Array<{
@@ -2275,11 +2280,18 @@ export function NotasPage() {
       const data = await api.getNoteRevisions(noteId, {
         limit: 40
       });
+      if (selectedNoteIdRef.current !== noteId) {
+        return;
+      }
       setRevisions(data);
     } catch (requestError) {
-      setError((requestError as Error).message);
+      if (selectedNoteIdRef.current === noteId) {
+        setError((requestError as Error).message);
+      }
     } finally {
-      setHistoryBusy(false);
+      if (selectedNoteIdRef.current === noteId) {
+        setHistoryBusy(false);
+      }
     }
   }
 
@@ -3202,6 +3214,8 @@ export function NotasPage() {
       return;
     }
 
+    setError(null);
+
     const nextBlocks = noteBlocks(selectedNote);
     const serializedBlocks = serializeNoteBlocks(nextBlocks);
     const nextContentHtml = selectedNote.contentHtml ?? normalizeEditorContent(selectedNote.content ?? serializedBlocks.html);
@@ -3243,6 +3257,7 @@ export function NotasPage() {
     if (!selectedNoteId) {
       setRevisions([]);
       setRevisionPreviewId('');
+      setHistoryBusy(false);
       return;
     }
 
@@ -4280,6 +4295,7 @@ export function NotasPage() {
       if (!isAutosave && historyOpen && updatedNote.id === selectedNoteId) {
         void loadRevisions(updatedNote.id);
       }
+      setError(null);
       return true;
     } catch (requestError) {
       if (!options?.silent) {
@@ -4332,6 +4348,7 @@ export function NotasPage() {
       }
     }
 
+    setError(null);
     setSelectedNoteId(noteId);
     setWriterMode(true);
     setCanvasMode(nextCanvasMode);
@@ -4353,6 +4370,7 @@ export function NotasPage() {
 
   async function selectNoteFromNavigator(noteId: string) {
     if (noteId === selectedNoteId) {
+      setError(null);
       return;
     }
 
@@ -4360,6 +4378,7 @@ export function NotasPage() {
       await saveNoteChanges({ silent: true, source: 'autosave' });
     }
 
+    setError(null);
     setSelectedNoteId(noteId);
     setWriterMode(false);
     setCanvasMode('text');
