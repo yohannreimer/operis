@@ -1217,10 +1217,15 @@ function withQuery(path: string, params?: Record<string, string | number | boole
 }
 
 export function apiWebSocketUrl(path: string) {
-  const baseUrl = new URL(API_BASE);
+  const runtimeOrigin =
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'http://localhost';
+  const baseUrl = new URL(API_BASE, runtimeOrigin);
   const pathUrl = new URL(path, 'http://operis.local');
   const basePath = baseUrl.pathname.replace(/\/$/, '');
-  baseUrl.protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+  baseUrl.protocol =
+    baseUrl.protocol === 'https:' || baseUrl.protocol === 'wss:' ? 'wss:' : 'ws:';
   baseUrl.pathname = `${basePath}${pathUrl.pathname}`;
   baseUrl.search = pathUrl.search;
   baseUrl.hash = '';
