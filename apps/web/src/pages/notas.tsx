@@ -1445,6 +1445,18 @@ function formatDuration(seconds: number) {
   return `${minutes}:${rest}`;
 }
 
+function float32ToLinear16Pcm(input: Float32Array) {
+  const buffer = new ArrayBuffer(input.length * 2);
+  const view = new DataView(buffer);
+
+  for (let index = 0; index < input.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, input[index] ?? 0));
+    view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+
+  return buffer;
+}
+
 function noteRevisionSourceLabel(source: string) {
   switch (source) {
     case 'create':
@@ -1482,9 +1494,11 @@ export function NotasPage() {
   const dictationStreamRef = useRef<MediaStream | null>(null);
   const dictationRecorderRef = useRef<MediaRecorder | null>(null);
   const dictationSocketRef = useRef<WebSocket | null>(null);
+  const dictationAudioContextRef = useRef<AudioContext | null>(null);
+  const dictationAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const dictationAudioProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const dictationSecondsTimerRef = useRef<number | null>(null);
   const dictationActiveRef = useRef(false);
-  const dictationMimeTypeRef = useRef('audio/webm');
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<NoteFolder[]>([]);
@@ -1649,6 +1663,17 @@ export function NotasPage() {
       typeof MediaRecorder !== 'undefined' &&
       typeof navigator !== 'undefined' &&
       Boolean(navigator.mediaDevices?.getUserMedia),
+    []
+  );
+  const dictationSupported = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      Boolean(navigator.mediaDevices?.getUserMedia) &&
+      Boolean(
+        window.AudioContext ??
+          (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      ),
     []
   );
 
@@ -2255,6 +2280,32 @@ export function NotasPage() {
       }
     }
     dictationRecorderRef.current = null;
+
+    if (dictationAudioProcessorRef.current) {
+      dictationAudioProcessorRef.current.onaudioprocess = null;
+      try {
+        dictationAudioProcessorRef.current.disconnect();
+      } catch {
+        // no-op
+      }
+      dictationAudioProcessorRef.current = null;
+    }
+
+    if (dictationAudioSourceRef.current) {
+      try {
+        dictationAudioSourceRef.current.disconnect();
+      } catch {
+        // no-op
+      }
+      dictationAudioSourceRef.current = null;
+    }
+
+    if (dictationAudioContextRef.current && dictationAudioContextRef.current.state !== 'closed') {
+      void dictationAudioContextRef.current.close().catch(() => {
+        // no-op
+      });
+    }
+    dictationAudioContextRef.current = null;
 
     if (dictationSocketRef.current) {
       dictationSocketRef.current.onopen = null;
@@ -4808,7 +4859,7 @@ export function NotasPage() {
   }
 
   async function startRealtimeDictation() {
-    if (!recordingSupported) {
+    if (!dictationSupported) {
       setDictationError('Microfone não suportado neste navegador.');
       setDictationStatus('error');
       return;
@@ -4854,36 +4905,42 @@ export function NotasPage() {
       setDictationPreview('');
       setDictationSeconds(0);
 
-      const [session, stream] = await Promise.all([
-        api.createNotesDictationSession({
-          noteId,
-          language: 'pt-BR'
-        }),
-        navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        })
-      ]);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      const AudioContextConstructor =
+        window.AudioContext ??
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
-      const preferredTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/ogg;codecs=opus'
-      ];
-      const pickedMimeType =
-        preferredTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? '';
-      const recorder = pickedMimeType
-        ? new MediaRecorder(stream, { mimeType: pickedMimeType })
-        : new MediaRecorder(stream);
-      const socket = new WebSocket(apiWebSocketUrl(session.wsPath));
+      if (!AudioContextConstructor) {
+        throw new Error('Este navegador não oferece captura de áudio em tempo real.');
+      }
 
-      dictationMimeTypeRef.current = pickedMimeType || recorder.mimeType || 'audio/webm';
+      const audioContext = new AudioContextConstructor();
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
       dictationStreamRef.current = stream;
-      dictationRecorderRef.current = recorder;
+      dictationAudioContextRef.current = audioContext;
+
+      const session = await api.createNotesDictationSession({
+        noteId,
+        language: 'pt-BR',
+        encoding: 'linear16',
+        sampleRate: Math.round(audioContext.sampleRate)
+      });
+      const socket = new WebSocket(apiWebSocketUrl(session.wsPath));
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
       dictationSocketRef.current = socket;
+      dictationAudioSourceRef.current = source;
+      dictationAudioProcessorRef.current = processor;
       dictationActiveRef.current = true;
 
       socket.binaryType = 'arraybuffer';
@@ -4896,7 +4953,6 @@ export function NotasPage() {
         dictationSecondsTimerRef.current = window.setInterval(() => {
           setDictationSeconds((current) => current + 1);
         }, 1000);
-        recorder.start(250);
       };
 
       socket.onmessage = (event) => {
@@ -4944,27 +5000,19 @@ export function NotasPage() {
         releaseDictationMedia({ clearState: false });
       };
 
-      recorder.ondataavailable = async (event) => {
+      processor.onaudioprocess = (event) => {
+        event.outputBuffer.getChannelData(0).fill(0);
+
         if (
-          event.data.size > 0 &&
           socket.readyState === WebSocket.OPEN &&
           dictationActiveRef.current
         ) {
-          socket.send(await event.data.arrayBuffer());
+          socket.send(float32ToLinear16Pcm(event.inputBuffer.getChannelData(0)));
         }
       };
 
-      recorder.onerror = () => {
-        setDictationError('Falha ao capturar áudio. Tente novamente.');
-        setDictationStatus('error');
-        stopRealtimeDictation();
-      };
-
-      recorder.onstop = () => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send('close');
-        }
-      };
+      source.connect(processor);
+      processor.connect(audioContext.destination);
     } catch (requestError) {
       setDictationError((requestError as Error).message || 'Não foi possível iniciar o microfone.');
       setDictationStatus('error');
@@ -4977,28 +5025,13 @@ export function NotasPage() {
     setDictationStatus('stopping');
     clearDictationTimers();
 
-    const recorder = dictationRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      try {
-        recorder.stop();
-      } catch {
-        // no-op
-      }
-    }
-
-    if (dictationStreamRef.current) {
-      dictationStreamRef.current.getTracks().forEach((track) => track.stop());
-      dictationStreamRef.current = null;
-    }
-
     if (dictationSocketRef.current) {
       if (dictationSocketRef.current.readyState === WebSocket.OPEN) {
         dictationSocketRef.current.send('close');
       }
-      dictationSocketRef.current.close(1000, 'dictation stopped');
-      dictationSocketRef.current = null;
     }
 
+    releaseDictationMedia({ clearState: false });
     setDictationStatus('idle');
   }
 

@@ -126,7 +126,9 @@ const noteDictationCleanupSchema = z.object({
 
 const noteDictationSessionSchema = z.object({
   noteId: z.string().uuid().optional().nullable(),
-  language: z.string().trim().min(2).max(16).optional()
+  language: z.string().trim().min(2).max(16).optional(),
+  encoding: z.enum(['linear16']).optional(),
+  sampleRate: z.coerce.number().int().min(8000).max(96000).optional()
 });
 
 const noteDictationStreamQuerySchema = z.object({
@@ -156,6 +158,8 @@ const dictationSessions = new Map<
     clerkUserId: string;
     noteId: string | null;
     language: string;
+    encoding?: 'linear16';
+    sampleRate?: number;
     expiresAt: number;
   }
 >();
@@ -464,6 +468,8 @@ function createDictationSession(input: {
   clerkUserId: string;
   noteId?: string | null;
   language?: string | null;
+  encoding?: 'linear16';
+  sampleRate?: number | null;
 }) {
   cleanupExpiredDictationSessions();
 
@@ -473,6 +479,8 @@ function createDictationSession(input: {
     clerkUserId: input.clerkUserId,
     noteId: input.noteId ?? null,
     language: input.language?.trim() || 'pt-BR',
+    encoding: input.encoding,
+    sampleRate: input.sampleRate ?? undefined,
     expiresAt
   });
 
@@ -495,10 +503,14 @@ function consumeDictationSession(sessionId: string) {
   return session;
 }
 
-function createDeepgramLiveUrl(language: string) {
+function createDeepgramLiveUrl(session: {
+  language: string;
+  encoding?: 'linear16';
+  sampleRate?: number;
+}) {
   const params = new URLSearchParams({
     model: env.DEEPGRAM_MODEL,
-    language,
+    language: session.language,
     smart_format: 'true',
     punctuate: 'true',
     interim_results: 'true',
@@ -507,6 +519,11 @@ function createDeepgramLiveUrl(language: string) {
     utterance_end_ms: '1000',
     channels: '1'
   });
+
+  if (session.encoding) {
+    params.set('encoding', session.encoding);
+    params.set('sample_rate', String(session.sampleRate ?? 48000));
+  }
 
   return `wss://api.deepgram.com/v1/listen?${params.toString()}`;
 }
@@ -544,7 +561,9 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     const session = createDictationSession({
       clerkUserId,
       noteId: payload.noteId ?? null,
-      language: payload.language ?? 'pt-BR'
+      language: payload.language ?? 'pt-BR',
+      encoding: payload.encoding,
+      sampleRate: payload.sampleRate
     });
 
     return {
@@ -586,7 +605,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       return;
     }
 
-    const deepgramSocket = new WebSocket(createDeepgramLiveUrl(session.language), {
+    const deepgramSocket = new WebSocket(createDeepgramLiveUrl(session), {
       headers: {
         Authorization: `Token ${env.DEEPGRAM_API_KEY}`
       }
@@ -594,10 +613,15 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     const pendingAudio: WebSocket.RawData[] = [];
     let deepgramReady = false;
     let closed = false;
+    let keepAliveTimer: NodeJS.Timeout | null = null;
 
     const closeBoth = (code = 1000, reason = 'closed') => {
       if (closed) return;
       closed = true;
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+      }
       if (deepgramSocket.readyState === WebSocket.OPEN) {
         deepgramSocket.send(JSON.stringify({ type: 'CloseStream' }));
         deepgramSocket.close(code, reason);
@@ -614,8 +638,15 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       sendSocketJson(clientSocket, {
         type: 'operis.ready',
         provider: 'deepgram',
-        model: env.DEEPGRAM_MODEL
+        model: env.DEEPGRAM_MODEL,
+        encoding: session.encoding ?? 'auto',
+        sampleRate: session.sampleRate ?? null
       });
+      keepAliveTimer = setInterval(() => {
+        if (deepgramSocket.readyState === WebSocket.OPEN) {
+          deepgramSocket.send(JSON.stringify({ type: 'KeepAlive' }));
+        }
+      }, 5000);
 
       while (pendingAudio.length > 0 && deepgramSocket.readyState === WebSocket.OPEN) {
         const chunk = pendingAudio.shift();
@@ -632,8 +663,22 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     });
 
     deepgramSocket.on('close', (code, reason) => {
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+      }
+      const reasonText = reason.toString();
+      if (code !== 1000) {
+        app.log.warn({ code, reason: reasonText }, 'Deepgram dictation stream closed');
+        sendSocketJson(clientSocket, {
+          type: 'operis.error',
+          message: reasonText
+            ? `Deepgram encerrou o ditado: ${reasonText}`
+            : `Deepgram encerrou o ditado com código ${code}.`
+        });
+      }
       if (clientSocket.readyState === WebSocket.OPEN) {
-        clientSocket.close(code || 1000, reason.toString() || 'Deepgram stream closed');
+        clientSocket.close(code || 1000, reasonText || 'Deepgram stream closed');
       }
     });
 

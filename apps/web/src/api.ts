@@ -1752,7 +1752,12 @@ export const api = {
     }),
   getNotesTranscriptionCapabilities: () =>
     apiRequest<NotesTranscriptionCapabilities>('/notes/transcription-capabilities'),
-  createNotesDictationSession: (input: { noteId?: string | null; language?: string }) =>
+  createNotesDictationSession: (input: {
+    noteId?: string | null;
+    language?: string;
+    encoding?: 'linear16';
+    sampleRate?: number;
+  }) =>
     apiRequest<NotesDictationSession>('/notes/dictation-session', {
       method: 'POST',
       body: JSON.stringify(input)
