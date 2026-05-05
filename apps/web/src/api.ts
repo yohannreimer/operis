@@ -222,8 +222,20 @@ export type NoteFolder = {
 export type NotesTranscriptionCapabilities = {
   enabled: boolean;
   provider: 'webhook' | 'disabled' | string;
+  realtime?: boolean;
+  model?: string;
   maxAudioBytes: number;
   maxAudioMB: number;
+};
+
+export type NotesDictationSession = {
+  ok: boolean;
+  provider: 'deepgram' | string;
+  model: string;
+  language: string;
+  sessionId: string;
+  expiresAt: string;
+  wsPath: string;
 };
 
 export type NotesAudioTranscriptionResult = {
@@ -235,6 +247,14 @@ export type NotesAudioTranscriptionResult = {
   tags: string[];
   confidence?: number | null;
   durationMs?: number | null;
+};
+
+export type NotesDictationCleanupResult = {
+  ok: boolean;
+  provider: string;
+  model: string;
+  text: string;
+  usage?: Record<string, unknown> | null;
 };
 
 // ── Phone ─────────────────────────────────────────────────────────────────
@@ -1196,6 +1216,17 @@ function withQuery(path: string, params?: Record<string, string | number | boole
   return queryString ? `${path}?${queryString}` : path;
 }
 
+export function apiWebSocketUrl(path: string) {
+  const baseUrl = new URL(API_BASE);
+  const pathUrl = new URL(path, 'http://operis.local');
+  const basePath = baseUrl.pathname.replace(/\/$/, '');
+  baseUrl.protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+  baseUrl.pathname = `${basePath}${pathUrl.pathname}`;
+  baseUrl.search = pathUrl.search;
+  baseUrl.hash = '';
+  return baseUrl.toString();
+}
+
 type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;
 };
@@ -1721,6 +1752,17 @@ export const api = {
     }),
   getNotesTranscriptionCapabilities: () =>
     apiRequest<NotesTranscriptionCapabilities>('/notes/transcription-capabilities'),
+  createNotesDictationSession: (input: { noteId?: string | null; language?: string }) =>
+    apiRequest<NotesDictationSession>('/notes/dictation-session', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+  cleanupNoteDictation: (input: { text: string }) =>
+    apiRequest<NotesDictationCleanupResult>('/notes/cleanup-dictation', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      timeoutMs: NOTES_TRANSCRIBE_TIMEOUT_MS
+    }),
   transcribeNoteAudio: (input: {
     audioBase64: string;
     mimeType?: string;

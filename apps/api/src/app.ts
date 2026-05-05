@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import { requireAuth } from './middleware/auth.js';
 
 import { prisma } from './db.js';
@@ -41,6 +42,7 @@ export async function buildApp() {
   await app.register(cors, {
     origin: true
   });
+  await app.register(websocket);
 
   app.addHook('preHandler', requireAuth);
 

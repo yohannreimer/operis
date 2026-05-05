@@ -3,7 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { env } from '../config.js';
 
 // Routes that bypass auth (webhooks use their own secret validation)
-const PUBLIC_ROUTES = new Set(['/health']);
+const PUBLIC_ROUTES = new Set(['/health', '/notes/dictation-stream']);
 const PUBLIC_PREFIXES = ['/webhooks'];
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {

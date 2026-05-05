@@ -1,13 +1,20 @@
 import { FastifyInstance } from 'fastify';
 import { NoteType, PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import WebSocket from 'ws';
 import { z } from 'zod';
 import { env } from '../config.js';
 import { getUserId } from '../middleware/auth.js';
+import { accessibleNoteWhere } from '../services/note-access-service.js';
 import {
   hasNativeNoteSnapshotChanged,
   normalizeNativeNoteContent,
   normalizeStringArray
 } from '../services/note-content-service.js';
+import {
+  cleanupDictationWithOpenRouter,
+  transcribeWithOpenRouter
+} from '../services/notes-transcription-service.js';
 
 const tagsSchema = z
   .array(z.string().min(1).max(32))
@@ -113,6 +120,19 @@ const noteAudioTranscriptionSchema = z.object({
   context: z.string().trim().max(280).optional().nullable()
 });
 
+const noteDictationCleanupSchema = z.object({
+  text: z.string().trim().min(1).max(50000)
+});
+
+const noteDictationSessionSchema = z.object({
+  noteId: z.string().uuid().optional().nullable(),
+  language: z.string().trim().min(2).max(16).optional()
+});
+
+const noteDictationStreamQuerySchema = z.object({
+  sessionId: z.string().uuid()
+});
+
 const noteRevisionQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(120).optional()
 });
@@ -128,6 +148,17 @@ const noteRevisionCreateSchema = z.object({
 
 const MAX_NOTES_AUDIO_BYTES = 10 * 1024 * 1024;
 const NOTE_BLOCKS_TOO_LARGE_ERROR = 'note_content_blocks_too_large';
+const DICTATION_SESSION_TTL_MS = 2 * 60 * 1000;
+
+const dictationSessions = new Map<
+  string,
+  {
+    clerkUserId: string;
+    noteId: string | null;
+    language: string;
+    expiresAt: number;
+  }
+>();
 
 const NOTE_RELATION_INCLUDE = {
   folder: {
@@ -420,11 +451,235 @@ async function validateNoteRelations(
   return null;
 }
 
+function cleanupExpiredDictationSessions() {
+  const now = Date.now();
+  for (const [sessionId, session] of dictationSessions.entries()) {
+    if (session.expiresAt <= now) {
+      dictationSessions.delete(sessionId);
+    }
+  }
+}
+
+function createDictationSession(input: {
+  clerkUserId: string;
+  noteId?: string | null;
+  language?: string | null;
+}) {
+  cleanupExpiredDictationSessions();
+
+  const sessionId = randomUUID();
+  const expiresAt = Date.now() + DICTATION_SESSION_TTL_MS;
+  dictationSessions.set(sessionId, {
+    clerkUserId: input.clerkUserId,
+    noteId: input.noteId ?? null,
+    language: input.language?.trim() || 'pt-BR',
+    expiresAt
+  });
+
+  return {
+    sessionId,
+    expiresAt: new Date(expiresAt).toISOString(),
+    wsPath: `/notes/dictation-stream?sessionId=${sessionId}`
+  };
+}
+
+function consumeDictationSession(sessionId: string) {
+  cleanupExpiredDictationSessions();
+  const session = dictationSessions.get(sessionId);
+  dictationSessions.delete(sessionId);
+
+  if (!session || session.expiresAt <= Date.now()) {
+    return null;
+  }
+
+  return session;
+}
+
+function createDeepgramLiveUrl(language: string) {
+  const params = new URLSearchParams({
+    model: env.DEEPGRAM_MODEL,
+    language,
+    smart_format: 'true',
+    punctuate: 'true',
+    interim_results: 'true',
+    endpointing: '450',
+    vad_events: 'true',
+    utterance_end_ms: '1000',
+    channels: '1'
+  });
+
+  return `wss://api.deepgram.com/v1/listen?${params.toString()}`;
+}
+
+function sendSocketJson(socket: WebSocket, payload: Record<string, unknown>) {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(payload));
+  }
+}
+
 export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
-  app.get('/notes/transcription-capabilities', async () => {
+  app.post('/notes/dictation-session', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const payload = noteDictationSessionSchema.parse(request.body ?? {});
+
+    if (!env.DEEPGRAM_API_KEY) {
+      return reply.code(503).send({
+        message: 'Ditado em tempo real não configurado. Defina DEEPGRAM_API_KEY no backend.'
+      });
+    }
+
+    if (payload.noteId) {
+      const note = await prisma.note.findFirst({
+        where: accessibleNoteWhere(clerkUserId, { id: payload.noteId }),
+        select: { id: true }
+      });
+
+      if (!note) {
+        return reply.code(404).send({
+          message: 'Nota não encontrada.'
+        });
+      }
+    }
+
+    const session = createDictationSession({
+      clerkUserId,
+      noteId: payload.noteId ?? null,
+      language: payload.language ?? 'pt-BR'
+    });
+
     return {
-      enabled: Boolean(env.NOTES_TRANSCRIBE_WEBHOOK_URL),
-      provider: env.NOTES_TRANSCRIBE_WEBHOOK_URL ? 'webhook' : 'disabled',
+      ok: true,
+      provider: 'deepgram',
+      model: env.DEEPGRAM_MODEL,
+      language: payload.language ?? 'pt-BR',
+      ...session
+    };
+  });
+
+  app.get('/notes/dictation-stream', { websocket: true }, (clientSocket, request) => {
+    if (!env.DEEPGRAM_API_KEY) {
+      sendSocketJson(clientSocket, {
+        type: 'operis.error',
+        message: 'Deepgram não configurado no backend.'
+      });
+      clientSocket.close(1011, 'Deepgram not configured');
+      return;
+    }
+
+    const parsedQuery = noteDictationStreamQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      sendSocketJson(clientSocket, {
+        type: 'operis.error',
+        message: 'Sessão de ditado inválida.'
+      });
+      clientSocket.close(1008, 'Invalid session');
+      return;
+    }
+
+    const session = consumeDictationSession(parsedQuery.data.sessionId);
+    if (!session) {
+      sendSocketJson(clientSocket, {
+        type: 'operis.error',
+        message: 'Sessão de ditado expirada. Tente iniciar novamente.'
+      });
+      clientSocket.close(1008, 'Expired session');
+      return;
+    }
+
+    const deepgramSocket = new WebSocket(createDeepgramLiveUrl(session.language), {
+      headers: {
+        Authorization: `Token ${env.DEEPGRAM_API_KEY}`
+      }
+    });
+    const pendingAudio: WebSocket.RawData[] = [];
+    let deepgramReady = false;
+    let closed = false;
+
+    const closeBoth = (code = 1000, reason = 'closed') => {
+      if (closed) return;
+      closed = true;
+      if (deepgramSocket.readyState === WebSocket.OPEN) {
+        deepgramSocket.send(JSON.stringify({ type: 'CloseStream' }));
+        deepgramSocket.close(code, reason);
+      } else if (deepgramSocket.readyState === WebSocket.CONNECTING) {
+        deepgramSocket.close();
+      }
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        clientSocket.close(code, reason);
+      }
+    };
+
+    deepgramSocket.on('open', () => {
+      deepgramReady = true;
+      sendSocketJson(clientSocket, {
+        type: 'operis.ready',
+        provider: 'deepgram',
+        model: env.DEEPGRAM_MODEL
+      });
+
+      while (pendingAudio.length > 0 && deepgramSocket.readyState === WebSocket.OPEN) {
+        const chunk = pendingAudio.shift();
+        if (chunk) {
+          deepgramSocket.send(chunk);
+        }
+      }
+    });
+
+    deepgramSocket.on('message', (message) => {
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        clientSocket.send(message.toString());
+      }
+    });
+
+    deepgramSocket.on('close', (code, reason) => {
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        clientSocket.close(code || 1000, reason.toString() || 'Deepgram stream closed');
+      }
+    });
+
+    deepgramSocket.on('error', (error) => {
+      app.log.error({ err: error }, 'Deepgram dictation stream failed');
+      sendSocketJson(clientSocket, {
+        type: 'operis.error',
+        message: 'Falha na conexão realtime com a Deepgram.'
+      });
+      closeBoth(1011, 'Deepgram error');
+    });
+
+    clientSocket.on('message', (message, isBinary) => {
+      if (!isBinary) {
+        const text = message.toString();
+        if (text === 'close' || text.includes('CloseStream')) {
+          closeBoth(1000, 'client requested close');
+        }
+        return;
+      }
+
+      if (deepgramReady && deepgramSocket.readyState === WebSocket.OPEN) {
+        deepgramSocket.send(message);
+      } else {
+        pendingAudio.push(message);
+      }
+    });
+
+    clientSocket.on('close', () => closeBoth(1000, 'client closed'));
+    clientSocket.on('error', () => closeBoth(1011, 'client socket error'));
+  });
+
+  app.get('/notes/transcription-capabilities', async () => {
+    const provider = env.DEEPGRAM_API_KEY
+      ? 'deepgram'
+      : env.OPENROUTER_API_KEY
+        ? 'openrouter'
+        : env.NOTES_TRANSCRIBE_WEBHOOK_URL
+          ? 'webhook'
+          : 'disabled';
+
+    return {
+      enabled: provider !== 'disabled',
+      provider,
+      realtime: provider === 'deepgram',
+      model: provider === 'deepgram' ? env.DEEPGRAM_MODEL : env.OPENROUTER_TRANSCRIBE_MODEL,
       maxAudioBytes: MAX_NOTES_AUDIO_BYTES,
       maxAudioMB: Math.round((MAX_NOTES_AUDIO_BYTES / 1024 / 1024) * 10) / 10
     };
@@ -433,10 +688,10 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   app.post('/notes/transcribe-audio', async (request, reply) => {
     const payload = noteAudioTranscriptionSchema.parse(request.body);
 
-    if (!env.NOTES_TRANSCRIBE_WEBHOOK_URL) {
+    if (!env.OPENROUTER_API_KEY && !env.NOTES_TRANSCRIBE_WEBHOOK_URL) {
       return reply.code(503).send({
         message:
-          'Transcrição de áudio não configurada. Defina NOTES_TRANSCRIBE_WEBHOOK_URL no backend.'
+          'Transcrição de áudio não configurada. Defina OPENROUTER_API_KEY no backend.'
       });
     }
 
@@ -447,6 +702,47 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       });
     }
 
+    if (env.OPENROUTER_API_KEY) {
+      try {
+        const normalized = await transcribeWithOpenRouter({
+          apiKey: env.OPENROUTER_API_KEY,
+          model: env.OPENROUTER_TRANSCRIBE_MODEL,
+          audioBase64: payload.audioBase64,
+          mimeType: payload.mimeType ?? 'audio/webm',
+          language: payload.language ?? 'pt-BR',
+          timeoutMs: env.NOTES_TRANSCRIBE_TIMEOUT_MS
+        });
+
+        return {
+          ok: true,
+          provider: 'openrouter',
+          transcript: normalized.transcript,
+          titleSuggestion: normalized.titleSuggestion,
+          structuredContent: normalized.structuredContent,
+          tags: normalized.tags,
+          confidence: normalized.confidence,
+          durationMs: normalized.durationMs
+        };
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          return reply.code(504).send({
+            message: 'Tempo limite excedido aguardando resposta da OpenRouter.'
+          });
+        }
+
+        return reply.code(502).send({
+          message: `Falha ao chamar OpenRouter STT: ${(error as Error).message}`
+        });
+      }
+    }
+
+    const webhookUrl = env.NOTES_TRANSCRIBE_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return reply.code(503).send({
+        message: 'Transcrição de áudio não configurada. Defina OPENROUTER_API_KEY no backend.'
+      });
+    }
+
     const abortController = new AbortController();
     const timeoutHandle = setTimeout(
       () => abortController.abort(),
@@ -454,7 +750,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     );
 
     try {
-      const webhookResponse = await fetch(env.NOTES_TRANSCRIBE_WEBHOOK_URL, {
+      const webhookResponse = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -521,6 +817,37 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       });
     } finally {
       clearTimeout(timeoutHandle);
+    }
+  });
+
+  app.post('/notes/cleanup-dictation', async (request, reply) => {
+    const payload = noteDictationCleanupSchema.parse(request.body);
+
+    try {
+      const result = await cleanupDictationWithOpenRouter({
+        apiKey: env.OPENROUTER_API_KEY,
+        model: env.OPENROUTER_CLEANUP_MODEL,
+        text: payload.text,
+        timeoutMs: Math.min(env.NOTES_TRANSCRIBE_TIMEOUT_MS, 45000)
+      });
+
+      return {
+        ok: true,
+        provider: result.provider,
+        model: result.model,
+        text: result.text,
+        usage: result.usage
+      };
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        return reply.code(504).send({
+          message: 'Tempo limite excedido limpando a transcrição.'
+        });
+      }
+
+      return reply.code(502).send({
+        message: `Falha ao limpar transcrição: ${(error as Error).message}`
+      });
     }
   });
 
@@ -819,10 +1146,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
     const payload = noteUpdateSchema.parse(request.body);
     const current = await prisma.note.findFirst({
-      where: {
-        id: params.noteId,
-        clerkUserId
-      },
+      where: accessibleNoteWhere(clerkUserId, { id: params.noteId }),
       select: {
         ...NOTE_REVISION_CORE_SELECT
       }
@@ -958,10 +1282,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     const query = noteRevisionQuerySchema.parse(request.query);
 
     const note = await prisma.note.findFirst({
-      where: {
-        id: params.noteId,
-        clerkUserId
-      },
+      where: accessibleNoteWhere(clerkUserId, { id: params.noteId }),
       select: {
         id: true
       }
@@ -990,10 +1311,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     const payload = noteRevisionCreateSchema.parse(request.body ?? {});
 
     const note = await prisma.note.findFirst({
-      where: {
-        id: params.noteId,
-        clerkUserId
-      },
+      where: accessibleNoteWhere(clerkUserId, { id: params.noteId }),
       select: {
         ...NOTE_REVISION_CORE_SELECT
       }
@@ -1018,10 +1336,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
 
     const [current, revision] = await Promise.all([
       prisma.note.findFirst({
-        where: {
-          id: params.noteId,
-          clerkUserId
-        },
+        where: accessibleNoteWhere(clerkUserId, { id: params.noteId }),
         select: {
           ...NOTE_REVISION_CORE_SELECT
         }
@@ -1099,7 +1414,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
 
     const note = await prisma.note.findFirst({
-      where: { id: params.noteId, clerkUserId },
+      where: accessibleNoteWhere(clerkUserId, { id: params.noteId }),
       select: { id: true }
     });
     if (!note) return reply.code(404).send({ message: 'Nota não encontrada.' });

@@ -32,6 +32,7 @@ import {
   Inbox,
   Italic,
   Layers3,
+  Loader2,
   Mic,
   Pilcrow,
   Pin,
@@ -40,11 +41,13 @@ import {
   Sparkles,
   Star,
   Strikethrough,
+  Square,
   Trash2
 } from 'lucide-react';
 
 import {
   api,
+  apiWebSocketUrl,
   DiagramData,
   Note,
   NoteFolder,
@@ -75,6 +78,7 @@ type FolderScope = 'all' | 'unfiled' | string;
 type FolderModalMode = 'create' | 'rename';
 type NoteSortMode = 'updated_desc' | 'updated_asc' | 'title_asc' | 'title_desc';
 type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+type DictationStatus = 'idle' | 'connecting' | 'listening' | 'transcribing' | 'stopping' | 'error';
 type SmartCollectionId = 'all' | 'pinned' | 'recent' | 'linked' | 'inbox' | 'longform';
 
 type NoteTemplate = {
@@ -1475,6 +1479,12 @@ export function NotasPage() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
+  const dictationStreamRef = useRef<MediaStream | null>(null);
+  const dictationRecorderRef = useRef<MediaRecorder | null>(null);
+  const dictationSocketRef = useRef<WebSocket | null>(null);
+  const dictationSecondsTimerRef = useRef<number | null>(null);
+  const dictationActiveRef = useRef(false);
+  const dictationMimeTypeRef = useRef('audio/webm');
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [folders, setFolders] = useState<NoteFolder[]>([]);
@@ -1527,6 +1537,9 @@ export function NotasPage() {
   const [contentText, setContentText] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [editorDocumentKey, setEditorDocumentKey] = useState(0);
+  const contentBlocksRef = useRef(contentBlocks);
+  const contentRef = useRef(content);
+  const titleRef = useRef(title);
   const [type, setType] = useState<NoteType>('geral');
   const [tagsRaw, setTagsRaw] = useState('');
   const [pinned, setPinned] = useState(false);
@@ -1551,6 +1564,11 @@ export function NotasPage() {
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [transcriptionCapabilities, setTranscriptionCapabilities] =
     useState<NotesTranscriptionCapabilities | null>(null);
+  const [dictationStatus, setDictationStatus] = useState<DictationStatus>('idle');
+  const [dictationSeconds, setDictationSeconds] = useState(0);
+  const [dictationPreview, setDictationPreview] = useState('');
+  const [dictationError, setDictationError] = useState<string | null>(null);
+  const [dictationCleanupBusy, setDictationCleanupBusy] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<NoteRevision[]>([]);
@@ -1605,6 +1623,18 @@ export function NotasPage() {
 
   const contentBlocksSignature = useMemo(() => blockSignature(contentBlocks), [contentBlocks]);
   const contentPlain = useMemo(() => contentText || extractPlainText(content), [content, contentText]);
+
+  useEffect(() => {
+    contentBlocksRef.current = contentBlocks;
+  }, [contentBlocks]);
+
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
 
   const voiceSupported = useMemo(
     () =>
@@ -2201,9 +2231,62 @@ export function NotasPage() {
     }
   }
 
+  function clearDictationTimers() {
+    if (dictationSecondsTimerRef.current) {
+      window.clearInterval(dictationSecondsTimerRef.current);
+      dictationSecondsTimerRef.current = null;
+    }
+  }
+
+  function releaseDictationMedia(options?: { clearState?: boolean }) {
+    dictationActiveRef.current = false;
+    clearDictationTimers();
+
+    if (dictationRecorderRef.current) {
+      dictationRecorderRef.current.ondataavailable = null;
+      dictationRecorderRef.current.onstop = null;
+      dictationRecorderRef.current.onerror = null;
+      if (dictationRecorderRef.current.state !== 'inactive') {
+        try {
+          dictationRecorderRef.current.stop();
+        } catch {
+          // no-op
+        }
+      }
+    }
+    dictationRecorderRef.current = null;
+
+    if (dictationSocketRef.current) {
+      dictationSocketRef.current.onopen = null;
+      dictationSocketRef.current.onmessage = null;
+      dictationSocketRef.current.onerror = null;
+      dictationSocketRef.current.onclose = null;
+      if (
+        dictationSocketRef.current.readyState === WebSocket.OPEN ||
+        dictationSocketRef.current.readyState === WebSocket.CONNECTING
+      ) {
+        dictationSocketRef.current.close(1000, 'dictation stopped');
+      }
+      dictationSocketRef.current = null;
+    }
+
+    if (dictationStreamRef.current) {
+      dictationStreamRef.current.getTracks().forEach((track) => track.stop());
+      dictationStreamRef.current = null;
+    }
+
+    if (options?.clearState) {
+      setDictationStatus('idle');
+      setDictationSeconds(0);
+      setDictationPreview('');
+      setDictationError(null);
+    }
+  }
+
   function resetRecordingForNewNote() {
     clearRecordingTimer();
     releaseRecordingMedia({ clearBlob: true });
+    releaseDictationMedia({ clearState: true });
     setRecordingOpen(false);
     setRecordingError(null);
     setRecordingSeconds(0);
@@ -2393,6 +2476,8 @@ export function NotasPage() {
 
   function applySerializedBlocks(blocks: OperisBlock[]) {
     const serialized = serializeNoteBlocks(blocks);
+    contentBlocksRef.current = blocks;
+    contentRef.current = serialized.html;
     setContentBlocks(blocks);
     setContentText(serialized.text);
     setContentHtml(serialized.html);
@@ -2409,12 +2494,68 @@ export function NotasPage() {
     if (blocks.length === 0) {
       return;
     }
-    const currentBlocks = contentBlocks.length > 0 ? contentBlocks : legacyContentToBlocks(content);
+    const currentBlocks =
+      contentBlocksRef.current.length > 0
+        ? contentBlocksRef.current
+        : legacyContentToBlocks(contentRef.current);
     applySerializedBlocks([...currentBlocks, ...blocks]);
   }
 
   function appendPlainTextAsBlocks(addition: string) {
     appendBlocksToEditor(legacyContentToBlocks(addition));
+  }
+
+  function appendDictationTranscript(addition: string) {
+    const segment = addition.replace(/\s+/g, ' ').trim();
+    if (!segment) {
+      return;
+    }
+
+    const currentBlocks =
+      contentBlocksRef.current.length > 0
+        ? [...contentBlocksRef.current]
+        : legacyContentToBlocks(contentRef.current);
+    const lastIndex = currentBlocks.length - 1;
+    const lastBlock = currentBlocks[lastIndex];
+
+    if (
+      lastBlock &&
+      lastBlock.type === 'paragraph' &&
+      typeof lastBlock.content === 'string'
+    ) {
+      const previous = lastBlock.content.trim();
+      currentBlocks[lastIndex] = {
+        ...lastBlock,
+        content: previous ? `${previous} ${segment}` : segment
+      };
+      applySerializedBlocks(currentBlocks);
+      return;
+    }
+
+    appendBlocksToEditor([{ type: 'paragraph', content: segment }]);
+  }
+
+  async function cleanupCurrentDictation() {
+    const rawText = (contentText || extractPlainText(content)).trim();
+    if (!rawText || dictationCleanupBusy) {
+      return;
+    }
+
+    try {
+      setDictationCleanupBusy(true);
+      setDictationError(null);
+      const result = await api.cleanupNoteDictation({ text: rawText });
+      const cleaned = result.text.trim();
+      if (cleaned) {
+        applyLegacyContentToEditor(cleaned);
+        setError(null);
+      }
+    } catch (requestError) {
+      setDictationError((requestError as Error).message || 'Não foi possível limpar o ditado.');
+      setDictationStatus('error');
+    } finally {
+      setDictationCleanupBusy(false);
+    }
   }
 
   function tableBlockFromBuilder(): OperisBlock {
@@ -3156,6 +3297,7 @@ export function NotasPage() {
     () => () => {
       recognitionRef.current?.stop();
       releaseRecordingMedia({ clearBlob: false });
+      releaseDictationMedia({ clearState: false });
     },
     []
   );
@@ -3899,13 +4041,16 @@ export function NotasPage() {
     setDiagramState('empty');
   }
 
-  async function createNote(options?: { focusWriter?: boolean; withPeopleTemplate?: boolean }) {
+  async function createNote(options?: {
+    focusWriter?: boolean;
+    withPeopleTemplate?: boolean;
+  }): Promise<Note | null> {
     if (recordingStatus === 'recording' || recordingStatus === 'paused') {
       const shouldStopRecording = window.confirm(
         'Há uma gravação em andamento. Deseja parar e abrir uma nova nota do zero?'
       );
       if (!shouldStopRecording) {
-        return;
+        return null;
       }
     }
 
@@ -3934,8 +4079,10 @@ export function NotasPage() {
         setWriterMode(true);
         setWriterMetaOpen(false);
       }
+      return created;
     } catch (requestError) {
       setError((requestError as Error).message);
+      return null;
     } finally {
       setBusy(false);
     }
@@ -4649,6 +4796,266 @@ export function NotasPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function ensureNoteForDictation() {
+    if (selectedNoteIdRef.current) {
+      return selectedNoteIdRef.current;
+    }
+
+    const created = await createNote({ focusWriter: false });
+    return created?.id ?? null;
+  }
+
+  async function startRealtimeDictation() {
+    if (!recordingSupported) {
+      setDictationError('Microfone não suportado neste navegador.');
+      setDictationStatus('error');
+      return;
+    }
+
+    const noteId = await ensureNoteForDictation();
+    if (!noteId) {
+      setDictationError('Crie ou selecione uma nota antes de ditar.');
+      setDictationStatus('error');
+      return;
+    }
+
+    const capabilities =
+      transcriptionCapabilities ??
+      (await api
+        .getNotesTranscriptionCapabilities()
+        .catch(
+          (): NotesTranscriptionCapabilities => ({
+            enabled: false,
+            provider: 'disabled',
+            realtime: false,
+            maxAudioBytes: 0,
+            maxAudioMB: 0
+          })
+        ));
+
+    setTranscriptionCapabilities(capabilities);
+    if (!capabilities.enabled) {
+      setDictationError('Ditado realtime não configurado. Defina DEEPGRAM_API_KEY no backend.');
+      setDictationStatus('error');
+      return;
+    }
+
+    if (!capabilities.realtime || capabilities.provider !== 'deepgram') {
+      setDictationError('O provedor atual transcreve gravações, mas não faz ditado em tempo real.');
+      setDictationStatus('error');
+      return;
+    }
+
+    try {
+      setDictationStatus('connecting');
+      setDictationError(null);
+      setDictationPreview('');
+      setDictationSeconds(0);
+
+      const [session, stream] = await Promise.all([
+        api.createNotesDictationSession({
+          noteId,
+          language: 'pt-BR'
+        }),
+        navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        })
+      ]);
+
+      const preferredTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus'
+      ];
+      const pickedMimeType =
+        preferredTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? '';
+      const recorder = pickedMimeType
+        ? new MediaRecorder(stream, { mimeType: pickedMimeType })
+        : new MediaRecorder(stream);
+      const socket = new WebSocket(apiWebSocketUrl(session.wsPath));
+
+      dictationMimeTypeRef.current = pickedMimeType || recorder.mimeType || 'audio/webm';
+      dictationStreamRef.current = stream;
+      dictationRecorderRef.current = recorder;
+      dictationSocketRef.current = socket;
+      dictationActiveRef.current = true;
+
+      socket.binaryType = 'arraybuffer';
+      socket.onopen = () => {
+        if (!dictationActiveRef.current) {
+          return;
+        }
+        setDictationStatus('listening');
+        setDictationPreview('Pode falar. Vou escrever só quando a frase fechar.');
+        dictationSecondsTimerRef.current = window.setInterval(() => {
+          setDictationSeconds((current) => current + 1);
+        }, 1000);
+        recorder.start(250);
+      };
+
+      socket.onmessage = (event) => {
+        let payload: any = null;
+        try {
+          payload = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+
+        if (payload.type === 'operis.error') {
+          setDictationError(String(payload.message ?? 'Falha no ditado realtime.'));
+          setDictationStatus('error');
+          stopRealtimeDictation();
+          return;
+        }
+
+        const alternative = payload.channel?.alternatives?.[0];
+        const transcript =
+          typeof alternative?.transcript === 'string' ? alternative.transcript.trim() : '';
+        if (!transcript) {
+          return;
+        }
+
+        setDictationPreview(transcript);
+
+        if (payload.is_final) {
+          appendDictationTranscript(transcript);
+          setDictationPreview('');
+          setError(null);
+        }
+      };
+
+      socket.onerror = () => {
+        setDictationError('A conexão realtime falhou. Tente iniciar o ditado novamente.');
+        setDictationStatus('error');
+        stopRealtimeDictation();
+      };
+
+      socket.onclose = () => {
+        if (dictationActiveRef.current) {
+          setDictationError('O ditado realtime foi encerrado.');
+          setDictationStatus('error');
+        }
+        releaseDictationMedia({ clearState: false });
+      };
+
+      recorder.ondataavailable = async (event) => {
+        if (
+          event.data.size > 0 &&
+          socket.readyState === WebSocket.OPEN &&
+          dictationActiveRef.current
+        ) {
+          socket.send(await event.data.arrayBuffer());
+        }
+      };
+
+      recorder.onerror = () => {
+        setDictationError('Falha ao capturar áudio. Tente novamente.');
+        setDictationStatus('error');
+        stopRealtimeDictation();
+      };
+
+      recorder.onstop = () => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send('close');
+        }
+      };
+    } catch (requestError) {
+      setDictationError((requestError as Error).message || 'Não foi possível iniciar o microfone.');
+      setDictationStatus('error');
+      releaseDictationMedia({ clearState: false });
+    }
+  }
+
+  function stopRealtimeDictation() {
+    dictationActiveRef.current = false;
+    setDictationStatus('stopping');
+    clearDictationTimers();
+
+    const recorder = dictationRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.stop();
+      } catch {
+        // no-op
+      }
+    }
+
+    if (dictationStreamRef.current) {
+      dictationStreamRef.current.getTracks().forEach((track) => track.stop());
+      dictationStreamRef.current = null;
+    }
+
+    if (dictationSocketRef.current) {
+      if (dictationSocketRef.current.readyState === WebSocket.OPEN) {
+        dictationSocketRef.current.send('close');
+      }
+      dictationSocketRef.current.close(1000, 'dictation stopped');
+      dictationSocketRef.current = null;
+    }
+
+    setDictationStatus('idle');
+  }
+
+  function toggleRealtimeDictation() {
+    if (dictationStatus === 'listening' || dictationStatus === 'transcribing') {
+      stopRealtimeDictation();
+      return;
+    }
+
+    void startRealtimeDictation();
+  }
+
+  function renderDictationDock() {
+    const active =
+      dictationStatus === 'connecting' ||
+      dictationStatus === 'listening' ||
+      dictationStatus === 'transcribing' ||
+      dictationStatus === 'stopping';
+    const canCleanup = !active && contentPlain.trim().length > 0;
+    const titleLabel = active
+      ? `${formatDuration(dictationSeconds)} - parar ditado`
+      : dictationStatus === 'error'
+        ? dictationError || 'Erro no ditado'
+        : 'Ditar nota';
+
+    return (
+      <div className={`notes-dictation-dock ${active ? 'active' : ''}`}>
+        {canCleanup && (
+          <button
+            type="button"
+            className="notes-dictation-cleanup-button"
+            onClick={() => void cleanupCurrentDictation()}
+            disabled={busy || dictationCleanupBusy}
+            title="Limpar muletas do ditado"
+            aria-label="Limpar muletas do ditado"
+          >
+            {dictationCleanupBusy ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
+          </button>
+        )}
+        <button
+          type="button"
+          className={`notes-dictation-button ${active ? 'recording' : ''}`}
+          onClick={toggleRealtimeDictation}
+          disabled={busy || dictationStatus === 'connecting' || dictationStatus === 'stopping'}
+          title={titleLabel}
+          aria-label={active ? 'Parar ditado' : 'Ditar nota'}
+        >
+          {dictationStatus === 'connecting' || dictationStatus === 'transcribing' ? (
+            <Loader2 size={18} className="spin" />
+          ) : active ? (
+            <Square size={16} />
+          ) : (
+            <Mic size={18} />
+          )}
+        </button>
+      </div>
+    );
   }
 
   function toggleFolderExpansion(folderId: string) {
@@ -5810,6 +6217,7 @@ export function NotasPage() {
                   onChange={handleOperisEditorChange}
                   onCommand={handleOperisEditorCommand}
                 />
+                {renderDictationDock()}
               </div>
               )} {/* end canvasMode === 'text' */}
 
@@ -6375,6 +6783,7 @@ export function NotasPage() {
                   onChange={handleOperisEditorChange}
                   onCommand={handleOperisEditorCommand}
                 />
+                {renderDictationDock()}
               </div>
 
                 {noteDetailsOpen && (

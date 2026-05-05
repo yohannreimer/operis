@@ -8557,11 +8557,21 @@ h4 {
 }
 
 .notes-document-editor-wrap {
+  position: relative;
   width: min(920px, 100%);
   min-height: 48vh;
 }
 
 .notes-document-editor-wrap .bn-container {
+  --bn-colors-editor-text: #f6f4ef;
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-background: var(--surface);
+  --bn-colors-menu-text: #f6f4ef;
+  --bn-colors-tooltip-background: var(--surface);
+  --bn-colors-tooltip-text: #f6f4ef;
+  --bn-colors-hovered-background: rgba(255, 255, 255, 0.06);
+  --bn-colors-selected-background: rgba(244, 120, 48, 0.18);
+  --bn-colors-border: var(--border);
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -8569,6 +8579,7 @@ h4 {
 }
 
 .notes-document-editor-wrap .bn-editor {
+  color: #f6f4ef;
   min-height: 48vh;
   padding: 8px 0 90px;
   background: transparent;
@@ -8578,6 +8589,12 @@ h4 {
 
 .notes-document-editor-wrap .bn-editor:focus-within {
   box-shadow: none;
+}
+
+.notes-document-editor-wrap .bn-block-content,
+.notes-document-editor-wrap .bn-inline-content,
+.notes-writer-editor-wrap .bn-inline-content {
+  color: #f6f4ef;
 }
 
 .notes-document-editor .notes-related-section {
@@ -8834,12 +8851,12 @@ h4 {
 }
 
 .notes-writer-editor-wrap .bn-container {
-  --bn-colors-editor-text: var(--text);
+  --bn-colors-editor-text: #f6f4ef;
   --bn-colors-editor-background: transparent;
   --bn-colors-menu-background: var(--surface);
-  --bn-colors-menu-text: var(--text);
+  --bn-colors-menu-text: #f6f4ef;
   --bn-colors-tooltip-background: var(--surface);
-  --bn-colors-tooltip-text: var(--text);
+  --bn-colors-tooltip-text: #f6f4ef;
   --bn-colors-hovered-background: rgba(255, 255, 255, 0.06);
   --bn-colors-selected-background: rgba(79, 124, 255, 0.18);
   --bn-colors-border: var(--border);
@@ -8863,7 +8880,94 @@ h4 {
 }
 
 .notes-writer-editor-wrap .bn-block-content {
-  color: var(--text);
+  color: #f6f4ef;
+}
+
+.notes-dictation-dock {
+  position: fixed;
+  z-index: 40;
+  right: clamp(44px, 4vw, 76px);
+  bottom: clamp(40px, 5vh, 72px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+}
+
+.notes-dictation-button,
+.notes-dictation-cleanup-button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 16px;
+  color: #f6f4ef;
+  background:
+    linear-gradient(145deg, rgba(29, 29, 31, 0.88), rgba(13, 13, 15, 0.94)),
+    rgba(18, 18, 20, 0.96);
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.38),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.notes-dictation-cleanup-button {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  color: rgba(246, 244, 239, 0.78);
+}
+
+.notes-dictation-dock.active .notes-dictation-button {
+  background:
+    linear-gradient(145deg, rgba(244, 120, 48, 0.98), rgba(216, 84, 28, 0.98)),
+    #f47a30;
+  box-shadow:
+    0 20px 54px rgba(0, 0, 0, 0.44),
+    0 0 0 7px rgba(244, 120, 48, 0.13),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.notes-dictation-button {
+  width: 54px;
+  height: 54px;
+}
+
+.notes-dictation-button:hover:not(:disabled),
+.notes-dictation-cleanup-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.notes-dictation-button.recording {
+  color: #101012;
+}
+
+.notes-dictation-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.notes-dictation-cleanup-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.spin {
+  animation: notes-spin 850ms linear infinite;
+}
+
+@keyframes notes-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .notes-writer-editor-wrap .bn-block-content:has(.operis-block-card) {
