@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { ClerkLoading, ClerkLoaded, SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
+import { ClerkLoading, ClerkLoaded, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { SignInPage } from './pages/sign-in-page';
 import { AuthSync } from './components/auth-sync';
 
 // ── Focus-blocks decoration — daily planner motif ─────────────────────────────
@@ -368,7 +369,7 @@ export function App() {
         </SignedIn>
         <SignedOut>
           <Routes>
-            <Route path="/sign-in/*" element={<OperisLoginLayout />} />
+            <Route path="/sign-in/*" element={<SignInPage />} />
             <Route path="*" element={<Navigate to="/sign-in" replace />} />
           </Routes>
         </SignedOut>
