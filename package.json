@@ -21,6 +21,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
-    "@types/canvas-confetti": "^1.9.0"
+    "@types/canvas-confetti": "^1.9.0",
+    "vitest": "^4.1.6"
   }
 }

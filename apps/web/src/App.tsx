@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ClerkLoading, ClerkLoaded, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { SignInPage } from './pages/sign-in-page';
+import { LandingPage } from './pages/landing-page';
 import { AuthSync } from './components/auth-sync';
 
 // ── Focus-blocks decoration — daily planner motif ─────────────────────────────
@@ -343,6 +344,7 @@ export function App() {
           <AuthSync />
           <Suspense fallback={<RouteFallback />}>
             <Routes>
+              <Route path="/landing" element={<LandingPage />} />
               <Route path="/notas/*" element={<NotasPage />} />
               <Route path="/" element={<Layout />}>
                 <Route index element={<Navigate to="/inbox" replace />} />
@@ -369,6 +371,7 @@ export function App() {
         </SignedIn>
         <SignedOut>
           <Routes>
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="/sign-in/*" element={<SignInPage />} />
             <Route path="*" element={<Navigate to="/sign-in" replace />} />
           </Routes>

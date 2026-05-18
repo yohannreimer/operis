@@ -9,5 +9,9 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['@excalidraw/excalidraw']
-  }
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+  },
 });
