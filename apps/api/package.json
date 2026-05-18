@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "seed": "set -a && . ../../.env && set +a && tsx src/seed.ts",
+    "migrate:clerk-user": "set -a && . ../../.env && set +a && tsx src/scripts/migrate-clerk-user.ts",
     "prisma:generate": "set -a && . ../../.env && set +a && prisma generate",
     "prisma:migrate": "set -a && . ../../.env && set +a && prisma migrate dev --name init"
   },
