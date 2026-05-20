@@ -28,7 +28,11 @@ jobs:
           - name: frontend
             image: ghcr.io/${{ github.repository_owner }}/pluris-frontend
             dockerfile: Dockerfile.web
-            build_args: "VITE_API_URL=/api"
+            build_args: |
+              VITE_API_URL=/api
+              VITE_PRYMEIRA_ACCOUNT_API_URL=https://hub.prymeiradigital.com.br/api
+              VITE_PRYMEIRA_HUB_URL=https://hub.prymeiradigital.com.br
+              VITE_PRYMEIRA_PRODUCT_KEY=operis
 
     steps:
       - name: Checkout

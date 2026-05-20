@@ -66,6 +66,9 @@ services:
       dockerfile: Dockerfile.web
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+        VITE_PRYMEIRA_ACCOUNT_API_URL: ${VITE_PRYMEIRA_ACCOUNT_API_URL:-https://hub.prymeiradigital.com.br/api}
+        VITE_PRYMEIRA_HUB_URL: ${VITE_PRYMEIRA_HUB_URL:-https://hub.prymeiradigital.com.br}
+        VITE_PRYMEIRA_PRODUCT_KEY: ${VITE_PRYMEIRA_PRODUCT_KEY:-operis}
     container_name: execution-os-web
     restart: unless-stopped
     ports:

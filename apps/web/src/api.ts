@@ -1187,6 +1187,10 @@ export type GhostFrontResolution = {
 export type GhostProjectResolution = Project;
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const PRYMEIRA_HUB_URL = (
+  import.meta.env.VITE_PRYMEIRA_HUB_URL ?? 'https://hub.prymeiradigital.com.br'
+).replace(/\/$/, '');
+const PRYMEIRA_PRODUCT_KEY = import.meta.env.VITE_PRYMEIRA_PRODUCT_KEY ?? 'operis';
 const REQUEST_TIMEOUT_MS = 12000;
 const NOTES_TRANSCRIBE_TIMEOUT_MS = 180000;
 
@@ -1195,6 +1199,24 @@ let _getToken: (() => Promise<string | null>) | null = null;
 
 export function setAuthTokenGetter(getter: () => Promise<string | null>) {
   _getToken = getter;
+}
+
+export function productAccessDeniedUrl(reason = 'no_entitlement') {
+  const params = new URLSearchParams({
+    product_key: PRYMEIRA_PRODUCT_KEY,
+    reason
+  });
+
+  if (typeof window !== 'undefined' && window.location?.href) {
+    params.set('return_url', window.location.href);
+  }
+
+  return `${PRYMEIRA_HUB_URL}/acesso-negado?${params.toString()}`;
+}
+
+export function redirectToProductAccessPage(reason = 'no_entitlement', accessUrl?: string) {
+  const targetUrl = accessUrl || productAccessDeniedUrl(reason);
+  window.location.assign(targetUrl);
 }
 
 function withQuery(path: string, params?: Record<string, string | number | boolean | undefined>) {
@@ -1264,6 +1286,13 @@ async function apiRequest<T>(path: string, options?: ApiRequestOptions): Promise
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({} as Record<string, unknown>));
+      const reason = typeof payload.reason === 'string' ? payload.reason : 'no_entitlement';
+      const accessUrl = typeof payload.accessUrl === 'string' ? payload.accessUrl : undefined;
+
+      if (response.status === 403 && payload.productAccessRequired === true) {
+        redirectToProductAccessPage(reason, accessUrl);
+      }
+
       const detail = typeof payload.detail === 'string' ? payload.detail : '';
       const message =
         (typeof payload.error === 'string' && payload.error) ||
