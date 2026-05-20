@@ -290,7 +290,7 @@ function OperisLoginLayout() {
               },
               elements: {
                 rootBox: { width: '100%' },
-                card: { background: 'transparent', boxShadow: 'none', border: 'none', padding: 0 },
+                card: { background: 'transparent', boxShadow: 'none', border: 'none' },
                 header: { display: 'none' },
                 formButtonPrimary: { padding: '13px 20px', height: '46px', fontSize: '14px' },
                 socialButtonsBlockButton: { padding: '12px 20px', height: '44px', gap: '10px' },
