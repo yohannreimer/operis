@@ -111,7 +111,7 @@ const HABIT_TODAY_STATS = HABITS.map((h: any) => ({
   currentLog: ['h-1','h-3','h-4','h-5','h-6','h-9'].includes(h.id)
     ? { id: `log-${h.id}`, habitId: h.id, date: today, value: 1, note: null, createdAt: today }
     : null,
-  streak: { 'h-1': 14, 'h-2': 7, 'h-3': 21, 'h-4': 28, 'h-5': 9, 'h-6': 12, 'h-7': 4, 'h-8': 8, 'h-9': 6 }[h.id] ?? 0,
+  streak: ({ 'h-1': 14, 'h-2': 7, 'h-3': 21, 'h-4': 28, 'h-5': 9, 'h-6': 12, 'h-7': 4, 'h-8': 8, 'h-9': 6 } as Record<string, number>)[h.id] ?? 0,
   periodProgress: { done: 1, target: (h as any).frequencyTarget },
   isCompletedToday: ['h-1','h-3','h-4','h-5','h-6','h-9'].includes(h.id),
 }));
