@@ -15,7 +15,7 @@
     "dev:frontend": "npm run dev:web",
     "dev:worker": "npm run dev --workspace @execution-os/worker",
     "demo:prymeira": "VITE_DEMO_MODE=true VITE_API_URL=http://localhost:3000 VITE_PRYMEIRA_ACCOUNT_API_URL=http://localhost:3001 VITE_PRYMEIRA_HUB_URL=http://localhost:5175 PORT=3000 npm run dev:api & VITE_DEMO_MODE=true VITE_API_URL=http://localhost:3000 VITE_PRYMEIRA_ACCOUNT_API_URL=http://localhost:3001 VITE_PRYMEIRA_HUB_URL=http://localhost:5175 npm run dev:web -- --host 0.0.0.0 --port 5178",
-    "demo:reset": "npm run seed --workspace @execution-os/api",
+    "demo:reset": "docker compose up -d && npm run prisma:generate --workspace @execution-os/api && npm run prisma:migrate --workspace @execution-os/api && npm run seed --workspace @execution-os/api",
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces"
   },
