@@ -19736,7 +19736,6 @@ textarea.operis-block-field-input {
   }
 
   .premium-header-actions,
-  .inline-actions,
   .smart-toolbar-actions,
   .project-header-actions,
   .notes-app-topbar .inline-actions {
@@ -19745,7 +19744,6 @@ textarea.operis-block-field-input {
   }
 
   .premium-header-actions > *,
-  .inline-actions > button,
   .smart-toolbar-actions > button,
   .project-header-actions > button,
   .notes-app-topbar .inline-actions > button {
@@ -19847,8 +19845,7 @@ textarea.operis-block-field-input {
 
   .smart-table-shell,
   .notes-table-builder-grid,
-  .scheduler-grid,
-  .week-strip {
+  .scheduler-grid {
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
