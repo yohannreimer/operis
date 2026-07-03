@@ -17,13 +17,16 @@ import {
   Layers3,
   LayoutDashboard,
   ListTodo,
+  Menu,
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
   Search,
   Settings,
   Star,
-  Target
+  Target,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -226,6 +229,7 @@ export function Layout() {
   const quickCaptureInputRef = useRef<HTMLInputElement>(null);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readStoredSidebarState());
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [gamification, setGamification] = useState<Gamification | null>(null);
@@ -257,6 +261,9 @@ export function Layout() {
   );
 
   const activeRoute = getActiveShellRoute(location.pathname);
+  const mobilePrimaryLinks = useMemo(() => getMobilePrimaryLinks(), []);
+  const mobileMoreLinks = useMemo(() => getMobileMoreLinks(), []);
+  const isMobilePrimaryActive = mobilePrimaryLinks.some((link) => activeRoute.to === link.to);
   const isTaskTableFocusRoute =
     location.pathname === '/tarefas' && new URLSearchParams(location.search).get('focus') === '1';
 
@@ -355,6 +362,7 @@ export function Layout() {
 
   useEffect(() => {
     setIsMenuOpen(false);
+    setMobileMoreOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -1003,7 +1011,7 @@ export function Layout() {
 
   return (
     <div className={shellClassName}>
-      <aside className={sidebarClassName}>
+      <aside className={sidebarClassName} aria-hidden={mobileMoreOpen}>
         <div className="brand-block premium-brand">
           <h1>
             <span className="brand-logo">O</span>
@@ -1051,7 +1059,73 @@ export function Layout() {
 
       {isMenuOpen && <button type="button" className="sidebar-backdrop" onClick={() => setIsMenuOpen(false)} />}
 
-      <div className="app-main premium-main">
+      {mobileMoreOpen && (
+        <button
+          type="button"
+          className="mobile-shell-backdrop"
+          aria-label="Fechar mais opções"
+          onClick={() => setMobileMoreOpen(false)}
+        />
+      )}
+
+      <aside
+        className={mobileMoreOpen ? 'mobile-more-drawer open' : 'mobile-more-drawer'}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mais opções"
+        aria-hidden={!mobileMoreOpen}
+      >
+        <div className="mobile-more-head">
+          <div>
+            <strong>Operis</strong>
+            <span>Mais opções</span>
+          </div>
+          <button
+            type="button"
+            className="ghost-button mobile-icon-button"
+            aria-label="Fechar mais opções"
+            onClick={() => setMobileMoreOpen(false)}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <nav className="mobile-more-nav" aria-label="Rotas secundárias">
+          {mobileMoreLinks.map((link) => {
+            const Icon = link.icon;
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={({ isActive }) => (isActive ? 'mobile-more-link active' : 'mobile-more-link')}
+                end={link.to === '/'}
+                onClick={() => setMobileMoreOpen(false)}
+              >
+                <span className="mobile-more-icon">
+                  <Icon size={16} />
+                </span>
+                <span>
+                  <strong>{link.label}</strong>
+                  <small>{link.caption}</small>
+                </span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <section className="mobile-more-score">
+          <div>
+            <span>Pontos da semana</span>
+            <strong>{gamification?.scoreSemanal ?? 0}</strong>
+          </div>
+          <div>
+            <span>Streak</span>
+            <strong>{gamification?.streak ?? 0}d</strong>
+          </div>
+        </section>
+      </aside>
+
+      <div className="app-main premium-main" aria-hidden={mobileMoreOpen}>
         <header className="app-topbar premium-topbar">
           <button
             className="menu-toggle"
@@ -1160,6 +1234,41 @@ export function Layout() {
           <Outlet context={outletContext} />
         </main>
       </div>
+
+      <button
+        type="button"
+        className="mobile-capture-fab"
+        aria-label="Capturar rápido"
+        onClick={focusCaptureInput}
+      >
+        <Plus size={22} />
+      </button>
+
+      <nav className="mobile-bottom-nav" aria-label="Navegação mobile">
+        {mobilePrimaryLinks.map((link) => {
+          const Icon = link.icon;
+          return (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className={({ isActive }) => (isActive ? 'mobile-bottom-link active' : 'mobile-bottom-link')}
+              end={link.to === '/'}
+            >
+              <Icon size={18} />
+              <span>{link.label}</span>
+            </NavLink>
+          );
+        })}
+        <button
+          type="button"
+          className={isMobilePrimaryActive ? 'mobile-bottom-link' : 'mobile-bottom-link active'}
+          aria-label="Mais opções"
+          onClick={() => setMobileMoreOpen(true)}
+        >
+          <Menu size={18} />
+          <span>Mais</span>
+        </button>
+      </nav>
 
       {commandOpen && (
         <div className="command-backdrop" role="presentation" onClick={closeCommandPalette}>

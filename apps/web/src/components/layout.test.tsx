@@ -1,9 +1,52 @@
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getActiveShellRoute,
   getMobileMoreLinks,
-  getMobilePrimaryLinks
+  getMobilePrimaryLinks,
+  Layout
 } from './layout';
+
+const apiMock = vi.hoisted(() => ({
+  createInboxItem: vi.fn(),
+  getGamification: vi.fn(),
+  getReviewJournal: vi.fn(),
+  getWeeklyAllocation: vi.fn(),
+  getWorkspaces: vi.fn()
+}));
+
+vi.mock('../api', () => ({
+  api: apiMock
+}));
+
+function renderLayout(path = '/inbox') {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route path="inbox" element={<div>Inbox route body</div>} />
+          <Route path="hoje" element={<div>Hoje route body</div>} />
+          <Route path="agenda" element={<div>Agenda route body</div>} />
+          <Route path="tarefas" element={<div>Tarefas route body</div>} />
+          <Route path="projetos" element={<div>Projetos route body</div>} />
+          <Route index element={<div>Dashboard route body</div>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
+beforeEach(() => {
+  apiMock.createInboxItem.mockResolvedValue({ id: 'inbox_1' });
+  apiMock.getWorkspaces.mockResolvedValue([
+    { id: 'ws_1', name: 'Empresa', type: 'empresa', color: '#f97316' }
+  ]);
+  apiMock.getGamification.mockResolvedValue({ scoreSemanal: 12, streak: 3 });
+  apiMock.getWeeklyAllocation.mockResolvedValue({ rows: [] });
+  apiMock.getReviewJournal.mockResolvedValue({ review: null });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+});
 
 describe('Layout mobile navigation helpers', () => {
   it('keeps the four daily routes in the primary mobile nav', () => {
@@ -34,5 +77,43 @@ describe('Layout mobile navigation helpers', () => {
 
   it('does not match sibling-looking route prefixes', () => {
     expect(getActiveShellRoute('/projetos-old')?.label).toBe('Inbox');
+  });
+});
+
+describe('Layout mobile shell rendering', () => {
+  it('renders bottom navigation and mobile more trigger', async () => {
+    renderLayout('/hoje');
+
+    expect(await screen.findByText('Hoje route body')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: /navegação mobile/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /mais opções/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /capturar rápido/i })).toBeInTheDocument();
+  });
+
+  it('opens the mobile more drawer with secondary routes', async () => {
+    renderLayout('/inbox');
+
+    fireEvent.click(screen.getByRole('button', { name: /mais opções/i }));
+
+    expect(await screen.findByRole('dialog', { name: /mais opções/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /projetos/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /notas/i })).toBeInTheDocument();
+  });
+
+  it('submits quick capture from the mobile floating action', async () => {
+    renderLayout('/inbox');
+
+    fireEvent.click(screen.getByRole('button', { name: /capturar rápido/i }));
+    fireEvent.change(await screen.findByPlaceholderText(/capturar ideia/i), {
+      target: { value: 'Comprar cabo USB-C' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^capturar$/i }));
+
+    await waitFor(() => {
+      expect(apiMock.createInboxItem).toHaveBeenCalledWith({
+        content: 'Comprar cabo USB-C',
+        source: 'app'
+      });
+    });
   });
 });
