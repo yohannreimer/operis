@@ -251,6 +251,65 @@ function WeekView({ commitments, weekStart, onEdit, onNew }: WeekViewProps) {
 
   return (
     <>
+      <div className="agenda-mobile-week-list" aria-label="Agenda semanal em lista">
+        {weekDays.map(day => {
+          const isToday    = isSameDay(day, today);
+          const iso        = dateToLocalISO(day);
+          const dayItems   = getCommitmentsForDay(commitments, day);
+          const timedItems = dayItems
+            .filter(c => !!c.startTime)
+            .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
+          const untimed    = dayItems.filter(c => !c.startTime);
+
+          return (
+            <section
+              key={iso}
+              className={`agenda-mobile-day${isToday ? ' agenda-mobile-day--today' : ''}`}
+            >
+              <header className="agenda-mobile-day-head">
+                <div>
+                  <span className="agenda-mobile-weekday">{SHORT_WEEK[day.getDay()]}</span>
+                  <strong>{day.getDate()} {SHORT_MONTH[day.getMonth()]}</strong>
+                </div>
+                <button
+                  type="button"
+                  className="agenda-mobile-day-add"
+                  onClick={() => onNew(iso)}
+                  aria-label={`Novo compromisso em ${iso}`}
+                >
+                  <Plus size={14} />
+                </button>
+              </header>
+
+              {dayItems.length === 0 ? (
+                <p className="agenda-mobile-empty">Nada marcado.</p>
+              ) : (
+                <div className="agenda-mobile-events">
+                  {[...timedItems, ...untimed].map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`agenda-mobile-event agenda-mobile-event--${c.type}${c.status === 'pausado' ? ' agenda-mobile-event--muted' : ''}`}
+                      onClick={() => onEdit(c)}
+                    >
+                      <span className="agenda-mobile-event-time">
+                        {c.startTime
+                          ? `${c.startTime}${c.durationMin ? `-${addMinutesToTime(c.startTime, c.durationMin)}` : ''}`
+                          : 'Dia todo'}
+                      </span>
+                      <span className="agenda-mobile-event-title">{c.title}</span>
+                      {c.durationMin ? (
+                        <span className="agenda-mobile-event-duration">{c.durationMin}min</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
       {/* ── Sticky column headers ── */}
       <div className="agenda-week-cols-header">
         <div className="agenda-week-gutter-header" />

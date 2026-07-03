@@ -19938,3 +19938,562 @@ textarea.operis-block-field-input {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Mobile app refinements: Inbox, Agenda, Tarefas ─────────────────────── */
+
+.agenda-mobile-week-list,
+.smart-mobile-list {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  html,
+  body,
+  #root,
+  .app-shell,
+  .premium-main,
+  .premium-content {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .premium-content,
+  .premium-main {
+    min-width: 0;
+  }
+
+  .premium-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Inbox becomes a vertical phone list instead of a wide command surface. */
+  .inbox-header-wrap,
+  .inbox-capture-bar,
+  .inbox-groups,
+  .inbox-brute-list,
+  .inbox-today-split,
+  .inbox-today-split-inbox,
+  .inbox-today-split-today {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .inbox-header-wrap .premium-header {
+    padding: 14px;
+    overflow: hidden;
+  }
+
+  .inbox-header-wrap .premium-header > div:first-child {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .inbox-header-wrap .premium-header h2 {
+    white-space: normal;
+    font-size: clamp(1.55rem, 8vw, 2rem);
+    line-height: 1.05;
+  }
+
+  .inbox-header-controls {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .inbox-filter-tabs {
+    min-width: 0;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .inbox-filter-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .inbox-filter-tab {
+    flex: 0 0 auto;
+    min-width: max-content;
+    padding-inline: 13px;
+  }
+
+  .inbox-bruto-btn {
+    display: none;
+  }
+
+  .inbox-search-btn,
+  .inbox-vis-filter-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+  }
+
+  .inbox-search-bar {
+    grid-column: 1 / -1;
+    height: 44px;
+  }
+
+  .inbox-capture-bar {
+    margin-top: 12px;
+  }
+
+  .inbox-input-row {
+    min-width: 0;
+    padding: 8px 8px 8px 12px;
+  }
+
+  .inbox-input {
+    min-width: 0;
+    font-size: 1rem;
+  }
+
+  .inbox-group-header {
+    padding-inline: 0;
+    overflow: hidden;
+  }
+
+  .inbox-group-items {
+    gap: 8px;
+  }
+
+  .inbox-item {
+    width: 100%;
+    max-width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.025);
+    overflow: hidden;
+  }
+
+  .inbox-item-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .inbox-item-reorder,
+  .inbox-item-today-btn {
+    grid-column: 1;
+  }
+
+  .inbox-item-checkbox {
+    grid-column: 1;
+    grid-row: 1;
+    margin-top: 3px;
+  }
+
+  .inbox-item-content {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .inbox-item-text-line {
+    display: block;
+    min-width: 0;
+  }
+
+  .inbox-item-text {
+    display: block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .inbox-item-age {
+    margin-top: 6px;
+  }
+
+  .inbox-item-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+    opacity: 1;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .inbox-item-action-btn {
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    min-height: 38px;
+    border-color: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .inbox-item-waiting-form,
+  .inbox-item-move-context {
+    padding: 10px 12px 12px;
+  }
+
+  .inbox-item-waiting-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Agenda uses a native vertical week list on phones. */
+  .agenda-header-wrap .premium-header {
+    padding: 14px;
+  }
+
+  .agenda-header-wrap .premium-header > div:first-child {
+    align-items: flex-start;
+  }
+
+  .agenda-header-wrap .premium-header h2 {
+    font-size: clamp(1.8rem, 9vw, 2.25rem);
+  }
+
+  .agenda-header-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+
+  .agenda-week-nav {
+    grid-column: 1 / -1;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px auto;
+  }
+
+  .agenda-week-nav-label {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .agenda-week-nav-btn,
+  .agenda-view-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .agenda-view-toggle {
+    width: auto;
+    justify-self: start;
+  }
+
+  .agenda-add-btn {
+    min-height: 44px;
+    justify-self: stretch;
+    justify-content: center;
+  }
+
+  .agenda-week-wrap {
+    max-width: 100%;
+    overflow: visible;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .agenda-mobile-week-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .agenda-week-cols-header,
+  .agenda-week-body-scroll {
+    display: none;
+  }
+
+  .agenda-mobile-day {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface-soft);
+    padding: 12px;
+    min-width: 0;
+  }
+
+  .agenda-mobile-day--today {
+    border-color: rgba(249, 115, 22, 0.42);
+    background: rgba(249, 115, 22, 0.055);
+  }
+
+  .agenda-mobile-day-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .agenda-mobile-day-head strong {
+    display: block;
+    color: var(--text);
+    font-size: 1rem;
+  }
+
+  .agenda-mobile-weekday {
+    display: block;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .agenda-mobile-day-add {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: var(--primary-soft);
+    border: 1px solid rgba(249, 115, 22, 0.32);
+    color: var(--primary);
+  }
+
+  .agenda-mobile-empty {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 0.86rem;
+  }
+
+  .agenda-mobile-events {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .agenda-mobile-event {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(68px, auto) minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    text-align: left;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .agenda-mobile-event--fixo {
+    background: rgba(99, 102, 241, 0.14);
+    border: 1px solid rgba(99, 102, 241, 0.26);
+    color: #dbe2ff;
+  }
+
+  .agenda-mobile-event--variavel {
+    background: rgba(34, 197, 94, 0.11);
+    border: 1px solid rgba(34, 197, 94, 0.22);
+    color: #dcfce7;
+  }
+
+  .agenda-mobile-event--muted {
+    opacity: 0.48;
+  }
+
+  .agenda-mobile-event-time,
+  .agenda-mobile-event-duration {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .agenda-mobile-event-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  /* Tasks are cards on phones. The desktop data grid remains desktop-only. */
+  .smart-table-shell {
+    overflow: visible;
+    border-radius: 14px;
+  }
+
+  .smart-toolbar {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .smart-toolbar-main,
+  .smart-toolbar-actions,
+  .smart-viewbar {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .smart-view-label,
+  .smart-viewbar select,
+  .smart-view-action,
+  .smart-density-switch,
+  .smart-columns-menu,
+  .smart-hints {
+    display: none;
+  }
+
+  .smart-focus-filters {
+    width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .smart-focus-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .smart-focus-chip {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding-inline: 12px;
+  }
+
+  .smart-toolbar-actions {
+    display: none;
+  }
+
+  .smart-toolbar-actions > .smart-view-action:first-child {
+    display: none;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .smart-advanced-filters {
+    display: none;
+    grid-template-columns: 1fr !important;
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .smart-advanced-filters select {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+  }
+
+  .smart-mobile-list {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .smart-mobile-empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .smart-table-scroll {
+    display: none;
+  }
+
+  .smart-mobile-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .smart-mobile-card.selected {
+    border-color: rgba(249, 115, 22, 0.42);
+    background: rgba(249, 115, 22, 0.055);
+  }
+
+  .smart-mobile-card-main {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px 10px;
+    align-items: start;
+    padding: 12px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .smart-mobile-card-title {
+    min-width: 0;
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .smart-mobile-card-context {
+    grid-column: 2;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  .smart-mobile-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 12px 12px 12px;
+  }
+
+  .smart-mobile-card-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .smart-mobile-card-meta .smart-mobile-warning {
+    color: var(--warning);
+    background: var(--warning-soft);
+  }
+
+  .smart-mobile-card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px 12px 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .smart-mobile-action {
+    min-width: 0;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    box-shadow: none;
+  }
+
+  .smart-mobile-action.danger {
+    background: var(--danger-soft);
+    border-color: rgba(212, 100, 100, 0.26);
+    color: var(--danger);
+  }
+}

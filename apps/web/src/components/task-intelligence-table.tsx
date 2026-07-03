@@ -9,7 +9,7 @@ import {
   useReactTable
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowUp, CheckCircle2, ChevronsUpDown, Filter, Rows2, Rows3, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, CheckCircle2, ChevronsUpDown, Clock, Filter, Rows2, Rows3, Trash2 } from 'lucide-react';
 
 import { Task, TaskEnergy, TaskExecutionKind, TaskStatus, TaskType } from '../api';
 
@@ -138,6 +138,43 @@ function executionKindLabel(value: TaskExecutionKind) {
     return 'Suporte';
   }
   return 'Operação';
+}
+
+function statusLabel(value: TaskStatus) {
+  if (value === 'hoje') {
+    return 'Hoje';
+  }
+  if (value === 'andamento') {
+    return 'Andamento';
+  }
+  if (value === 'feito') {
+    return 'Concluída';
+  }
+  if (value === 'arquivado') {
+    return 'Arquivada';
+  }
+  return 'Backlog';
+}
+
+function energyLabel(value?: TaskEnergy | null) {
+  if (value === 'alta') {
+    return 'Alta';
+  }
+  if (value === 'baixa') {
+    return 'Baixa';
+  }
+  return 'Média';
+}
+
+function formatTaskDate(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  return new Date(value).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short'
+  });
 }
 
 function readStoredColumns(): VisibilityState {
@@ -1039,6 +1076,68 @@ export function TaskIntelligenceTable({
           <option value="connected">Com projeto</option>
           <option value="disconnected">Desconexas</option>
         </select>
+      </div>
+
+      <div className="smart-mobile-list" aria-label="Lista de tarefas para celular">
+        {rows.length === 0 ? (
+          <p className="smart-mobile-empty">Nenhuma tarefa nessa visão.</p>
+        ) : (
+          rows.map((row) => {
+            const task = row.original;
+            const dueDate = formatTaskDate(task.dueDate);
+            const selected = task.id === selectedTaskId;
+            const hasRestriction = (task.restrictions ?? []).some((restriction) => restriction.status === 'aberta');
+
+            return (
+              <article
+                key={task.id}
+                className={`smart-mobile-card${selected ? ' selected' : ''}`}
+              >
+                <button
+                  type="button"
+                  className="smart-mobile-card-main"
+                  onClick={() => onSelectTask(task.id)}
+                >
+                  <span className={`priority-chip priority-${task.priority}`}>P{task.priority}</span>
+                  <span className="smart-mobile-card-title">{task.title}</span>
+                  <span className="smart-mobile-card-context">
+                    {task.workspace?.name ?? 'Sem frente'} · {task.project?.title ?? 'Sem projeto'}
+                  </span>
+                </button>
+
+                <div className="smart-mobile-card-meta">
+                  <span>{statusLabel(task.status)}</span>
+                  <span>Tipo {String(task.taskType ?? 'b').toUpperCase()}</span>
+                  <span>{energyLabel(task.energyLevel)}</span>
+                  {dueDate ? <span>{dueDate}</span> : null}
+                  {task.estimatedMinutes ? (
+                    <span><Clock size={12} /> {task.estimatedMinutes}min</span>
+                  ) : null}
+                  {hasRestriction ? <span className="smart-mobile-warning">Restrição</span> : null}
+                </div>
+
+                <div className="smart-mobile-card-actions">
+                  <button
+                    type="button"
+                    className="smart-mobile-action"
+                    disabled={busy || task.status === 'feito'}
+                    onClick={() => onCompleteTask(task.id)}
+                  >
+                    <CheckCircle2 size={14} /> Concluir
+                  </button>
+                  <button
+                    type="button"
+                    className="smart-mobile-action danger"
+                    disabled={busy}
+                    onClick={() => onDeleteTask(task.id)}
+                  >
+                    <Trash2 size={14} /> Excluir
+                  </button>
+                </div>
+              </article>
+            );
+          })
+        )}
       </div>
 
       <div className="smart-table-scroll">
