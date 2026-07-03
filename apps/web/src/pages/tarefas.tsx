@@ -187,6 +187,10 @@ function waitingRadarTone(state: WaitingFollowupRadar['rows'][number]['followupS
   return 'default' as const;
 }
 
+function arrayOrEmpty<T>(value: T[] | null | undefined) {
+  return Array.isArray(value) ? value : [];
+}
+
 export function TarefasPage() {
   const { activeWorkspaceId, workspaces: shellWorkspaces } = useShellContext();
   const scopedWorkspaceId = workspaceQuery(activeWorkspaceId);
@@ -504,10 +508,10 @@ export function TarefasPage() {
           return;
         }
 
-        setSubtasks(subtaskData);
-        setTaskRestrictions(restrictionData);
-        setTaskHistory(historyData);
-        setMultiBlockProgress(multiBlockData);
+        setSubtasks(arrayOrEmpty(subtaskData));
+        setTaskRestrictions(arrayOrEmpty(restrictionData));
+        setTaskHistory(arrayOrEmpty(historyData));
+        setMultiBlockProgress(multiBlockData ?? null);
       })
       .catch((requestError: Error) => {
         if (cancelled) {
@@ -861,10 +865,10 @@ export function TarefasPage() {
       api.getTaskMultiBlockProgress(taskId)
     ]);
 
-    setSubtasks(subtaskData);
-    setTaskRestrictions(restrictionData);
-    setTaskHistory(historyData);
-    setMultiBlockProgress(multiBlockData);
+    setSubtasks(arrayOrEmpty(subtaskData));
+    setTaskRestrictions(arrayOrEmpty(restrictionData));
+    setTaskHistory(arrayOrEmpty(historyData));
+    setMultiBlockProgress(multiBlockData ?? null);
   }
 
   async function createSubtask(event: FormEvent) {

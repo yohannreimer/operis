@@ -279,9 +279,12 @@ function matchRoute(url: string): MockResponse | null {
   if (path.match(/^\/projects\/[^/]+/)) return { status: 200, body: PROJECT_LANCAMENTO };
 
   if (path === '/tasks') return { status: 200, body: TASKS };
+  if (path.match(/^\/tasks\/waiting-radar/)) return { status: 200, body: { rows: [] } };
   if (path.match(/^\/tasks\/[^/]+\/subtasks/)) return { status: 200, body: [] };
+  if (path.match(/^\/tasks\/[^/]+\/restrictions/)) return { status: 200, body: [] };
   if (path.match(/^\/tasks\/[^/]+\/history/)) return { status: 200, body: [] };
-  if (path.match(/^\/tasks\/waiting-radar/)) return { status: 200, body: { items: [] } };
+  if (path.match(/^\/tasks\/[^/]+\/multiblock/)) return { status: 200, body: null };
+  if (path.match(/^\/tasks\/[^/]+\/waiting-followup/)) return { status: 200, body: null };
 
   if (path.match(/^\/day-plans\//)) return { status: 200, body: DAY_PLAN };
   if (path === '/commitments') return { status: 200, body: COMMITMENTS };
