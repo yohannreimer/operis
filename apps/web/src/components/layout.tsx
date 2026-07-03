@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
+  Settings,
   Star,
   Target
 } from 'lucide-react';
@@ -154,7 +155,7 @@ function readClosedWeeks() {
   }
 }
 
-const links: NavItem[] = [
+export const shellLinks: NavItem[] = [
   { to: '/inbox', label: 'Inbox', caption: 'Captura rápida', icon: Inbox },
   { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
   { to: '/agenda', label: 'Agenda', caption: 'Compromissos', icon: CalendarClock },
@@ -163,8 +164,30 @@ const links: NavItem[] = [
   { to: '/projetos', label: 'Projetos', caption: 'Entregas ativas', icon: BriefcaseBusiness },
   { to: '/tarefas', label: 'Tarefas', caption: 'Backlog e inbox', icon: ListTodo },
   { to: '/notas', label: 'Notas', caption: 'Segundo cérebro', icon: NotebookPen },
-  { to: '/', label: 'Dashboard', caption: 'Métricas e ritual', icon: LayoutDashboard }
+  { to: '/', label: 'Dashboard', caption: 'Métricas e ritual', icon: LayoutDashboard },
+  { to: '/configuracoes', label: 'Configurações', caption: 'Conta e sistema', icon: Settings }
 ];
+
+export function getMobilePrimaryLinks() {
+  const primaryRoutes = ['/inbox', '/hoje', '/agenda', '/tarefas'];
+  return primaryRoutes
+    .map((route) => shellLinks.find((link) => link.to === route))
+    .filter((link): link is NavItem => Boolean(link));
+}
+
+export function getMobileMoreLinks() {
+  const moreRoutes = ['/frentes', '/projetos', '/notas', '/habitos', '/', '/configuracoes'];
+  return moreRoutes
+    .map((route) => shellLinks.find((link) => link.to === route))
+    .filter((link): link is NavItem => Boolean(link));
+}
+
+export function getActiveShellRoute(pathname: string) {
+  return (
+    shellLinks.find((link) => (link.to === '/' ? pathname === '/' : pathname.startsWith(link.to))) ??
+    shellLinks[0]
+  );
+}
 
 const GO_ROUTE_MAP: Record<string, string> = {
   h: '/hoje',
@@ -231,9 +254,7 @@ export function Layout() {
     [workspaces]
   );
 
-  const activeRoute =
-    links.find((link) => (link.to === '/' ? location.pathname === '/' : location.pathname.startsWith(link.to))) ??
-    links[0];
+  const activeRoute = getActiveShellRoute(location.pathname);
   const isTaskTableFocusRoute =
     location.pathname === '/tarefas' && new URLSearchParams(location.search).get('focus') === '1';
 
@@ -468,7 +489,7 @@ export function Layout() {
 
   const navigationCommands: CommandItem[] = useMemo(
     () =>
-      links.map((link) => ({
+      shellLinks.map((link) => ({
         id: `nav-${link.to}`,
         group: 'Navegação',
         label: `Ir para ${link.label}`,
@@ -990,7 +1011,7 @@ export function Layout() {
         </div>
 
         <nav className="main-nav premium-nav">
-          {links.map((link) => {
+          {shellLinks.map((link) => {
             const Icon = link.icon;
             return (
               <NavLink
