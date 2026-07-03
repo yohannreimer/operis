@@ -13,3 +13,4 @@ dist
 .vite
 prisma/dev.db
 .superpowers/
+.worktrees/
