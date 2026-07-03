@@ -31,4 +31,8 @@ describe('Layout mobile navigation helpers', () => {
     expect(getActiveShellRoute('/frentes/ws_123')?.label).toBe('Frentes');
     expect(getActiveShellRoute('/desconhecida')?.label).toBe('Inbox');
   });
+
+  it('does not match sibling-looking route prefixes', () => {
+    expect(getActiveShellRoute('/projetos-old')?.label).toBe('Inbox');
+  });
 });

@@ -184,7 +184,9 @@ export function getMobileMoreLinks() {
 
 export function getActiveShellRoute(pathname: string) {
   return (
-    shellLinks.find((link) => (link.to === '/' ? pathname === '/' : pathname.startsWith(link.to))) ??
+    shellLinks.find((link) =>
+      link.to === '/' ? pathname === '/' : pathname === link.to || pathname.startsWith(`${link.to}/`)
+    ) ??
     shellLinks[0]
   );
 }
