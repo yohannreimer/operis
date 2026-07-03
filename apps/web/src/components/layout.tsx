@@ -366,7 +366,7 @@ export function Layout() {
   useEffect(() => {
     setIsMenuOpen(false);
     setMobileMoreOpen(false);
-  }, [location.pathname]);
+  }, [location.hash, location.pathname, location.search]);
 
   useEffect(() => {
     return () => {
@@ -1014,7 +1014,7 @@ export function Layout() {
 
   return (
     <div className={shellClassName}>
-      <aside className={sidebarClassName} aria-hidden={mobileMoreOpen}>
+      <aside className={sidebarClassName}>
         <div className="brand-block premium-brand">
           <h1>
             <span className="brand-logo">O</span>
@@ -1062,73 +1062,71 @@ export function Layout() {
 
       {isMenuOpen && <button type="button" className="sidebar-backdrop" onClick={() => setIsMenuOpen(false)} />}
 
-      {mobileMoreOpen && (
-        <button
-          type="button"
-          className="mobile-shell-backdrop"
-          aria-label="Fechar mais opções"
-          onClick={() => setMobileMoreOpen(false)}
-        />
-      )}
-
-      <aside
-        className={mobileMoreOpen ? 'mobile-more-drawer open' : 'mobile-more-drawer'}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Mais opções"
-        aria-hidden={!mobileMoreOpen}
-      >
-        <div className="mobile-more-head">
-          <div>
-            <strong>Operis</strong>
-            <span>Mais opções</span>
-          </div>
-          <button
-            type="button"
-            className="ghost-button mobile-icon-button"
-            aria-label="Fechar mais opções"
-            onClick={() => setMobileMoreOpen(false)}
+      <Dialog.Root open={mobileMoreOpen} onOpenChange={setMobileMoreOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="mobile-shell-backdrop" />
+          <Dialog.Content
+            id="mobile-more-drawer"
+            className="mobile-more-drawer open"
+            aria-label="Mais opções"
+            aria-describedby={undefined}
           >
-            <X size={16} />
-          </button>
-        </div>
+            <div className="mobile-more-head">
+              <div>
+                <strong>Operis</strong>
+                <Dialog.Title asChild>
+                  <span>Mais opções</span>
+                </Dialog.Title>
+              </div>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="ghost-button mobile-icon-button"
+                  aria-label="Fechar mais opções"
+                >
+                  <X size={16} />
+                </button>
+              </Dialog.Close>
+            </div>
 
-        <nav className="mobile-more-nav" aria-label="Rotas secundárias">
-          {mobileMoreLinks.map((link) => {
-            const Icon = link.icon;
-            return (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={({ isActive }) => (isActive ? 'mobile-more-link active' : 'mobile-more-link')}
-                end={link.to === '/'}
-                onClick={() => setMobileMoreOpen(false)}
-              >
-                <span className="mobile-more-icon">
-                  <Icon size={16} />
-                </span>
-                <span>
-                  <strong>{link.label}</strong>
-                  <small>{link.caption}</small>
-                </span>
-              </NavLink>
-            );
-          })}
-        </nav>
+            <nav className="mobile-more-nav" aria-label="Rotas secundárias">
+              {mobileMoreLinks.map((link) => {
+                const Icon = link.icon;
+                return (
+                  <NavLink
+                    key={link.to}
+                    to={link.to}
+                    className={({ isActive }) => (isActive ? 'mobile-more-link active' : 'mobile-more-link')}
+                    end={link.to === '/'}
+                    onClick={() => setMobileMoreOpen(false)}
+                  >
+                    <span className="mobile-more-icon">
+                      <Icon size={16} />
+                    </span>
+                    <span>
+                      <strong>{link.label}</strong>
+                      <small>{link.caption}</small>
+                    </span>
+                  </NavLink>
+                );
+              })}
+            </nav>
 
-        <section className="mobile-more-score">
-          <div>
-            <span>Pontos da semana</span>
-            <strong>{gamification?.scoreSemanal ?? 0}</strong>
-          </div>
-          <div>
-            <span>Streak</span>
-            <strong>{gamification?.streak ?? 0}d</strong>
-          </div>
-        </section>
-      </aside>
+            <section className="mobile-more-score">
+              <div>
+                <span>Pontos da semana</span>
+                <strong>{gamification?.scoreSemanal ?? 0}</strong>
+              </div>
+              <div>
+                <span>Streak</span>
+                <strong>{gamification?.streak ?? 0}d</strong>
+              </div>
+            </section>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
-      <div className="app-main premium-main" aria-hidden={mobileMoreOpen}>
+      <div className="app-main premium-main">
         <header className="app-topbar premium-topbar">
           <button
             className="menu-toggle"
@@ -1266,6 +1264,8 @@ export function Layout() {
           type="button"
           className={isMobilePrimaryActive ? 'mobile-bottom-link' : 'mobile-bottom-link active'}
           aria-label="Mais opções"
+          aria-expanded={mobileMoreOpen}
+          aria-controls="mobile-more-drawer"
           onClick={() => setMobileMoreOpen(true)}
         >
           <Menu size={18} />

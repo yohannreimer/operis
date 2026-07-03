@@ -86,18 +86,50 @@ describe('Layout mobile shell rendering', () => {
 
     expect(await screen.findByText('Hoje route body')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: /navegação mobile/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /mais opções/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /mais opções/i })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('button', { name: /capturar rápido/i })).toBeInTheDocument();
   });
 
   it('opens the mobile more drawer with secondary routes', async () => {
     renderLayout('/inbox');
 
-    fireEvent.click(screen.getByRole('button', { name: /mais opções/i }));
+    const moreTrigger = screen.getByRole('button', { name: /mais opções/i });
+    fireEvent.click(moreTrigger);
 
     expect(await screen.findByRole('dialog', { name: /mais opções/i })).toBeInTheDocument();
+    expect(moreTrigger).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('link', { name: /projetos/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /notas/i })).toBeInTheDocument();
+  });
+
+  it('closes the mobile more drawer from the close button', async () => {
+    renderLayout('/inbox');
+
+    const moreTrigger = screen.getByRole('button', { name: /mais opções/i });
+    fireEvent.click(moreTrigger);
+
+    expect(await screen.findByRole('dialog', { name: /mais opções/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /fechar mais opções/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /mais opções/i })).not.toBeInTheDocument();
+    });
+    expect(moreTrigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('closes the mobile more drawer after navigating to a secondary route', async () => {
+    renderLayout('/inbox');
+
+    fireEvent.click(screen.getByRole('button', { name: /mais opções/i }));
+    expect(await screen.findByRole('dialog', { name: /mais opções/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: /projetos/i }));
+
+    expect(await screen.findByText('Projetos route body')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /mais opções/i })).not.toBeInTheDocument();
+    });
   });
 
   it('submits quick capture from the mobile floating action', async () => {
