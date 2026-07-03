@@ -19712,3 +19712,222 @@ textarea.operis-block-field-input {
     transition: none;
   }
 }
+
+@media (max-width: 760px) {
+  .premium-page {
+    gap: 10px;
+  }
+
+  .premium-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .premium-header h2 {
+    font-size: 1.38rem;
+    line-height: 1.15;
+  }
+
+  .premium-subtitle {
+    font-size: 0.86rem;
+  }
+
+  .premium-header-actions,
+  .inline-actions,
+  .smart-toolbar-actions,
+  .project-header-actions,
+  .notes-app-topbar .inline-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .premium-header-actions > *,
+  .inline-actions > button,
+  .smart-toolbar-actions > button,
+  .project-header-actions > button,
+  .notes-app-topbar .inline-actions > button {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .premium-grid,
+  .premium-grid.two,
+  .premium-grid.two-wide,
+  .premium-metric-grid,
+  .premium-metric-grid.mini,
+  .today-layout,
+  .project-screen,
+  .two-col-grid,
+  .three-col-grid,
+  .task-workbench,
+  .task-detail-extensions,
+  .process-settings-grid,
+  .task-create-grid,
+  .delivery-os-grid,
+  .project-redesign-hero,
+  .notes-app-body,
+  .notes-studio-layout,
+  .notes-context-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .premium-card,
+  .premium-metric,
+  .task-master-pane,
+  .task-detail-pane,
+  .project-redesign-side,
+  .notes-app-shell {
+    min-width: 0;
+  }
+
+  .system-alert {
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .system-alert .inline-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .system-alert code {
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .command-backdrop {
+    padding: 8vh 10px 0;
+  }
+
+  .command-palette {
+    width: 100%;
+    max-height: 78vh;
+    border-radius: 14px;
+  }
+
+  .command-search {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .radix-shortcuts-dialog {
+    width: calc(100vw - 20px);
+    max-width: none;
+  }
+
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .modal,
+  .task-modal,
+  .habit-modal {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100vh - 20px);
+  }
+
+  .filters-row,
+  .task-list-filters,
+  .pool-filter-row,
+  .smart-advanced-filters,
+  .compose-option-grid,
+  .compose-option-grid.two,
+  .compose-option-grid.three,
+  .project-picker-grid,
+  .ritual-scope-grid,
+  .ritual-flow-board,
+  .ritual-allocation-body,
+  .project-redesign-hero-metrics,
+  .executive-week-metrics {
+    grid-template-columns: 1fr !important;
+  }
+
+  .smart-table-shell,
+  .notes-table-builder-grid,
+  .scheduler-grid,
+  .agenda-board,
+  .week-strip {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .smart-table-head,
+  .smart-table-row {
+    min-width: 880px;
+  }
+
+  .scheduler-grid {
+    min-width: 680px;
+  }
+
+  .agenda-week-nav,
+  .hoje-date-nav,
+  .notes-writer-toolbar,
+  .notes-writer-modebar,
+  .notes-document-commandbar {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .hoje-date-input {
+    width: 100%;
+  }
+
+  .hoje-hero {
+    padding: 14px;
+  }
+
+  .hoje-deep-work-banner-head,
+  .hoje-capacity-callout,
+  .self-deception-head,
+  .ritual-checklist-list li,
+  .ritual-pending-stack li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inbox-item-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .inbox-item-action-btn,
+  .habit-date-nav-btn,
+  .agenda-week-nav-btn {
+    min-width: 38px;
+    min-height: 38px;
+  }
+}
+
+@media (max-width: 380px) {
+  .premium-main {
+    padding-inline: 8px;
+  }
+
+  .premium-topbar {
+    gap: 6px;
+  }
+
+  .premium-topbar .system-chip {
+    width: 32px;
+    height: 32px;
+  }
+
+  .mobile-bottom-link {
+    font-size: 0.61rem;
+  }
+
+  .mobile-capture-fab {
+    right: 14px;
+    width: 52px;
+    height: 52px;
+  }
+
+  .quick-capture.premium-capture {
+    grid-template-columns: 1fr;
+  }
+}
