@@ -369,6 +369,23 @@ export function Layout() {
   }, [location.hash, location.pathname, location.search]);
 
   useEffect(() => {
+    if (typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const query = window.matchMedia('(max-width: 760px)');
+    const closeWhenDesktop = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (!event.matches) {
+        setMobileMoreOpen(false);
+      }
+    };
+
+    closeWhenDesktop(query);
+    query.addEventListener('change', closeWhenDesktop);
+    return () => query.removeEventListener('change', closeWhenDesktop);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (goPrefixTimeoutRef.current) {
         window.clearTimeout(goPrefixTimeoutRef.current);

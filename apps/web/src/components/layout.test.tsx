@@ -118,6 +118,50 @@ describe('Layout mobile shell rendering', () => {
     expect(moreTrigger).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('closes the mobile more drawer when the viewport leaves the phone breakpoint', async () => {
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    let matches = true;
+
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((media: string) => ({
+        matches,
+        media,
+        onchange: null,
+        addEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
+          if (event === 'change') {
+            listeners.add(listener);
+          }
+        }),
+        removeEventListener: vi.fn((event: string, listener: (event: MediaQueryListEvent) => void) => {
+          if (event === 'change') {
+            listeners.delete(listener);
+          }
+        }),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn()
+      }))
+    );
+
+    renderLayout('/inbox');
+
+    const moreTrigger = screen.getByRole('button', { name: /mais opções/i });
+    fireEvent.click(moreTrigger);
+
+    expect(await screen.findByRole('dialog', { name: /mais opções/i })).toBeInTheDocument();
+
+    matches = false;
+    listeners.forEach((listener) => {
+      listener({ matches } as MediaQueryListEvent);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /mais opções/i })).not.toBeInTheDocument();
+    });
+    expect(moreTrigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('closes the mobile more drawer after navigating to a secondary route', async () => {
     renderLayout('/inbox');
 

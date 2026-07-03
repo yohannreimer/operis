@@ -19471,7 +19471,7 @@ textarea.operis-block-field-input {
     display: none;
   }
 
-  .system-chip {
+  .premium-topbar .system-chip {
     width: 34px;
     height: 34px;
     justify-content: center;
@@ -19540,6 +19540,7 @@ textarea.operis-block-field-input {
     padding: 7px 8px calc(7px + var(--mobile-safe-bottom));
     border-top: 1px solid var(--border);
     background: rgba(35, 35, 40, 0.96);
+    -webkit-backdrop-filter: blur(18px);
     backdrop-filter: blur(18px);
     box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.28);
   }
@@ -19595,6 +19596,8 @@ textarea.operis-block-field-input {
     border-radius: 18px 18px 0 0;
     background: var(--surface);
     box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    overscroll-behavior: contain;
     transform: translateY(105%);
     transition: transform 180ms var(--ease-out);
   }
@@ -19630,7 +19633,9 @@ textarea.operis-block-field-input {
   .mobile-more-nav {
     display: grid;
     gap: 7px;
+    min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .mobile-more-link {
@@ -19699,5 +19704,11 @@ textarea.operis-block-field-input {
   .mobile-more-score strong {
     margin-top: 3px;
     font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+  .mobile-more-drawer {
+    transition: none;
   }
 }
