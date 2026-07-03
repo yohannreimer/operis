@@ -263,7 +263,10 @@ export function Layout() {
   const activeRoute = getActiveShellRoute(location.pathname);
   const mobilePrimaryLinks = useMemo(() => getMobilePrimaryLinks(), []);
   const mobileMoreLinks = useMemo(() => getMobileMoreLinks(), []);
-  const isMobilePrimaryActive = mobilePrimaryLinks.some((link) => activeRoute.to === link.to);
+  const isMobilePrimaryActive = useMemo(
+    () => mobilePrimaryLinks.some((link) => activeRoute.to === link.to),
+    [activeRoute.to, mobilePrimaryLinks]
+  );
   const isTaskTableFocusRoute =
     location.pathname === '/tarefas' && new URLSearchParams(location.search).get('focus') === '1';
 
