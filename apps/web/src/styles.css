@@ -19848,7 +19848,6 @@ textarea.operis-block-field-input {
   .smart-table-shell,
   .notes-table-builder-grid,
   .scheduler-grid,
-  .agenda-board,
   .week-strip {
     max-width: 100%;
     overflow-x: auto;
@@ -19861,7 +19860,18 @@ textarea.operis-block-field-input {
   }
 
   .scheduler-grid {
-    min-width: 680px;
+    grid-template-columns: 56px minmax(624px, 1fr);
+  }
+
+  .agenda-week-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .agenda-week-cols-header,
+  .agenda-week-body-inner {
+    min-width: 760px;
   }
 
   .agenda-week-nav,
