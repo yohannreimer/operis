@@ -5,7 +5,9 @@ import { LandingPage } from './landing-page';
 describe('LandingPage — Operis', () => {
   test('renders Operis headline', () => {
     render(<LandingPage />);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/o dia que você/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/captura tudo/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/executa o que/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/importa/i);
   });
 
   test('renders CTA link to sign-in', () => {
@@ -17,13 +19,13 @@ describe('LandingPage — Operis', () => {
 
   test('renders three feature items', () => {
     render(<LandingPage />);
-    expect(screen.getByText(/objetivos estratégicos/i)).toBeInTheDocument();
-    expect(screen.getByText(/execução diária/i)).toBeInTheDocument();
-    expect(screen.getByText(/revisão semanal/i)).toBeInTheDocument();
+    expect(screen.getByText(/captura em segundos/i)).toBeInTheDocument();
+    expect(screen.getByText(/frentes com modo expansão/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/timer por item/i).length).toBeGreaterThan(0);
   });
 
   test('renders problem headline', () => {
     render(<LandingPage />);
-    expect(screen.getByText(/você é capaz/i)).toBeInTheDocument();
+    expect(screen.getByText(/o problema é fazer/i)).toBeInTheDocument();
   });
 });
