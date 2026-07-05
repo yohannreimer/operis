@@ -236,6 +236,7 @@ export type NotesDictationSession = {
   sessionId: string;
   expiresAt: string;
   wsPath: string;
+  wsProtocols?: string[];
 };
 
 export type NotesAudioTranscriptionResult = {

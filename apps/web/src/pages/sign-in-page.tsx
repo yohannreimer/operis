@@ -1,6 +1,6 @@
 // apps/web/src/pages/sign-in-page.tsx
 import { useEffect, useState } from 'react';
-import { SignIn } from '@clerk/clerk-react';
+import { SignIn } from '@clerk/react';
 
 // ── Focus-blocks decoration — daily planner motif ─────────────────────────────
 const FOCUS_BLOCKS = [
@@ -276,11 +276,6 @@ export function SignInPage() {
               variables: {
                 colorPrimary: '#f97316',
                 colorBackground: '#1a1a1e',
-                colorInputBackground: '#2a2a30',
-                colorInputText: '#e8e4df',
-                colorText: '#e8e4df',
-                colorTextSecondary: '#a09a92',
-                colorNeutral: '#6b6560',
                 borderRadius: '9px',
                 fontFamily: '"Area Normal","Aptos","SF Pro Display",system-ui,sans-serif',
                 fontSize: '14px',
@@ -291,6 +286,9 @@ export function SignInPage() {
                 header: { display: 'none' },
                 footer: { background: 'transparent' },
                 footerAction: { background: 'transparent' },
+                formFieldLabel: { color: '#a09a92' },
+                formFieldInput: { background: '#2a2a30', color: '#e8e4df' },
+                footerActionText: { color: '#a09a92' },
               },
             }}
           />

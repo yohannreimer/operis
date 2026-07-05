@@ -34,11 +34,18 @@ export class DeepWorkService {
     });
   }
 
+  private sessionOwnerWhere(sessionId: string, clerkUserId?: string) {
+    return {
+      id: sessionId,
+      task: clerkUserId ? { workspace: { clerkUserId } } : undefined
+    };
+  }
+
   async start(input: {
     taskId: string;
     targetMinutes?: number;
     minimumBlockMinutes?: number;
-  }) {
+  }, clerkUserId?: string) {
     const minimumBlock = Math.max(15, input.minimumBlockMinutes ?? DEFAULT_MINIMUM_BLOCK_MINUTES);
     const targetMinutes = input.targetMinutes ?? minimumBlock;
 
@@ -46,8 +53,11 @@ export class DeepWorkService {
       throw new Error(`Deep Work exige bloco mínimo de ${minimumBlock} minutos.`);
     }
 
-    const task = await this.prisma.task.findUnique({
-      where: { id: input.taskId },
+    const task = await this.prisma.task.findFirst({
+      where: {
+        id: input.taskId,
+        workspace: clerkUserId ? { clerkUserId } : undefined
+      },
       select: {
         id: true,
         title: true,
@@ -73,7 +83,8 @@ export class DeepWorkService {
 
     const activeSession = await this.prisma.deepWorkSession.findFirst({
       where: {
-        state: 'active'
+        state: 'active',
+        task: clerkUserId ? { workspace: { clerkUserId } } : undefined
       },
       select: {
         id: true,
@@ -122,9 +133,9 @@ export class DeepWorkService {
     return session;
   }
 
-  async registerInterruption(sessionId: string) {
-    const session = await this.prisma.deepWorkSession.findUnique({
-      where: { id: sessionId },
+  async registerInterruption(sessionId: string, clerkUserId?: string) {
+    const session = await this.prisma.deepWorkSession.findFirst({
+      where: this.sessionOwnerWhere(sessionId, clerkUserId),
       select: {
         id: true,
         state: true
@@ -173,9 +184,9 @@ export class DeepWorkService {
     return updated;
   }
 
-  async registerBreak(sessionId: string) {
-    const session = await this.prisma.deepWorkSession.findUnique({
-      where: { id: sessionId },
+  async registerBreak(sessionId: string, clerkUserId?: string) {
+    const session = await this.prisma.deepWorkSession.findFirst({
+      where: this.sessionOwnerWhere(sessionId, clerkUserId),
       select: {
         id: true,
         state: true
@@ -212,12 +223,11 @@ export class DeepWorkService {
     input?: {
       switchedTask?: boolean;
       notes?: string;
-    }
+    },
+    clerkUserId?: string
   ) {
-    const session = await this.prisma.deepWorkSession.findUnique({
-      where: {
-        id: sessionId
-      }
+    const session = await this.prisma.deepWorkSession.findFirst({
+      where: this.sessionOwnerWhere(sessionId, clerkUserId)
     });
 
     if (!session) {
@@ -225,10 +235,8 @@ export class DeepWorkService {
     }
 
     if (session.state !== 'active') {
-      return this.prisma.deepWorkSession.findUnique({
-        where: {
-          id: sessionId
-        },
+      return this.prisma.deepWorkSession.findFirst({
+        where: this.sessionOwnerWhere(sessionId, clerkUserId),
         include: {
           task: true,
           workspace: true,

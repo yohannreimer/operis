@@ -45,6 +45,43 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     }
   }
 
+  async function assertAssignableRelations(
+    clerkUserId: string,
+    workspaceId?: string | null,
+    inboxContextId?: string | null,
+    convertedTaskId?: string | null
+  ) {
+    if (workspaceId) {
+      const workspace = await prisma.workspace.findFirst({
+        where: { id: workspaceId, clerkUserId },
+        select: { id: true }
+      });
+      if (!workspace) {
+        throw new Error('Frente não encontrada.');
+      }
+    }
+
+    if (inboxContextId) {
+      const context = await prisma.inboxContext.findFirst({
+        where: { id: inboxContextId, clerkUserId },
+        select: { id: true }
+      });
+      if (!context) {
+        throw new Error('Contexto não encontrado.');
+      }
+    }
+
+    if (convertedTaskId) {
+      const task = await prisma.task.findFirst({
+        where: { id: convertedTaskId, workspace: { clerkUserId } },
+        select: { id: true }
+      });
+      if (!task) {
+        throw new Error('Tarefa não encontrada.');
+      }
+    }
+  }
+
   // ── Items ────────────────────────────────────────────────────────────────
 
   // GET /inbox
@@ -89,6 +126,7 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     }).parse(request.body);
 
     validateContextMutualExclusion(payload.workspaceId, payload.inboxContextId);
+    await assertAssignableRelations(clerkUserId, payload.workspaceId, payload.inboxContextId);
 
     const item = await prisma.inboxItem.create({
       data: {
@@ -130,6 +168,12 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     const nextWorkspaceId = 'workspaceId' in payload ? payload.workspaceId : existing.workspaceId;
     const nextContextId = 'inboxContextId' in payload ? payload.inboxContextId : existing.inboxContextId;
     validateContextMutualExclusion(nextWorkspaceId, nextContextId);
+    await assertAssignableRelations(
+      clerkUserId,
+      nextWorkspaceId,
+      nextContextId,
+      payload.convertedTaskId
+    );
 
     const updated = await prisma.inboxItem.update({
       where: { id },
@@ -174,6 +218,7 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
 
     const existing = await prisma.inboxItem.findUniqueOrThrow({ where: { id } });
     assertOwnership(clerkUserId, existing.clerkUserId);
+    await assertAssignableRelations(clerkUserId, undefined, undefined, taskId);
 
     return prisma.inboxItem.update({
       where: { id },
@@ -216,6 +261,7 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     if (!item.workspaceId) {
       return reply.code(400).send({ error: 'Atribua uma frente ao item antes de executar.' });
     }
+    await assertAssignableRelations(clerkUserId, item.workspaceId);
 
     // Create a real task so deep work can track time
     const task = await prisma.task.create({
@@ -241,7 +287,7 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     const session = await service.start({
       taskId: task.id,
       targetMinutes: Math.max(15, targetMinutes ?? 45),
-    });
+    }, clerkUserId);
 
     return reply.code(201).send({ session, task });
   });
@@ -293,7 +339,7 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
     assertOwnership(clerkUserId, existing.clerkUserId);
 
     await prisma.inboxItem.updateMany({
-      where: { inboxContextId: id },
+      where: { inboxContextId: id, clerkUserId },
       data: { inboxContextId: null },
     });
 

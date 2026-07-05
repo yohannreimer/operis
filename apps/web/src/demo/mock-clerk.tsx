@@ -1,6 +1,6 @@
 // src/demo/mock-clerk.tsx
 // Fake Clerk module — used when VITE_DEMO_MODE=true
-// Vite aliases @clerk/clerk-react to this file so the app loads without a real key.
+// Vite aliases @clerk/react to this file so the app loads without a real key.
 
 import type { ReactNode } from 'react';
 

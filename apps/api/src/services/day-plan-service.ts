@@ -58,50 +58,8 @@ export class DayPlanService {
     return date === this.todayDateString();
   }
 
-  private async cleanupPendingTaskDuplicates() {
-    const pendingItems = await this.prisma.dayPlanItem.findMany({
-      where: {
-        taskId: {
-          not: null
-        },
-        confirmationState: 'pending'
-      },
-      orderBy: [
-        {
-          startTime: 'desc'
-        }
-      ]
-    });
-
-    const seen = new Set<string>();
-    const duplicatesToDelete: string[] = [];
-
-    for (const item of pendingItems) {
-      if (!item.taskId) {
-        continue;
-      }
-
-      if (!seen.has(item.taskId)) {
-        seen.add(item.taskId);
-        continue;
-      }
-
-      duplicatesToDelete.push(item.id);
-    }
-
-    if (duplicatesToDelete.length) {
-      await this.prisma.dayPlanItem.deleteMany({
-        where: {
-          id: {
-            in: duplicatesToDelete
-          }
-        }
-      });
-    }
-  }
-
   async getByDate(date: string, clerkUserId: string) {
-    await this.cleanupPendingTaskDuplicates();
+    await this.cleanupPendingTaskDuplicates(clerkUserId);
 
     const normalizedDate = startOfDay(date);
     const plan = await this.prisma.dayPlan.findUnique({
@@ -132,8 +90,11 @@ export class DayPlanService {
     const plan = await this.getOrCreatePlan(input.date, input.clerkUserId);
 
     if (input.taskId) {
-      const task = await this.prisma.task.findUnique({
-        where: { id: input.taskId },
+      const task = await this.prisma.task.findFirst({
+        where: {
+          id: input.taskId,
+          workspace: { clerkUserId: input.clerkUserId }
+        },
         select: {
           estimatedMinutes: true,
           title: true,
@@ -170,7 +131,10 @@ export class DayPlanService {
       await this.prisma.dayPlanItem.deleteMany({
         where: {
           taskId: input.taskId,
-          confirmationState: 'pending'
+          confirmationState: 'pending',
+          task: {
+            workspace: { clerkUserId: input.clerkUserId }
+          }
         }
       });
     }
@@ -255,6 +219,49 @@ export class DayPlanService {
     return created;
   }
 
+  private async cleanupPendingTaskDuplicates(clerkUserId?: string) {
+    const pendingItems = await this.prisma.dayPlanItem.findMany({
+      where: {
+        taskId: {
+          not: null
+        },
+        confirmationState: 'pending',
+        task: clerkUserId ? { workspace: { clerkUserId } } : undefined
+      },
+      orderBy: [
+        {
+          startTime: 'desc'
+        }
+      ]
+    });
+
+    const seen = new Set<string>();
+    const duplicatesToDelete: string[] = [];
+
+    for (const item of pendingItems) {
+      if (!item.taskId) {
+        continue;
+      }
+
+      if (!seen.has(item.taskId)) {
+        seen.add(item.taskId);
+        continue;
+      }
+
+      duplicatesToDelete.push(item.id);
+    }
+
+    if (duplicatesToDelete.length) {
+      await this.prisma.dayPlanItem.deleteMany({
+        where: {
+          id: {
+            in: duplicatesToDelete
+          }
+        }
+      });
+    }
+  }
+
   private async assertNoForbiddenOverlap(params: {
     dayPlanId: string;
     startTime: Date;
@@ -284,7 +291,25 @@ export class DayPlanService {
     }
   }
 
-  async updateItem(dayPlanItemId: string, input: UpdateDayPlanItemInput) {
+  private async assertItemOwner(dayPlanItemId: string, clerkUserId?: string) {
+    if (!clerkUserId) {
+      return;
+    }
+
+    const item = await this.prisma.dayPlanItem.findFirst({
+      where: {
+        id: dayPlanItemId,
+        dayPlan: { clerkUserId }
+      },
+      select: { id: true }
+    });
+
+    if (!item) {
+      throw new Error('Item de planejamento não encontrado.');
+    }
+  }
+
+  async updateItem(dayPlanItemId: string, input: UpdateDayPlanItemInput, clerkUserId?: string) {
     const existingItem = await this.prisma.dayPlanItem.findUnique({
       where: { id: dayPlanItemId },
       include: {
@@ -293,6 +318,10 @@ export class DayPlanService {
     });
 
     if (!existingItem) {
+      throw new Error('Item de planejamento não encontrado.');
+    }
+
+    if (clerkUserId && existingItem.dayPlan.clerkUserId !== clerkUserId) {
       throw new Error('Item de planejamento não encontrado.');
     }
 
@@ -306,8 +335,11 @@ export class DayPlanService {
     }
 
     if (nextTaskId) {
-      const task = await this.prisma.task.findUnique({
-        where: { id: nextTaskId },
+      const task = await this.prisma.task.findFirst({
+        where: {
+          id: nextTaskId,
+          workspace: clerkUserId ? { clerkUserId } : undefined
+        },
         select: {
           estimatedMinutes: true,
           title: true,
@@ -355,6 +387,7 @@ export class DayPlanService {
         where: {
           taskId: nextTaskId,
           confirmationState: 'pending',
+          task: clerkUserId ? { workspace: { clerkUserId } } : undefined,
           id: {
             not: existingItem.id
           }
@@ -396,7 +429,7 @@ export class DayPlanService {
     return updated;
   }
 
-  async removeItem(dayPlanItemId: string) {
+  async removeItem(dayPlanItemId: string, clerkUserId?: string) {
     const existingItem = await this.prisma.dayPlanItem.findUnique({
       where: { id: dayPlanItemId },
       include: {
@@ -405,6 +438,10 @@ export class DayPlanService {
     });
 
     if (!existingItem) {
+      throw new Error('Item de planejamento não encontrado.');
+    }
+
+    if (clerkUserId && existingItem.dayPlan.clerkUserId !== clerkUserId) {
       throw new Error('Item de planejamento não encontrado.');
     }
 
@@ -467,7 +504,9 @@ export class DayPlanService {
     return { ok: true };
   }
 
-  async confirmDone(dayPlanItemId: string) {
+  async confirmDone(dayPlanItemId: string, clerkUserId?: string) {
+    await this.assertItemOwner(dayPlanItemId, clerkUserId);
+
     const item = await this.prisma.dayPlanItem.update({
       where: { id: dayPlanItemId },
       data: {
@@ -476,13 +515,15 @@ export class DayPlanService {
     });
 
     if (item.taskId) {
-      await this.taskService.complete(item.taskId);
+      await this.taskService.complete(item.taskId, { clerkUserId });
     }
 
     return item;
   }
 
-  async confirmNotDone(dayPlanItemId: string, reason?: FailureReason) {
+  async confirmNotDone(dayPlanItemId: string, reason?: FailureReason, clerkUserId?: string) {
+    await this.assertItemOwner(dayPlanItemId, clerkUserId);
+
     const item = await this.prisma.dayPlanItem.update({
       where: { id: dayPlanItemId },
       data: {
@@ -491,23 +532,24 @@ export class DayPlanService {
     });
 
     if (item.taskId) {
-      await this.taskService.notConfirmed(item.taskId, reason);
+      await this.taskService.notConfirmed(item.taskId, reason, { clerkUserId });
     }
 
     return item;
   }
 
-  async postpone(dayPlanItemId: string, reason?: FailureReason) {
+  async postpone(dayPlanItemId: string, reason?: FailureReason, clerkUserId?: string) {
     const item = await this.prisma.dayPlanItem.findUnique({
-      where: { id: dayPlanItemId }
+      where: { id: dayPlanItemId },
+      include: { dayPlan: true }
     });
 
-    if (!item) {
+    if (!item || (clerkUserId && item.dayPlan.clerkUserId !== clerkUserId)) {
       throw new Error('Item de planejamento não encontrado.');
     }
 
     if (item.taskId) {
-      await this.taskService.postpone(item.taskId, reason);
+      await this.taskService.postpone(item.taskId, reason, { clerkUserId });
     }
 
     return this.prisma.dayPlanItem.update({

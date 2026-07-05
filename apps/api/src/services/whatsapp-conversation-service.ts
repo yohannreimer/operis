@@ -456,9 +456,10 @@ export class WhatsappConversationService {
     return this.normalizeWhatsappBody(raw);
   }
 
-  private async listFolderChoices() {
+  private async listFolderChoices(clerkUserId: string) {
     const folders = await this.prisma.noteFolder.findMany({
       where: {
+        clerkUserId,
         archivedAt: null
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }]
@@ -488,9 +489,10 @@ export class WhatsappConversationService {
     return rows;
   }
 
-  private async listNoteChoices(folderId: string | null) {
+  private async listNoteChoices(folderId: string | null, clerkUserId: string) {
     const notes = await this.prisma.note.findMany({
       where: {
+        clerkUserId,
         archivedAt: null,
         folderId
       },
@@ -582,10 +584,11 @@ export class WhatsappConversationService {
     return status;
   }
 
-  private async listTaskChoices(limit = 8): Promise<TaskChoice[]> {
+  private async listTaskChoices(limit = 8, clerkUserId: string): Promise<TaskChoice[]> {
     const tasks = await this.prisma.task.findMany({
       where: {
         archivedAt: null,
+        workspace: { clerkUserId },
         status: {
           in: ['hoje', 'andamento', 'backlog']
         }
@@ -879,7 +882,7 @@ export class WhatsappConversationService {
     }
 
     if (numericChoice === 7 || normalized === 'ABERTAS') {
-      const choices = await this.listTaskChoices(18);
+      const choices = await this.listTaskChoices(18, clerkUserId);
       await this.setSession(
         phoneNumber,
         'open_tasks_list',
@@ -943,7 +946,7 @@ export class WhatsappConversationService {
       }
 
       if (normalized === 'C' || hasOptionLetter(text, 'C') || numericChoice === 3 || normalized === 'IDS') {
-        const choices = await this.listTaskChoices(8);
+        const choices = await this.listTaskChoices(8, clerkUserId);
         await this.setSession(
           phoneNumber,
           'focus_manual_ids',
@@ -1000,7 +1003,7 @@ export class WhatsappConversationService {
         };
       }
 
-      const choices = await this.listTaskChoices(8);
+      const choices = await this.listTaskChoices(8, clerkUserId);
 
       await this.setSession(
         phoneNumber,
@@ -1125,7 +1128,7 @@ export class WhatsappConversationService {
 
     if (session.state === 'deep_menu') {
       if (numericChoice === 1 || normalized === 'INICIAR') {
-        const choices = await this.listTaskChoices(8);
+        const choices = await this.listTaskChoices(8, clerkUserId);
         await this.setSession(
           phoneNumber,
           'deep_start_waiting_task',
@@ -1310,7 +1313,7 @@ export class WhatsappConversationService {
       const selectedTaskTitle =
         typeof payload.selectedTaskTitle === 'string' ? payload.selectedTaskTitle : 'tarefa';
       if (!selectedTaskId) {
-        const refreshed = await this.listTaskChoices(18);
+        const refreshed = await this.listTaskChoices(18, clerkUserId);
         await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
         return {
           reply: this.renderOpenTaskList(refreshed)
@@ -1337,7 +1340,7 @@ export class WhatsappConversationService {
 
       if (numericChoice === 2 || hasAnyIntent(text, ['concluir', 'conclui', 'fiz', 'feito'])) {
         const result = await this.runCommand(`fiz ${selectedTaskId}`, clerkUserId);
-        const refreshed = await this.listTaskChoices(18);
+        const refreshed = await this.listTaskChoices(18, clerkUserId);
         await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
         return {
           reply: `${this.joinReply(this.prettifyReply(result.reply))}\n\n${this.renderOpenTaskList(refreshed)}`
@@ -1345,7 +1348,7 @@ export class WhatsappConversationService {
       }
 
       if (numericChoice === 3 || normalized === 'VOLTAR' || normalized === 'CANCELAR' || hasAnyIntent(text, ['voltar', 'cancelar'])) {
-        const refreshed = await this.listTaskChoices(18);
+        const refreshed = await this.listTaskChoices(18, clerkUserId);
         await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
         return {
           reply: this.renderOpenTaskList(refreshed)
@@ -1362,7 +1365,7 @@ export class WhatsappConversationService {
       };
     }
 
-    const refreshed = await this.listTaskChoices(18);
+    const refreshed = await this.listTaskChoices(18, clerkUserId);
     await this.setSession(phoneNumber, 'open_tasks_list', { choices: refreshed }, LONG_SESSION_TTL_MINUTES);
     return {
       reply: this.renderOpenTaskList(refreshed)
@@ -1372,7 +1375,8 @@ export class WhatsappConversationService {
   private async processNotesInput(
     phoneNumber: string,
     session: WhatsappConversationSession,
-    text: string
+    text: string,
+    clerkUserId: string
   ): Promise<CommandResult> {
     const normalized = normalizeOptionToken(text);
     const payload =
@@ -1383,7 +1387,7 @@ export class WhatsappConversationService {
     if (session.state === 'notes_menu') {
       const numericChoice = extractNumericChoice(text, 1, 3);
       if (numericChoice === 1 || normalized === 'BUSCAR' || normalized === 'PASTAS') {
-        const folders = await this.listFolderChoices();
+        const folders = await this.listFolderChoices(clerkUserId);
         await this.setSession(
           phoneNumber,
           'notes_pick_folder',
@@ -1445,7 +1449,7 @@ export class WhatsappConversationService {
         };
       }
 
-      const notes = await this.listNoteChoices(selectedFolder.id);
+      const notes = await this.listNoteChoices(selectedFolder.id, clerkUserId);
       await this.setSession(
         phoneNumber,
         'notes_pick_note',
@@ -1467,7 +1471,7 @@ export class WhatsappConversationService {
         return { reply: this.menuText() };
       }
       if (normalized === 'VOLTAR' || normalized === 'CANCELAR' || hasAnyIntent(text, ['voltar', 'cancelar'])) {
-        const folders = await this.listFolderChoices();
+        const folders = await this.listFolderChoices(clerkUserId);
         await this.setSession(
           phoneNumber,
           'notes_pick_folder',
@@ -1499,9 +1503,10 @@ export class WhatsappConversationService {
         };
       }
 
-      const note = await this.prisma.note.findUnique({
+      const note = await this.prisma.note.findFirst({
         where: {
-          id: selected.id
+          id: selected.id,
+          clerkUserId
         },
         include: {
           folder: {
@@ -1556,6 +1561,7 @@ export class WhatsappConversationService {
         data: {
           title,
           content,
+          clerkUserId,
           type: 'geral',
           tags: [],
           pinned: false
@@ -1585,13 +1591,13 @@ export class WhatsappConversationService {
     return ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'][d.getDay()];
   }
 
-  private async buildLLMContext(): Promise<LLMContext> {
+  private async buildLLMContext(clerkUserId: string): Promise<LLMContext> {
     const dateKey = this.todayDateKey();
     const dayOfWeek = this.dayOfWeekPt(new Date());
 
     // Fetch top 3 tasks
     try {
-      const briefing = await this.commandService.getBriefingForLLM(dateKey);
+      const briefing = await this.commandService.getBriefingForLLM(dateKey, clerkUserId);
       return {
         dateKey,
         dayOfWeek,
@@ -1632,7 +1638,7 @@ export class WhatsappConversationService {
 
       case 'list_commitments': {
         const dateKey = (intent as { action: 'list_commitments'; date?: string }).date ?? this.todayDateKey();
-        const block = await this.commandService.buildCommitmentsForDate(dateKey);
+        const block = await this.commandService.buildCommitmentsForDate(dateKey, clerkUserId);
         if (!block) {
           return { reply: `📅 Sem compromissos para ${dateKey}.` };
         }
@@ -1688,7 +1694,7 @@ export class WhatsappConversationService {
         const i = intent as Extract<LLMIntent, { action: 'create_commitment' }>;
         // Create commitment directly via DB (no CLI equivalent for complex commitments)
         try {
-          const created = await this.commandService.createCommitmentFromIntent(i);
+          const created = await this.commandService.createCommitmentFromIntent(i, clerkUserId);
           const timeStr = i.startTime ? ` às ${i.startTime}` : '';
           const recStr = i.type === 'fixo' && i.recurrenceDays?.length
             ? ` (toda ${i.recurrenceDays.join(', ')})`
@@ -1705,7 +1711,7 @@ export class WhatsappConversationService {
       case 'cancel_commitment': {
         const i = intent as Extract<LLMIntent, { action: 'cancel_commitment' }>;
         try {
-          const result = await this.commandService.cancelCommitmentFromIntent(i);
+          const result = await this.commandService.cancelCommitmentFromIntent(i, clerkUserId);
           return { reply: result };
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'Não encontrei esse compromisso.';
@@ -1716,7 +1722,7 @@ export class WhatsappConversationService {
       case 'reschedule_commitment': {
         const i = intent as Extract<LLMIntent, { action: 'reschedule_commitment' }>;
         try {
-          const result = await this.commandService.rescheduleCommitmentFromIntent(i);
+          const result = await this.commandService.rescheduleCommitmentFromIntent(i, clerkUserId);
           return { reply: result };
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'Não consegui remarcar esse compromisso.';
@@ -1730,7 +1736,7 @@ export class WhatsappConversationService {
         const dateKey = i.date ?? this.todayDateKey();
         const habit = await habitService.findHabitByHint(i.titleHint);
         if (!habit) {
-          const allHabits = await this.prisma.habit.findMany({ where: { status: 'ativo' }, select: { title: true } });
+          const allHabits = await this.prisma.habit.findMany({ where: { status: 'ativo', clerkUserId }, select: { title: true } });
           const list = allHabits.map(h => `• ${h.title}`).join('\n');
           return { reply: `❓ Não encontrei nenhum hábito com "${i.titleHint}".\n\nSeus hábitos:\n${list || 'Nenhum hábito configurado ainda.'}` };
         }
@@ -1810,7 +1816,7 @@ export class WhatsappConversationService {
     if (!this.llmService?.isAvailable || top3.length === 0) {
       await this.setSession(phoneNumber, 'idle');
       if (top3.length === 0) {
-        const choices = await this.listTaskChoices(8);
+        const choices = await this.listTaskChoices(8, clerkUserId);
         await this.setSession(phoneNumber, 'open_tasks_list', { choices }, LONG_SESSION_TTL_MINUTES);
         return { reply: this.renderOpenTaskList(choices) };
       }
@@ -1839,7 +1845,7 @@ export class WhatsappConversationService {
     }
 
     if (action === 'show_all_tasks') {
-      const choices = await this.listTaskChoices(18);
+      const choices = await this.listTaskChoices(18, clerkUserId);
       await this.setSession(phoneNumber, 'open_tasks_list', { choices }, LONG_SESSION_TTL_MINUTES);
       return { reply: this.renderOpenTaskList(choices) };
     }
@@ -1849,6 +1855,7 @@ export class WhatsappConversationService {
         where: {
           archivedAt: null,
           status: { in: ['hoje', 'andamento', 'backlog'] },
+          workspace: { clerkUserId },
           title: { contains: replaceText, mode: 'insensitive' }
         },
         take: 5,
@@ -2033,7 +2040,7 @@ export class WhatsappConversationService {
     const isInFlow = session && session.state !== 'idle' && session.state !== 'menu';
     if (this.llmService?.isAvailable && !isInFlow) {
       try {
-        const context = await this.buildLLMContext();
+        const context = await this.buildLLMContext(clerkUserId);
         const intent = await this.llmService.extractIntent(text, context);
         if (intent && intent.action !== 'unknown') {
           const llmResult = await this.handleLLMIntent(phoneNumber, intent, text, clerkUserId);
@@ -2077,7 +2084,7 @@ export class WhatsappConversationService {
     }
 
     if (inferredCommand === '__deep_waiting_task__') {
-      const choices = await this.listTaskChoices(8);
+      const choices = await this.listTaskChoices(8, clerkUserId);
       await this.setSession(
         phoneNumber,
         'deep_start_waiting_task',
@@ -2161,7 +2168,7 @@ export class WhatsappConversationService {
       const todayKey = this.todayDateKey();
       // UTC-3 (Brasília): local midnight = UTC 03:00
       const todayStart = new Date(`${todayKey}T03:00:00.000Z`);
-      const result = await this.commandService.handleResumo(todayKey, todayStart);
+      const result = await this.commandService.handleResumo(todayKey, todayStart, clerkUserId);
       await this.setSession(phoneNumber, 'idle');
       return { reply: this.prettifyReply(result.reply) };
     }
@@ -2236,7 +2243,7 @@ export class WhatsappConversationService {
     }
 
     if (session.state.startsWith('notes_')) {
-      return this.processNotesInput(phoneNumber, session, text);
+      return this.processNotesInput(phoneNumber, session, text, clerkUserId);
     }
 
     if (session.state === 'capture_inbox') {

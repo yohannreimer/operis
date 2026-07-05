@@ -38,6 +38,7 @@ export function registerDeepWorkRoutes(app: FastifyInstance, deepWorkService: De
   });
 
   app.post('/deep-work/start', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const payload = z
       .object({
         taskId: z.string().uuid(),
@@ -46,21 +47,24 @@ export function registerDeepWorkRoutes(app: FastifyInstance, deepWorkService: De
       })
       .parse(request.body);
 
-    const session = await deepWorkService.start(payload);
+    const session = await deepWorkService.start(payload, clerkUserId);
     return reply.code(201).send(session);
   });
 
   app.post('/deep-work/:sessionId/interruption', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ sessionId: z.string().uuid() }).parse(request.params);
-    return deepWorkService.registerInterruption(params.sessionId);
+    return deepWorkService.registerInterruption(params.sessionId, clerkUserId);
   });
 
   app.post('/deep-work/:sessionId/break', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ sessionId: z.string().uuid() }).parse(request.params);
-    return deepWorkService.registerBreak(params.sessionId);
+    return deepWorkService.registerBreak(params.sessionId, clerkUserId);
   });
 
   app.post('/deep-work/:sessionId/stop', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ sessionId: z.string().uuid() }).parse(request.params);
     const payload = z
       .object({
@@ -69,6 +73,6 @@ export function registerDeepWorkRoutes(app: FastifyInstance, deepWorkService: De
       })
       .parse(request.body ?? {});
 
-    return deepWorkService.stop(params.sessionId, payload);
+    return deepWorkService.stop(params.sessionId, payload, clerkUserId);
   });
 }

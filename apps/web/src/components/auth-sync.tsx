@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAuth } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/react';
 import { productAccessDeniedUrl, redirectToProductAccessPage, setAuthTokenGetter } from '../api';
 
 const PRYMEIRA_ACCOUNT_API_URL = (

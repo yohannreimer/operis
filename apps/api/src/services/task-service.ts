@@ -21,6 +21,7 @@ import {
 } from './strategic-decision-service.js';
 
 type CreateTaskInput = {
+  clerkUserId?: string;
   workspaceId: string;
   projectId?: string | null;
   title: string;
@@ -51,9 +52,14 @@ type UpdateTaskInput = Partial<CreateTaskInput> & {
 };
 
 type CompleteTaskOptions = {
+  clerkUserId?: string;
   strictMode?: boolean;
   completionMode?: 'note' | 'no_note';
   completionNote?: string;
+};
+
+type OwnershipOptions = {
+  clerkUserId?: string;
 };
 
 type UpdateSubtaskInput = Partial<{
@@ -307,6 +313,68 @@ export class TaskService {
     });
   }
 
+  private taskOwnerWhere(taskId: string, clerkUserId?: string): Prisma.TaskWhereInput {
+    return {
+      id: taskId,
+      workspace: clerkUserId ? { clerkUserId } : undefined
+    };
+  }
+
+  private async assertTaskOwner(taskId: string, clerkUserId?: string) {
+    if (!clerkUserId) {
+      return;
+    }
+
+    const task = await this.prisma.task.findFirst({
+      where: this.taskOwnerWhere(taskId, clerkUserId),
+      select: { id: true }
+    });
+
+    if (!task) {
+      throw new Error('Tarefa não encontrada.');
+    }
+  }
+
+  private async assertSubtaskOwner(subtaskId: string, clerkUserId?: string) {
+    if (!clerkUserId) {
+      return;
+    }
+
+    const subtask = await this.prisma.subtask.findFirst({
+      where: {
+        id: subtaskId,
+        task: {
+          workspace: { clerkUserId }
+        }
+      },
+      select: { id: true }
+    });
+
+    if (!subtask) {
+      throw new Error('Subtarefa não encontrada.');
+    }
+  }
+
+  private async assertRestrictionOwner(restrictionId: string, clerkUserId?: string) {
+    if (!clerkUserId) {
+      return;
+    }
+
+    const restriction = await this.prisma.taskRestriction.findFirst({
+      where: {
+        id: restrictionId,
+        task: {
+          workspace: { clerkUserId }
+        }
+      },
+      select: { id: true }
+    });
+
+    if (!restriction) {
+      throw new Error('Restrição não encontrada.');
+    }
+  }
+
   private resolveWorkspaceGuardrailViolation(input: {
     workspaceName: string;
     workspaceMode: WorkspaceMode;
@@ -448,14 +516,15 @@ export class TaskService {
     };
   }
 
-  async resolveTaskByShortId(shortId: string) {
+  async resolveTaskByShortId(shortId: string, clerkUserId?: string) {
     const normalized = shortId.trim().toLowerCase();
 
     const candidates = await this.prisma.task.findMany({
       where: {
         id: {
           startsWith: normalized
-        }
+        },
+        workspace: clerkUserId ? { clerkUserId } : undefined
       },
       take: 2
     });
@@ -614,13 +683,35 @@ export class TaskService {
       definitionOfDone: input.definitionOfDone,
       estimatedMinutes: input.estimatedMinutes
     });
-    const workspace = await this.prisma.workspace.findUniqueOrThrow({
-      where: { id: input.workspaceId },
+    const workspace = await this.prisma.workspace.findFirst({
+      where: {
+        id: input.workspaceId,
+        clerkUserId: input.clerkUserId
+      },
       select: {
         name: true,
         mode: true
       }
     });
+
+    if (!workspace) {
+      throw new Error('Workspace não encontrado.');
+    }
+
+    if (input.projectId) {
+      const project = await this.prisma.project.findFirst({
+        where: {
+          id: input.projectId,
+          workspaceId: input.workspaceId,
+          workspace: input.clerkUserId ? { clerkUserId: input.clerkUserId } : undefined
+        },
+        select: { id: true }
+      });
+
+      if (!project) {
+        throw new Error('Projeto não encontrado.');
+      }
+    }
 
     const createViolation = this.resolveWorkspaceGuardrailViolation({
       workspaceName: workspace.name,
@@ -701,7 +792,7 @@ export class TaskService {
     return task;
   }
 
-  async update(taskId: string, input: UpdateTaskInput) {
+  async update(taskId: string, input: UpdateTaskInput, options: OwnershipOptions = {}) {
     if (input.title !== undefined) {
       this.ensureExecutableTitle(input.title);
     }
@@ -712,8 +803,8 @@ export class TaskService {
       waitingDueDate: input.waitingDueDate
     });
 
-    const currentTask = await this.prisma.task.findUnique({
-      where: { id: taskId },
+    const currentTask = await this.prisma.task.findFirst({
+      where: this.taskOwnerWhere(taskId, options.clerkUserId),
       select: {
         id: true,
         title: true,
@@ -729,7 +820,8 @@ export class TaskService {
         workspace: {
           select: {
             name: true,
-            mode: true
+            mode: true,
+            clerkUserId: true
           }
         }
       }
@@ -764,13 +856,35 @@ export class TaskService {
     const nextWorkspace =
       nextWorkspaceId === currentTask.workspaceId
         ? currentTask.workspace
-        : await this.prisma.workspace.findUniqueOrThrow({
-            where: { id: nextWorkspaceId },
+        : await this.prisma.workspace.findFirst({
+            where: {
+              id: nextWorkspaceId,
+              clerkUserId: options.clerkUserId
+            },
             select: {
               name: true,
               mode: true
             }
           });
+
+    if (!nextWorkspace) {
+      throw new Error('Workspace não encontrado.');
+    }
+
+    if (input.projectId) {
+      const nextProject = await this.prisma.project.findFirst({
+        where: {
+          id: input.projectId,
+          workspaceId: nextWorkspaceId,
+          workspace: options.clerkUserId ? { clerkUserId: options.clerkUserId } : undefined
+        },
+        select: { id: true }
+      });
+
+      if (!nextProject) {
+        throw new Error('Projeto não encontrado.');
+      }
+    }
 
     const currentViolation = this.resolveWorkspaceGuardrailViolation({
       workspaceName: currentTask.workspace.name,
@@ -966,10 +1080,13 @@ export class TaskService {
     return task;
   }
 
-  async addDependency(taskId: string, dependsOnTaskId: string) {
+  async addDependency(taskId: string, dependsOnTaskId: string, options: OwnershipOptions = {}) {
     if (taskId === dependsOnTaskId) {
       throw new Error('Uma tarefa não pode depender dela mesma.');
     }
+
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+    await this.assertTaskOwner(dependsOnTaskId, options.clerkUserId);
 
     const dependsOnGraph = await this.prisma.taskDependency.findMany({
       where: { taskId: dependsOnTaskId }
@@ -1067,8 +1184,8 @@ export class TaskService {
   }
 
   async complete(taskId: string, options?: CompleteTaskOptions) {
-    const currentTask = await this.prisma.task.findUnique({
-      where: { id: taskId },
+    const currentTask = await this.prisma.task.findFirst({
+      where: this.taskOwnerWhere(taskId, options?.clerkUserId),
       select: {
         id: true,
         title: true,
@@ -1202,7 +1319,9 @@ export class TaskService {
     return task;
   }
 
-  async postpone(taskId: string, reason?: FailureReason) {
+  async postpone(taskId: string, reason?: FailureReason, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+
     const task = await this.prisma.task.update({
       where: { id: taskId },
       data: {
@@ -1241,7 +1360,9 @@ export class TaskService {
     return task;
   }
 
-  async notConfirmed(taskId: string, reason?: FailureReason) {
+  async notConfirmed(taskId: string, reason?: FailureReason, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+
     await this.prisma.executionEvent.create({
       data: {
         taskId,
@@ -1292,10 +1413,11 @@ export class TaskService {
       note?: string;
       source?: 'manual' | 'auto';
       triggerQueue?: boolean;
-    }
+    },
+    options: OwnershipOptions = {}
   ) {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId },
+    const task = await this.prisma.task.findFirst({
+      where: this.taskOwnerWhere(taskId, options.clerkUserId),
       include: {
         workspace: {
           select: {
@@ -1361,18 +1483,19 @@ export class TaskService {
     });
   }
 
-  async scheduleWaitingFollowup(taskId: string) {
+  async scheduleWaitingFollowup(taskId: string, options: OwnershipOptions = {}) {
     return this.registerWaitingFollowup(taskId, {
       source: 'auto',
       triggerQueue: true
-    });
+    }, options);
   }
 
-  async archiveCompletedOlderThan24Hours() {
+  async archiveCompletedOlderThan24Hours(options: OwnershipOptions = {}) {
     const before = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const result = await this.prisma.task.updateMany({
       where: {
+        workspace: options.clerkUserId ? { clerkUserId: options.clerkUserId } : undefined,
         status: 'feito',
         completedAt: {
           lt: before
@@ -1387,11 +1510,9 @@ export class TaskService {
     return result.count;
   }
 
-  async getMultiBlockProgress(taskId: string) {
-    const task = await this.prisma.task.findUnique({
-      where: {
-        id: taskId
-      },
+  async getMultiBlockProgress(taskId: string, options: OwnershipOptions = {}) {
+    const task = await this.prisma.task.findFirst({
+      where: this.taskOwnerWhere(taskId, options.clerkUserId),
       select: {
         id: true,
         title: true,
@@ -1475,7 +1596,9 @@ export class TaskService {
     };
   }
 
-  async listSubtasks(taskId: string) {
+  async listSubtasks(taskId: string, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+
     return this.prisma.subtask.findMany({
       where: {
         taskId
@@ -1486,7 +1609,9 @@ export class TaskService {
     });
   }
 
-  async listRestrictions(taskId: string) {
+  async listRestrictions(taskId: string, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+
     return this.prisma.taskRestriction.findMany({
       where: {
         taskId
@@ -1495,11 +1620,8 @@ export class TaskService {
     });
   }
 
-  async createRestriction(taskId: string, input: CreateTaskRestrictionInput) {
-    await this.prisma.task.findUniqueOrThrow({
-      where: { id: taskId },
-      select: { id: true }
-    });
+  async createRestriction(taskId: string, input: CreateTaskRestrictionInput, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
 
     return this.prisma.taskRestriction.create({
       data: {
@@ -1511,7 +1633,13 @@ export class TaskService {
     });
   }
 
-  async updateRestriction(restrictionId: string, input: UpdateTaskRestrictionInput) {
+  async updateRestriction(
+    restrictionId: string,
+    input: UpdateTaskRestrictionInput,
+    options: OwnershipOptions = {}
+  ) {
+    await this.assertRestrictionOwner(restrictionId, options.clerkUserId);
+
     const current = await this.prisma.taskRestriction.findUnique({
       where: { id: restrictionId },
       select: {
@@ -1541,7 +1669,9 @@ export class TaskService {
     });
   }
 
-  async removeRestriction(restrictionId: string) {
+  async removeRestriction(restrictionId: string, options: OwnershipOptions = {}) {
+    await this.assertRestrictionOwner(restrictionId, options.clerkUserId);
+
     await this.prisma.taskRestriction.delete({
       where: {
         id: restrictionId
@@ -1551,11 +1681,8 @@ export class TaskService {
     return { ok: true };
   }
 
-  async createSubtask(taskId: string, title: string) {
-    await this.prisma.task.findUniqueOrThrow({
-      where: { id: taskId },
-      select: { id: true }
-    });
+  async createSubtask(taskId: string, title: string, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
 
     return this.prisma.subtask.create({
       data: {
@@ -1566,7 +1693,9 @@ export class TaskService {
     });
   }
 
-  async updateSubtask(subtaskId: string, input: UpdateSubtaskInput) {
+  async updateSubtask(subtaskId: string, input: UpdateSubtaskInput, options: OwnershipOptions = {}) {
+    await this.assertSubtaskOwner(subtaskId, options.clerkUserId);
+
     return this.prisma.subtask.update({
       where: { id: subtaskId },
       data: {
@@ -1576,7 +1705,9 @@ export class TaskService {
     });
   }
 
-  async removeSubtask(subtaskId: string) {
+  async removeSubtask(subtaskId: string, options: OwnershipOptions = {}) {
+    await this.assertSubtaskOwner(subtaskId, options.clerkUserId);
+
     await this.prisma.subtask.delete({
       where: { id: subtaskId }
     });
@@ -1584,11 +1715,9 @@ export class TaskService {
     return { ok: true };
   }
 
-  async remove(taskId: string) {
-    const currentTask = await this.prisma.task.findUnique({
-      where: {
-        id: taskId
-      },
+  async remove(taskId: string, options: OwnershipOptions = {}) {
+    const currentTask = await this.prisma.task.findFirst({
+      where: this.taskOwnerWhere(taskId, options.clerkUserId),
       select: {
         id: true,
         title: true,
@@ -1640,9 +1769,9 @@ export class TaskService {
     };
   }
 
-  async getHistory(taskId: string): Promise<TaskHistoryEntry[]> {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId },
+  async getHistory(taskId: string, options: OwnershipOptions = {}): Promise<TaskHistoryEntry[]> {
+    const task = await this.prisma.task.findFirst({
+      where: this.taskOwnerWhere(taskId, options.clerkUserId),
       select: {
         id: true,
         createdAt: true

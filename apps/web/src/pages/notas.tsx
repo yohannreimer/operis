@@ -4934,7 +4934,7 @@ export function NotasPage() {
         encoding: 'linear16',
         sampleRate: Math.round(audioContext.sampleRate)
       });
-      const socket = new WebSocket(apiWebSocketUrl(session.wsPath));
+      const socket = new WebSocket(apiWebSocketUrl(session.wsPath), session.wsProtocols ?? []);
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
 

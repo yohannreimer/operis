@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
     },
     resolve: isDemo ? {
       alias: {
-        '@clerk/clerk-react': path.resolve(__dirname, 'src/demo/mock-clerk.tsx'),
+        '@clerk/react': path.resolve(__dirname, 'src/demo/mock-clerk.tsx'),
       }
     } : {},
     optimizeDeps: {

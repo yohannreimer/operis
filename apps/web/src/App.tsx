@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { ClerkLoading, ClerkLoaded, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { ClerkLoading, ClerkLoaded, useAuth } from '@clerk/react';
 import { SignInPage } from './pages/sign-in-page';
 import { LandingPage } from './pages/landing-page';
 import { AuthSync } from './components/auth-sync';
@@ -27,6 +27,52 @@ function RouteFallback() {
   );
 }
 
+function AppRoutes() {
+  const { isSignedIn } = useAuth();
+
+  if (isSignedIn) {
+    return (
+      <>
+        <AuthSync />
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/landing" element={<LandingPage />} />
+            <Route path="/notas/*" element={<NotasPage />} />
+            <Route path="/" element={<Layout />}>
+              <Route index element={<Navigate to="/inbox" replace />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="hoje" element={<HojePage />} />
+              <Route path="amanha" element={<Navigate to="/hoje" replace />} />
+              <Route path="ritual" element={<Navigate to="/" replace />} />
+              <Route path="frentes" element={<WorkspacesPage />} />
+              <Route path="frentes/:workspaceId" element={<WorkspacesPage />} />
+              <Route path="workspaces" element={<Navigate to="/frentes" replace />} />
+              <Route path="workspaces/:workspaceId" element={<Navigate to="/frentes" replace />} />
+              <Route path="projetos" element={<ProjetosPage />} />
+              <Route path="projetos/:projectId" element={<ProjetosPage />} />
+              <Route path="tarefas" element={<TarefasPage />} />
+              <Route path="agenda" element={<AgendaPage />} />
+              <Route path="habitos" element={<HabitosPage />} />
+              <Route path="inbox" element={<InboxPage />} />
+              <Route path="gamificacao" element={<Navigate to="/" replace />} />
+              <Route path="configuracoes" element={<ConfiguracoesPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/landing" element={<LandingPage />} />
+      <Route path="/sign-in/*" element={<SignInPage />} />
+      <Route path="*" element={<Navigate to="/sign-in" replace />} />
+    </Routes>
+  );
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -36,42 +82,7 @@ export function App() {
         </div>
       </ClerkLoading>
       <ClerkLoaded>
-        <SignedIn>
-          <AuthSync />
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              <Route path="/landing" element={<LandingPage />} />
-              <Route path="/notas/*" element={<NotasPage />} />
-              <Route path="/" element={<Layout />}>
-                <Route index element={<Navigate to="/inbox" replace />} />
-                <Route path="dashboard" element={<DashboardPage />} />
-                <Route path="hoje" element={<HojePage />} />
-                <Route path="amanha" element={<Navigate to="/hoje" replace />} />
-                <Route path="ritual" element={<Navigate to="/" replace />} />
-                <Route path="frentes" element={<WorkspacesPage />} />
-                <Route path="frentes/:workspaceId" element={<WorkspacesPage />} />
-                <Route path="workspaces" element={<Navigate to="/frentes" replace />} />
-                <Route path="workspaces/:workspaceId" element={<Navigate to="/frentes" replace />} />
-                <Route path="projetos" element={<ProjetosPage />} />
-                <Route path="projetos/:projectId" element={<ProjetosPage />} />
-                <Route path="tarefas" element={<TarefasPage />} />
-                <Route path="agenda" element={<AgendaPage />} />
-                <Route path="habitos" element={<HabitosPage />} />
-                <Route path="inbox" element={<InboxPage />} />
-                <Route path="gamificacao" element={<Navigate to="/" replace />} />
-                <Route path="configuracoes" element={<ConfiguracoesPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Route>
-            </Routes>
-          </Suspense>
-        </SignedIn>
-        <SignedOut>
-          <Routes>
-            <Route path="/landing" element={<LandingPage />} />
-            <Route path="/sign-in/*" element={<SignInPage />} />
-            <Route path="*" element={<Navigate to="/sign-in" replace />} />
-          </Routes>
-        </SignedOut>
+        <AppRoutes />
       </ClerkLoaded>
     </BrowserRouter>
   );

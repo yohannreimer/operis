@@ -131,10 +131,6 @@ const noteDictationSessionSchema = z.object({
   sampleRate: z.coerce.number().int().min(8000).max(96000).optional()
 });
 
-const noteDictationStreamQuerySchema = z.object({
-  sessionId: z.string().uuid()
-});
-
 const noteRevisionQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(120).optional()
 });
@@ -487,11 +483,27 @@ function createDictationSession(input: {
   return {
     sessionId,
     expiresAt: new Date(expiresAt).toISOString(),
-    wsPath: `/notes/dictation-stream?sessionId=${sessionId}`
+    wsPath: '/notes/dictation-stream',
+    wsProtocols: ['operis-dictation-session', sessionId]
   };
 }
 
-function consumeDictationSession(sessionId: string) {
+function extractDictationSessionId(request: { headers: Record<string, string | string[] | undefined> }) {
+  const rawProtocol = request.headers['sec-websocket-protocol'];
+  const protocols = (Array.isArray(rawProtocol) ? rawProtocol.join(',') : rawProtocol ?? '')
+    .split(',')
+    .map((protocol) => protocol.trim())
+    .filter(Boolean);
+  const markerIndex = protocols.indexOf('operis-dictation-session');
+  const sessionId = markerIndex >= 0 ? protocols[markerIndex + 1] : undefined;
+  return sessionId && z.string().uuid().safeParse(sessionId).success ? sessionId : null;
+}
+
+function consumeDictationSession(sessionId: string | null) {
+  if (!sessionId) {
+    return null;
+  }
+
   cleanupExpiredDictationSessions();
   const session = dictationSessions.get(sessionId);
   dictationSessions.delete(sessionId);
@@ -585,17 +597,7 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       return;
     }
 
-    const parsedQuery = noteDictationStreamQuerySchema.safeParse(request.query);
-    if (!parsedQuery.success) {
-      sendSocketJson(clientSocket, {
-        type: 'operis.error',
-        message: 'Sessão de ditado inválida.'
-      });
-      clientSocket.close(1008, 'Invalid session');
-      return;
-    }
-
-    const session = consumeDictationSession(parsedQuery.data.sessionId);
+    const session = consumeDictationSession(extractDictationSessionId(request));
     if (!session) {
       sendSocketJson(clientSocket, {
         type: 'operis.error',

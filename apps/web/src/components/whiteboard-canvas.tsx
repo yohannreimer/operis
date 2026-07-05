@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
-import '@excalidraw/excalidraw/index.css';
 import { WhiteboardData } from '../api';
 
 // Carrega assets (fontes, locales) do CDN para não precisar copiar arquivos ao deploy.
 if (typeof window !== 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).EXCALIDRAW_ASSET_PATH =
-    'https://unpkg.com/@excalidraw/excalidraw@0.18.0/dist/prod/';
+    'https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/prod/';
 }
 
 type WhiteboardCanvasProps = {

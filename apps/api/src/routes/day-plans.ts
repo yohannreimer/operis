@@ -45,6 +45,7 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
   });
 
   app.post('/day-plan-items/:id/confirmation', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const payload = z
       .object({
@@ -56,17 +57,18 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
       .parse(request.body);
 
     if (payload.action === 'done') {
-      return dayPlanService.confirmDone(params.id);
+      return dayPlanService.confirmDone(params.id, clerkUserId);
     }
 
     if (payload.action === 'postpone') {
-      return dayPlanService.postpone(params.id, payload.reason);
+      return dayPlanService.postpone(params.id, payload.reason, clerkUserId);
     }
 
-    return dayPlanService.confirmNotDone(params.id, payload.reason);
+    return dayPlanService.confirmNotDone(params.id, payload.reason, clerkUserId);
   });
 
   app.patch('/day-plan-items/:id', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const payload = z
       .object({
@@ -78,11 +80,12 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
       })
       .parse(request.body);
 
-    return dayPlanService.updateItem(params.id, payload);
+    return dayPlanService.updateItem(params.id, payload, clerkUserId);
   });
 
   app.delete('/day-plan-items/:id', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
-    return dayPlanService.removeItem(params.id);
+    return dayPlanService.removeItem(params.id, clerkUserId);
   });
 }

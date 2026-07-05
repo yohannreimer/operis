@@ -172,19 +172,22 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
   });
 
   app.post('/tasks', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const payload = taskCreateSchema.parse(request.body);
-    const task = await taskService.create(payload);
+    const task = await taskService.create({ ...payload, clerkUserId });
     return reply.code(201).send(task);
   });
 
   app.patch('/tasks/:taskId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
     const payload = taskUpdateSchema.parse(request.body);
 
-    return taskService.update(params.taskId, payload);
+    return taskService.update(params.taskId, payload, { clerkUserId });
   });
 
   app.post('/tasks/:taskId/complete', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
     const query = z
       .object({
@@ -194,6 +197,7 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
     const body = completeTaskBodySchema.parse(request.body);
 
     return taskService.complete(params.taskId, {
+      clerkUserId,
       strictMode: query.strictMode ?? false,
       completionMode: body?.completionMode,
       completionNote: body?.completionNote
@@ -201,20 +205,23 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
   });
 
   app.post('/tasks/:taskId/postpone', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
-    return taskService.postpone(params.taskId);
+    return taskService.postpone(params.taskId, undefined, { clerkUserId });
   });
 
   app.post('/tasks/:taskId/dependencies', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
     const body = z.object({ dependsOnTaskId: z.string().uuid() }).parse(request.body);
 
-    const dependency = await taskService.addDependency(params.taskId, body.dependsOnTaskId);
+    const dependency = await taskService.addDependency(params.taskId, body.dependsOnTaskId, { clerkUserId });
 
     return reply.code(201).send(dependency);
   });
 
   app.post('/tasks/:taskId/waiting-followup', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
     const payload = z
       .object({
@@ -225,81 +232,94 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
       .optional()
       .parse(request.body);
 
-    return taskService.registerWaitingFollowup(params.taskId, payload);
+    return taskService.registerWaitingFollowup(params.taskId, payload, { clerkUserId });
   });
 
   app.post('/tasks/:taskId/waiting-followup/schedule', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
-    return taskService.scheduleWaitingFollowup(params.taskId);
+    return taskService.scheduleWaitingFollowup(params.taskId, { clerkUserId });
   });
 
   app.get('/tasks/:taskId/multiblock', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
-    return taskService.getMultiBlockProgress(params.taskId);
+    return taskService.getMultiBlockProgress(params.taskId, { clerkUserId });
   });
 
   app.get('/tasks/:taskId/subtasks', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
-    return taskService.listSubtasks(params.taskId);
+    return taskService.listSubtasks(params.taskId, { clerkUserId });
   });
 
   app.post('/tasks/:taskId/subtasks', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
     const payload = subtaskCreateSchema.parse(request.body);
 
-    const subtask = await taskService.createSubtask(params.taskId, payload.title);
+    const subtask = await taskService.createSubtask(params.taskId, payload.title, { clerkUserId });
     return reply.code(201).send(subtask);
   });
 
   app.patch('/subtasks/:subtaskId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ subtaskId: z.string().uuid() }).parse(request.params);
     const payload = subtaskUpdateSchema.parse(request.body);
 
-    return taskService.updateSubtask(params.subtaskId, payload);
+    return taskService.updateSubtask(params.subtaskId, payload, { clerkUserId });
   });
 
   app.delete('/subtasks/:subtaskId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ subtaskId: z.string().uuid() }).parse(request.params);
-    return taskService.removeSubtask(params.subtaskId);
+    return taskService.removeSubtask(params.subtaskId, { clerkUserId });
   });
 
   app.get('/tasks/:taskId/restrictions', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
-    return taskService.listRestrictions(params.taskId);
+    return taskService.listRestrictions(params.taskId, { clerkUserId });
   });
 
   app.post('/tasks/:taskId/restrictions', async (request, reply) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
     const payload = restrictionCreateSchema.parse(request.body);
 
-    const restriction = await taskService.createRestriction(params.taskId, payload);
+    const restriction = await taskService.createRestriction(params.taskId, payload, { clerkUserId });
     return reply.code(201).send(restriction);
   });
 
   app.patch('/task-restrictions/:restrictionId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ restrictionId: z.string().uuid() }).parse(request.params);
     const payload = restrictionUpdateSchema.parse(request.body);
 
-    return taskService.updateRestriction(params.restrictionId, payload);
+    return taskService.updateRestriction(params.restrictionId, payload, { clerkUserId });
   });
 
   app.delete('/task-restrictions/:restrictionId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ restrictionId: z.string().uuid() }).parse(request.params);
-    return taskService.removeRestriction(params.restrictionId);
+    return taskService.removeRestriction(params.restrictionId, { clerkUserId });
   });
 
   app.delete('/tasks/:taskId', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
-    return taskService.remove(params.taskId);
+    return taskService.remove(params.taskId, { clerkUserId });
   });
 
   app.get('/tasks/:taskId/history', async (request) => {
+    const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
-    return taskService.getHistory(params.taskId);
+    return taskService.getHistory(params.taskId, { clerkUserId });
   });
 
-  app.post('/tasks/archive-completed', async () => {
-    const archivedCount = await taskService.archiveCompletedOlderThan24Hours();
+  app.post('/tasks/archive-completed', async (request) => {
+    const clerkUserId = getUserId(request);
+    const archivedCount = await taskService.archiveCompletedOlderThan24Hours({ clerkUserId });
     return { archivedCount };
   });
 }

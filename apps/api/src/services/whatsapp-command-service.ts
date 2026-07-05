@@ -13,6 +13,7 @@ export type CommandResult = {
 type ReminderDigestOptions = {
   date?: string;
   workspaceId?: string;
+  clerkUserId?: string;
 };
 
 type DueReminderOptions = ReminderDigestOptions & {
@@ -102,18 +103,25 @@ export class WhatsappCommandService {
     return toDateKeyLocal(new Date());
   }
 
-  private async tasksByStatus(status: 'hoje' | 'andamento' | 'backlog', workspaceName?: string) {
+  private async tasksByStatus(
+    status: 'hoje' | 'andamento' | 'backlog',
+    workspaceName?: string,
+    clerkUserId?: string
+  ) {
     return this.prisma.task.findMany({
       where: {
         status,
         workspace: workspaceName
           ? {
+              clerkUserId,
               name: {
                 contains: workspaceName,
                 mode: 'insensitive'
               }
             }
-          : undefined
+          : clerkUserId
+            ? { clerkUserId }
+            : undefined
       },
       include: { workspace: true },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
@@ -128,8 +136,8 @@ export class WhatsappCommandService {
     return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
   }
 
-  private async resolveTaskByToken(idToken: string) {
-    const task = await this.taskService.resolveTaskByShortId(idToken);
+  private async resolveTaskByToken(idToken: string, clerkUserId?: string) {
+    const task = await this.taskService.resolveTaskByShortId(idToken, clerkUserId);
 
     if (!task) {
       throw new Error('Tarefa não encontrada para esse ID.');
@@ -159,10 +167,10 @@ export class WhatsappCommandService {
     return `${match[3]}/${match[2]}/${match[1]}`;
   }
 
-  private async resolveTaskTokens(tokens: string[]) {
+  private async resolveTaskTokens(tokens: string[], clerkUserId?: string) {
     const resolvedIds: string[] = [];
     for (const token of tokens) {
-      const task = await this.resolveTaskByToken(token);
+      const task = await this.resolveTaskByToken(token, clerkUserId);
       resolvedIds.push(task.id);
     }
     return Array.from(new Set(resolvedIds));
@@ -179,7 +187,7 @@ export class WhatsappCommandService {
     return new Date(`${dateKey}T00:00:00.000Z`);
   }
 
-  async buildCommitmentsForDate(dateKey: string): Promise<string> {
+  async buildCommitmentsForDate(dateKey: string, clerkUserId?: string): Promise<string> {
     const date = dateAtLocalMidnightFromKey(dateKey);
     if (!date) return ''; // invalid date
 
@@ -191,7 +199,8 @@ export class WhatsappCommandService {
       where: {
         type: 'fixo',
         status: 'ativo',
-        recurrenceDays: { has: dowPt }
+        recurrenceDays: { has: dowPt },
+        clerkUserId
       },
       orderBy: { startTime: 'asc' }
     });
@@ -201,7 +210,8 @@ export class WhatsappCommandService {
       where: {
         type: 'variavel',
         status: 'ativo',
-        date: filterDate
+        date: filterDate,
+        clerkUserId
       },
       orderBy: { startTime: 'asc' }
     });
@@ -231,10 +241,11 @@ export class WhatsappCommandService {
     const date = options?.date ?? this.todayDate();
     const briefing = await this.executionInsightsService.getBriefing({
       date,
-      workspaceId: options?.workspaceId
+      workspaceId: options?.workspaceId,
+      clerkUserId: options?.clerkUserId
     });
     const top = briefing.top3.slice(0, 3);
-    const commitmentsBlock = await this.buildCommitmentsForDate(date);
+    const commitmentsBlock = await this.buildCommitmentsForDate(date, options?.clerkUserId);
 
     if (!top.length) {
       const baseMsg = `Bom dia. Não há tarefas A elegíveis para foco hoje (${date}).\nEnvie "tarefas" para revisar e organizar o dia.`;
@@ -283,7 +294,8 @@ export class WhatsappCommandService {
         },
         dueDate: {
           not: null
-        }
+        },
+        workspace: options?.clerkUserId ? { clerkUserId: options.clerkUserId } : undefined
       },
       include: {
         workspace: {
@@ -320,7 +332,7 @@ export class WhatsappCommandService {
   }
 
   async buildWaitingFollowupDigest(_options?: ReminderDigestOptions) {
-    const radar = await this.taskService.getWaitingRadar();
+    const radar = await this.taskService.getWaitingRadar({ clerkUserId: _options?.clerkUserId });
     const rows = radar.rows.filter((entry) => entry.followupState === 'urgente' || entry.followupState === 'hoje').slice(0, 10);
 
     if (!rows.length) {
@@ -417,7 +429,8 @@ export class WhatsappCommandService {
     if (/^(foco|top3)$/i.test(text)) {
       return {
         reply: await this.buildMorningBriefing({
-          date: this.todayDate()
+          date: this.todayDate(),
+          clerkUserId
         })
       };
     }
@@ -427,8 +440,8 @@ export class WhatsappCommandService {
       const date = this.todayDate();
       const idsRaw = focusConfirmMatch[1]?.trim();
       const taskIds = idsRaw
-        ? await this.resolveTaskTokens(idsRaw.split(/\s+/).filter(Boolean))
-        : (await this.executionInsightsService.getBriefing({ date })).top3.map((task) => task.id).slice(0, 3);
+        ? await this.resolveTaskTokens(idsRaw.split(/\s+/).filter(Boolean), clerkUserId)
+        : (await this.executionInsightsService.getBriefing({ date, clerkUserId })).top3.map((task) => task.id).slice(0, 3);
 
       if (!taskIds.length) {
         return {
@@ -439,7 +452,8 @@ export class WhatsappCommandService {
       const committed = await this.executionInsightsService.commitTop3({
         date,
         taskIds,
-        note: 'confirmado via whatsapp'
+        note: 'confirmado via whatsapp',
+        clerkUserId
       });
 
       return {
@@ -451,8 +465,8 @@ export class WhatsappCommandService {
     if (focusSwapMatch) {
       const date = this.todayDate();
       const slotIndex = Number(focusSwapMatch[1]) - 1;
-      const replacement = await this.resolveTaskByToken(focusSwapMatch[2]);
-      const current = await this.executionInsightsService.getTop3Commitment({ date });
+      const replacement = await this.resolveTaskByToken(focusSwapMatch[2], clerkUserId);
+      const current = await this.executionInsightsService.getTop3Commitment({ date, clerkUserId });
       const baseTaskIds = current.taskIds.length
         ? [...current.taskIds]
         : current.tasks.map((task) => task.id).slice(0, 3);
@@ -472,7 +486,8 @@ export class WhatsappCommandService {
       const committed = await this.executionInsightsService.commitTop3({
         date,
         taskIds: finalTaskIds,
-        note: `troca via whatsapp (slot ${slotIndex + 1})`
+        note: `troca via whatsapp (slot ${slotIndex + 1})`,
+        clerkUserId
       });
 
       return {
@@ -482,7 +497,7 @@ export class WhatsappCommandService {
 
     const deepStartMatch = text.match(/^deep\s+(?:iniciar|start)\s+([\w-]+)(?:\s+(\d{1,3}))?$/i);
     if (deepStartMatch) {
-      const task = await this.resolveTaskByToken(deepStartMatch[1]);
+      const task = await this.resolveTaskByToken(deepStartMatch[1], clerkUserId);
       const requestedTarget = deepStartMatch[2] ? Number(deepStartMatch[2]) : null;
       const targetMinutes = requestedTarget && Number.isFinite(requestedTarget)
         ? Math.max(15, Math.min(360, Math.round(requestedTarget)))
@@ -491,7 +506,7 @@ export class WhatsappCommandService {
       const session = await this.deepWorkService.start({
         taskId: task.id,
         targetMinutes
-      });
+      }, clerkUserId);
 
       return {
         reply: `Deep Work iniciado: ${task.title}\nSessão ${session.id.slice(0, 8)} • alvo ${targetMinutes} min`,
@@ -500,14 +515,14 @@ export class WhatsappCommandService {
     }
 
     if (/^deep\s+(?:parar|stop)$/i.test(text)) {
-      const active = await this.deepWorkService.getActive();
+      const active = await this.deepWorkService.getActive(undefined, clerkUserId);
       if (!active) {
         return {
           reply: 'Não existe Deep Work ativo agora.'
         };
       }
 
-      const stopped = await this.deepWorkService.stop(active.id);
+      const stopped = await this.deepWorkService.stop(active.id, undefined, clerkUserId);
       if (!stopped) {
         return {
           reply: 'Não foi possível encerrar a sessão ativa.'
@@ -521,15 +536,16 @@ export class WhatsappCommandService {
     }
 
     if (/^deep\s+concluir$/i.test(text)) {
-      const active = await this.deepWorkService.getActive();
+      const active = await this.deepWorkService.getActive(undefined, clerkUserId);
       if (!active) {
         return {
           reply: 'Não existe Deep Work ativo para concluir.'
         };
       }
 
-      await this.deepWorkService.stop(active.id);
+      await this.deepWorkService.stop(active.id, undefined, clerkUserId);
       await this.taskService.complete(active.taskId, {
+        clerkUserId,
         strictMode: false,
         completionMode: 'no_note'
       });
@@ -542,7 +558,7 @@ export class WhatsappCommandService {
 
     const alocarMatch = text.match(/^alocar\s+([\w-]+)\s+(\d{1,2}):(\d{2})$/i);
     if (alocarMatch) {
-      const task = await this.resolveTaskByToken(alocarMatch[1]);
+      const task = await this.resolveTaskByToken(alocarMatch[1], clerkUserId);
       const hours = clampHour(Number(alocarMatch[2]));
       const minutes = clampMinute(Number(alocarMatch[3]));
       const estimatedMinutes = Math.max(1, task.estimatedMinutes ?? 60);
@@ -570,7 +586,7 @@ export class WhatsappCommandService {
     const tarefasMatch = text.match(/^tarefas(?:\s+(.+))?$/i);
     if (tarefasMatch) {
       const workspaceName = tarefasMatch[1]?.trim();
-      const tasks = await this.tasksByStatus('hoje', workspaceName);
+      const tasks = await this.tasksByStatus('hoje', workspaceName, clerkUserId);
 
       if (!tasks.length) {
         return { reply: 'Nenhuma tarefa em "hoje".' };
@@ -593,12 +609,13 @@ export class WhatsappCommandService {
           },
           workspace: workspaceName
             ? {
+                clerkUserId,
                 name: {
                   contains: workspaceName,
                   mode: 'insensitive'
                 }
               }
-            : undefined
+            : { clerkUserId }
         },
         include: {
           workspace: {
@@ -641,7 +658,7 @@ export class WhatsappCommandService {
     const backlogMatch = text.match(/^backlog(?:\s+(.+))?$/i);
     if (backlogMatch) {
       const workspaceName = backlogMatch[1]?.trim();
-      const tasks = await this.tasksByStatus('backlog', workspaceName);
+      const tasks = await this.tasksByStatus('backlog', workspaceName, clerkUserId);
 
       if (!tasks.length) {
         return { reply: 'Backlog vazio.' };
@@ -662,12 +679,13 @@ export class WhatsappCommandService {
           },
           workspace: workspaceName
             ? {
+                clerkUserId,
                 name: {
                   contains: workspaceName,
                   mode: 'insensitive'
                 }
               }
-            : undefined
+            : { clerkUserId }
         },
         include: { workspace: true },
         orderBy: { createdAt: 'desc' },
@@ -685,14 +703,14 @@ export class WhatsappCommandService {
     }
 
     if (/^prazos$/i.test(text)) {
-      const digest = await this.buildDueReminderDigest();
+      const digest = await this.buildDueReminderDigest({ clerkUserId });
       return {
         reply: digest ?? '✅ *Prazos em dia*\nSem alertas de prazo para hoje.'
       };
     }
 
     if (/^followups?$/i.test(text)) {
-      const digest = await this.buildWaitingFollowupDigest();
+      const digest = await this.buildWaitingFollowupDigest({ clerkUserId });
       return {
         reply: digest ?? '✅ *Follow-ups em dia*\nNenhum follow-up urgente por agora.'
       };
@@ -700,8 +718,8 @@ export class WhatsappCommandService {
 
     const fizMatch = text.match(/^fiz\s+([\w-]+)$/i);
     if (fizMatch) {
-      const task = await this.resolveTaskByToken(fizMatch[1]);
-      await this.taskService.complete(task.id);
+      const task = await this.resolveTaskByToken(fizMatch[1], clerkUserId);
+      await this.taskService.complete(task.id, { clerkUserId });
 
       return {
         reply: `Marcado como concluído: ${task.title}`,
@@ -711,8 +729,8 @@ export class WhatsappCommandService {
 
     const adiarMatch = text.match(/^adiar\s+([\w-]+)$/i);
     if (adiarMatch) {
-      const task = await this.resolveTaskByToken(adiarMatch[1]);
-      await this.taskService.postpone(task.id);
+      const task = await this.resolveTaskByToken(adiarMatch[1], clerkUserId);
+      await this.taskService.postpone(task.id, undefined, { clerkUserId });
 
       return {
         reply: `Tarefa adiada: ${task.title}`,
@@ -722,7 +740,7 @@ export class WhatsappCommandService {
 
     const reagendarMatch = text.match(/^reagendar\s+([\w-]+)\s+(\d{1,2}:\d{2})$/i);
     if (reagendarMatch) {
-      const task = await this.resolveTaskByToken(reagendarMatch[1]);
+      const task = await this.resolveTaskByToken(reagendarMatch[1], clerkUserId);
       const [hours, minutes] = reagendarMatch[2].split(':').map(Number);
       const start = new Date();
       start.setHours(hours, minutes, 0, 0);
@@ -732,7 +750,7 @@ export class WhatsappCommandService {
         fixedTimeStart: start.toISOString(),
         fixedTimeEnd: end.toISOString(),
         status: 'hoje'
-      });
+      }, { clerkUserId });
 
       return {
         reply: `Reagendada para ${reagendarMatch[2]}: ${task.title}`,
@@ -742,7 +760,7 @@ export class WhatsappCommandService {
 
     if (/^inbox$/i.test(text)) {
       const items = await this.prisma.inboxItem.findMany({
-        where: { status: 'pendente' },
+        where: { status: 'pendente', clerkUserId },
         orderBy: { createdAt: 'desc' },
         take: 10
       });
@@ -757,7 +775,7 @@ export class WhatsappCommandService {
 
     if (/^status$/i.test(text)) {
       const date = this.todayDate();
-      const briefing = await this.executionInsightsService.getBriefing({ date });
+      const briefing = await this.executionInsightsService.getBriefing({ date, clerkUserId });
       return {
         reply: [
           `Status do dia (${date}):`,
@@ -777,8 +795,11 @@ export class WhatsappCommandService {
 
   // ─── LLM support methods ────────────────────────────────────────────────────
 
-  async getBriefingForLLM(dateKey: string): Promise<{ top3Tasks: string[]; todayCommitments: string[] }> {
-    const briefing = await this.executionInsightsService.getBriefing({ date: dateKey });
+  async getBriefingForLLM(
+    dateKey: string,
+    clerkUserId?: string
+  ): Promise<{ top3Tasks: string[]; todayCommitments: string[] }> {
+    const briefing = await this.executionInsightsService.getBriefing({ date: dateKey, clerkUserId });
     const top3Tasks = briefing.top3.slice(0, 3).map((t) => t.title);
 
     // Get today's commitments as string descriptions
@@ -790,11 +811,11 @@ export class WhatsappCommandService {
 
     const [fixos, variavels] = await Promise.all([
       this.prisma.commitment.findMany({
-        where: { type: 'fixo', status: 'ativo', recurrenceDays: { has: dowPt } },
+        where: { type: 'fixo', status: 'ativo', recurrenceDays: { has: dowPt }, clerkUserId },
         orderBy: { startTime: 'asc' }
       }),
       this.prisma.commitment.findMany({
-        where: { type: 'variavel', status: 'ativo', date: filterDate },
+        where: { type: 'variavel', status: 'ativo', date: filterDate, clerkUserId },
         orderBy: { startTime: 'asc' }
       })
     ]);
@@ -824,7 +845,7 @@ export class WhatsappCommandService {
     date?: string;
     startTime?: string;
     durationMin?: number;
-  }) {
+  }, clerkUserId: string) {
     const validDays: RecurrenceDay[] = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
     const recurrenceDays = (intent.recurrenceDays ?? []).filter(
       (d): d is RecurrenceDay => validDays.includes(d as RecurrenceDay)
@@ -840,16 +861,21 @@ export class WhatsappCommandService {
           ? this.dateKeyToDateTime(intent.date)
           : null,
         startTime: intent.startTime ?? null,
-        durationMin: intent.durationMin ?? null
+        durationMin: intent.durationMin ?? null,
+        clerkUserId
       }
     });
   }
 
-  async cancelCommitmentFromIntent(intent: { titleHint: string; date?: string }): Promise<string> {
+  async cancelCommitmentFromIntent(
+    intent: { titleHint: string; date?: string },
+    clerkUserId: string
+  ): Promise<string> {
     const commitment = await this.prisma.commitment.findFirst({
       where: {
         title: { contains: intent.titleHint, mode: 'insensitive' },
-        status: 'ativo'
+        status: 'ativo',
+        clerkUserId
       }
     });
 
@@ -878,11 +904,15 @@ export class WhatsappCommandService {
     }
   }
 
-  async rescheduleCommitmentFromIntent(intent: { titleHint: string; newDate?: string; newTime?: string }): Promise<string> {
+  async rescheduleCommitmentFromIntent(
+    intent: { titleHint: string; newDate?: string; newTime?: string },
+    clerkUserId: string
+  ): Promise<string> {
     const commitment = await this.prisma.commitment.findFirst({
       where: {
         title: { contains: intent.titleHint, mode: 'insensitive' },
-        status: 'ativo'
+        status: 'ativo',
+        clerkUserId
       }
     });
 
@@ -931,24 +961,25 @@ export class WhatsappCommandService {
     return `✅ *${commitment.title}* remarcado — ${details.join(', ')}.`;
   }
 
-  async handleResumo(todayDateKey: string, todayStart: Date): Promise<CommandResult> {
+  async handleResumo(todayDateKey: string, todayStart: Date, clerkUserId?: string): Promise<CommandResult> {
     const [taskCount, deepWork, habitLogs, totalHabits, gamification] = await Promise.all([
       this.prisma.task.count({
         where: {
           status: 'feito',
           taskType: 'a',
-          completedAt: { gte: todayStart }
+          completedAt: { gte: todayStart },
+          workspace: clerkUserId ? { clerkUserId } : undefined
         }
       }),
       this.prisma.deepWorkSession.aggregate({
         _sum: { actualMinutes: true },
-        where: { startedAt: { gte: todayStart } }
+        where: { startedAt: { gte: todayStart }, task: clerkUserId ? { workspace: { clerkUserId } } : undefined }
       }),
       this.prisma.habitLog.findMany({
-        where: { date: todayDateKey }
+        where: { date: todayDateKey, habit: clerkUserId ? { clerkUserId } : undefined }
       }),
-      this.prisma.habit.count({ where: { status: 'ativo' } }),
-      this.prisma.gamificationState.findFirst({ orderBy: { lastUpdate: 'desc' } })
+      this.prisma.habit.count({ where: { status: 'ativo', clerkUserId } }),
+      this.prisma.gamificationState.findFirst({ where: { clerkUserId }, orderBy: { lastUpdate: 'desc' } })
     ]);
 
     const deepMinutes = deepWork._sum.actualMinutes ?? 0;

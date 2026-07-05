@@ -23,16 +23,16 @@ describe('apiWebSocketUrl', () => {
   it('builds websocket URLs when the API base is a relative production prefix', async () => {
     const { apiWebSocketUrl } = await loadApiWithBase('/api');
 
-    expect(apiWebSocketUrl('/notes/dictation-stream?sessionId=abc')).toBe(
-      'wss://operis.yrdnegocios.com.br/api/notes/dictation-stream?sessionId=abc'
+    expect(apiWebSocketUrl('/notes/dictation-stream')).toBe(
+      'wss://operis.yrdnegocios.com.br/api/notes/dictation-stream'
     );
   });
 
   it('keeps absolute API origins supported', async () => {
     const { apiWebSocketUrl } = await loadApiWithBase('https://api.operis.local/base/');
 
-    expect(apiWebSocketUrl('/notes/dictation-stream?sessionId=abc')).toBe(
-      'wss://api.operis.local/base/notes/dictation-stream?sessionId=abc'
+    expect(apiWebSocketUrl('/notes/dictation-stream')).toBe(
+      'wss://api.operis.local/base/notes/dictation-stream'
     );
   });
 });

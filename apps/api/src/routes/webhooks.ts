@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 import { env } from '../config.js';
@@ -229,10 +229,20 @@ function isDuplicateInboundSemantic(dedupKey: string) {
 }
 
 function assertWebhookSecret(headerValue: string | string[] | undefined) {
-  const secret = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  const secret = (Array.isArray(headerValue) ? headerValue[0] : headerValue)?.trim() ?? '';
   const expectedSecret = env.WHATSAPP_WEBHOOK_SECRET?.trim() ?? '';
 
-  if (expectedSecret.length > 0 && secret !== expectedSecret) {
+  if (expectedSecret.length === 0 || secret.length === 0) {
+    throw new Error('Unauthorized webhook secret');
+  }
+
+  const providedBuffer = Buffer.from(secret);
+  const expectedBuffer = Buffer.from(expectedSecret);
+
+  if (
+    providedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(providedBuffer, expectedBuffer)
+  ) {
     throw new Error('Unauthorized webhook secret');
   }
 }
@@ -428,24 +438,32 @@ export function registerWebhookRoutes(
 
       const morning = await commandService.buildMorningBriefing({
         date: parsed.date,
-        workspaceId: parsed.workspaceId
+        workspaceId: parsed.workspaceId,
+        clerkUserId: user.clerkUserId
       });
       messages.push(morning);
 
       if (parsed.includeDueDigest) {
-        const dueDigest = await commandService.buildDueReminderDigest({ date: parsed.date });
+        const dueDigest = await commandService.buildDueReminderDigest({
+          date: parsed.date,
+          clerkUserId: user.clerkUserId
+        });
         if (dueDigest) messages.push(dueDigest);
       }
 
       if (parsed.includeFollowupDigest) {
-        const followupDigest = await commandService.buildWaitingFollowupDigest({ date: parsed.date });
+        const followupDigest = await commandService.buildWaitingFollowupDigest({
+          date: parsed.date,
+          clerkUserId: user.clerkUserId
+        });
         if (followupDigest) messages.push(followupDigest);
       }
 
       if (parsed.includeUpcomingDigest) {
         const upcomingDigest = await commandService.buildUpcomingBlockDigest({
           date: parsed.date,
-          withinMinutes: parsed.upcomingWithinMinutes
+          withinMinutes: parsed.upcomingWithinMinutes,
+          clerkUserId: user.clerkUserId
         });
         if (upcomingDigest) messages.push(upcomingDigest);
       }
@@ -473,7 +491,8 @@ export function registerWebhookRoutes(
     for (const user of users) {
       const digest = await commandService.buildDueReminderDigest({
         date: parsed.date,
-        daysBefore: parsed.daysBefore
+        daysBefore: parsed.daysBefore,
+        clerkUserId: user.clerkUserId
       });
       if (digest) {
         await publishEvent(queueNames.sendWhatsappMessage, { to: user.phoneNumber, message: digest });
@@ -495,7 +514,7 @@ export function registerWebhookRoutes(
     let totalSent = 0;
 
     for (const user of users) {
-      const digest = await commandService.buildWaitingFollowupDigest();
+      const digest = await commandService.buildWaitingFollowupDigest({ clerkUserId: user.clerkUserId });
       if (digest) {
         await publishEvent(queueNames.sendWhatsappMessage, { to: user.phoneNumber, message: digest });
         totalSent++;
@@ -519,7 +538,8 @@ export function registerWebhookRoutes(
     for (const user of users) {
       const digest = await commandService.buildUpcomingBlockDigest({
         date: parsed.date,
-        withinMinutes: parsed.withinMinutes
+        withinMinutes: parsed.withinMinutes,
+        clerkUserId: user.clerkUserId
       });
       if (digest) {
         await publishEvent(queueNames.sendWhatsappMessage, { to: user.phoneNumber, message: digest });

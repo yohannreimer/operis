@@ -1,7 +1,9 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { requireAuth } from './middleware/auth.js';
+import { env } from './config.js';
 
 import { prisma } from './db.js';
 import { registerWorkspaceRoutes } from './routes/workspaces.js';
@@ -36,11 +38,33 @@ import { registerUserPhoneRoutes } from './routes/user-phone.js';
 export async function buildApp() {
   const app = Fastify({
     logger: true,
+    trustProxy: true,
     bodyLimit: 30 * 1024 * 1024
   });
+  const allowedCorsOrigins = env.CORS_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   await app.register(cors, {
-    origin: true
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    origin(origin, callback) {
+      if (!origin || allowedCorsOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
+    }
+  });
+  await app.register(rateLimit, {
+    global: true,
+    max: env.RATE_LIMIT_MAX,
+    timeWindow: env.RATE_LIMIT_TIME_WINDOW,
+    errorResponseBuilder(_request, context) {
+      const error = new Error(`Too many requests. Try again in ${context.after}.`);
+      (error as Error & { statusCode: number }).statusCode = context.statusCode;
+      return error;
+    }
   });
   await app.register(websocket);
 
@@ -104,9 +128,26 @@ export async function buildApp() {
 
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
+    const httpError = error as Error & { statusCode?: number; validation?: unknown };
+    const statusCode = httpError.statusCode && httpError.statusCode >= 400 ? httpError.statusCode : 500;
 
-    return reply.status(400).send({
-      error: error.message
+    if (statusCode === 429) {
+      return reply.status(429).send({
+        error: {
+          code: 'RATE_LIMITED',
+          message: httpError.message
+        }
+      });
+    }
+
+    if (statusCode >= 500) {
+      return reply.status(statusCode).send({
+        error: env.NODE_ENV === 'production' ? 'Erro interno.' : httpError.message
+      });
+    }
+
+    return reply.status(statusCode).send({
+      error: httpError.message
     });
   });
 
