@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useState } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ClerkLoading, ClerkLoaded, useAuth } from '@clerk/react';
 import { SignInPage } from './pages/sign-in-page';
@@ -23,14 +23,6 @@ function RouteFallback() {
       <div className="premium-skeleton" style={{ height: 18 }} />
       <div className="premium-skeleton" style={{ height: 52 }} />
       <div className="premium-skeleton" style={{ height: 180 }} />
-    </div>
-  );
-}
-
-function ProductAccessFallback() {
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ opacity: 0.4, fontSize: 14 }}>Validando seu acesso...</div>
     </div>
   );
 }
@@ -67,13 +59,10 @@ function ProtectedRoutes() {
 }
 
 function AuthenticatedApp() {
-  const [isProductAccessVerified, setIsProductAccessVerified] = useState(false);
-  const markProductAccessVerified = useCallback(() => setIsProductAccessVerified(true), []);
-
   return (
     <>
-      <AuthSync onProductAccessVerified={markProductAccessVerified} />
-      {isProductAccessVerified ? <ProtectedRoutes /> : <ProductAccessFallback />}
+      <AuthSync />
+      <ProtectedRoutes />
     </>
   );
 }

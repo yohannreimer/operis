@@ -56,3 +56,37 @@ describe('productAccessDeniedUrl', () => {
     );
   });
 });
+
+describe('protected API access denial', () => {
+  it('redirects to the Hub only after the protected API reports denied product access', async () => {
+    const assign = vi.fn();
+    vi.resetModules();
+    vi.stubEnv('VITE_API_URL', 'https://operis.prymeiradigital.com.br/api');
+    vi.stubGlobal('window', {
+      clearTimeout,
+      location: {
+        href: 'https://operis.prymeiradigital.com.br/inbox',
+        assign
+      },
+      setTimeout
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: 'Acesso não liberado pela Prymeira Account.',
+        productAccessRequired: true,
+        reason: 'no_entitlement',
+        accessUrl: 'https://hub.prymeiradigital.com.br/acesso-negado?product_key=operis'
+      })
+    }));
+
+    const { api, setAuthTokenGetter } = await import('./api.js');
+    setAuthTokenGetter(async () => 'clerk-token');
+
+    await expect(api.getWorkspaces()).rejects.toThrow('Acesso não liberado pela Prymeira Account.');
+    expect(assign).toHaveBeenCalledWith(
+      'https://hub.prymeiradigital.com.br/acesso-negado?product_key=operis'
+    );
+  });
+});
