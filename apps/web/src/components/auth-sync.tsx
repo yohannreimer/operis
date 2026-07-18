@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '@clerk/react';
 import { productAccessDeniedUrl, redirectToProductAccessPage, setAuthTokenGetter } from '../api';
+import { resolveProductAccess } from '../product-access';
 
 const PRYMEIRA_ACCOUNT_API_URL = (
   import.meta.env.VITE_PRYMEIRA_ACCOUNT_API_URL ?? 'https://hub.prymeiradigital.com.br/api'
@@ -11,7 +12,11 @@ const PRYMEIRA_PRODUCT_KEY = import.meta.env.VITE_PRYMEIRA_PRODUCT_KEY ?? 'operi
  * Registers the Clerk token getter into the API client.
  * Must be rendered inside <ClerkProvider> and <SignedIn>.
  */
-export function AuthSync() {
+type AuthSyncProps = {
+  onProductAccessVerified: () => void;
+};
+
+export function AuthSync({ onProductAccessVerified }: AuthSyncProps) {
   const { getToken, isLoaded } = useAuth();
 
   useEffect(() => {
@@ -24,29 +29,28 @@ export function AuthSync() {
     let cancelled = false;
 
     async function checkProductAccess() {
-      try {
-        const token = await getToken();
-        if (!token) return;
-
-        const response = await fetch(
-          `${PRYMEIRA_ACCOUNT_API_URL}/access-check?product_key=${encodeURIComponent(PRYMEIRA_PRODUCT_KEY)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`
+      const access = await resolveProductAccess({
+        getToken,
+        request: (token) =>
+          fetch(
+            `${PRYMEIRA_ACCOUNT_API_URL}/access-check?product_key=${encodeURIComponent(PRYMEIRA_PRODUCT_KEY)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
             }
-          }
-        );
+          )
+      });
 
-        const payload = await response.json().catch(() => ({} as Record<string, unknown>));
-        const allowed = payload.allowed === true;
+      if (cancelled) return;
 
-        if (!cancelled && (!response.ok || !allowed)) {
-          const reason = typeof payload.reason === 'string' ? payload.reason : 'no_entitlement';
-          redirectToProductAccessPage(reason, productAccessDeniedUrl(reason));
-        }
-      } catch {
-        // Backend routes still enforce access. Avoid redirecting on transient network/CORS failures.
+      if (access === 'denied') {
+        redirectToProductAccessPage('no_entitlement', productAccessDeniedUrl('no_entitlement'));
+        return;
       }
+
+      // Backend routes still enforce access. Do not block the product on transient network failures.
+      onProductAccessVerified();
     }
 
     void checkProductAccess();
@@ -54,7 +58,7 @@ export function AuthSync() {
     return () => {
       cancelled = true;
     };
-  }, [getToken, isLoaded]);
+  }, [getToken, isLoaded, onProductAccessVerified]);
 
   return null;
 }

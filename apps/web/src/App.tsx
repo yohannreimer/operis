@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useCallback, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ClerkLoading, ClerkLoaded, useAuth } from '@clerk/react';
 import { SignInPage } from './pages/sign-in-page';
@@ -27,41 +27,62 @@ function RouteFallback() {
   );
 }
 
+function ProductAccessFallback() {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ opacity: 0.4, fontSize: 14 }}>Validando seu acesso...</div>
+    </div>
+  );
+}
+
+function ProtectedRoutes() {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/landing" element={<LandingPage />} />
+        <Route path="/notas/*" element={<NotasPage />} />
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Navigate to="/inbox" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="hoje" element={<HojePage />} />
+          <Route path="amanha" element={<Navigate to="/hoje" replace />} />
+          <Route path="ritual" element={<Navigate to="/" replace />} />
+          <Route path="frentes" element={<WorkspacesPage />} />
+          <Route path="frentes/:workspaceId" element={<WorkspacesPage />} />
+          <Route path="workspaces" element={<Navigate to="/frentes" replace />} />
+          <Route path="workspaces/:workspaceId" element={<Navigate to="/frentes" replace />} />
+          <Route path="projetos" element={<ProjetosPage />} />
+          <Route path="projetos/:projectId" element={<ProjetosPage />} />
+          <Route path="tarefas" element={<TarefasPage />} />
+          <Route path="agenda" element={<AgendaPage />} />
+          <Route path="habitos" element={<HabitosPage />} />
+          <Route path="inbox" element={<InboxPage />} />
+          <Route path="gamificacao" element={<Navigate to="/" replace />} />
+          <Route path="configuracoes" element={<ConfiguracoesPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </Suspense>
+  );
+}
+
+function AuthenticatedApp() {
+  const [isProductAccessVerified, setIsProductAccessVerified] = useState(false);
+  const markProductAccessVerified = useCallback(() => setIsProductAccessVerified(true), []);
+
+  return (
+    <>
+      <AuthSync onProductAccessVerified={markProductAccessVerified} />
+      {isProductAccessVerified ? <ProtectedRoutes /> : <ProductAccessFallback />}
+    </>
+  );
+}
+
 function AppRoutes() {
   const { isSignedIn } = useAuth();
 
   if (isSignedIn) {
-    return (
-      <>
-        <AuthSync />
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/landing" element={<LandingPage />} />
-            <Route path="/notas/*" element={<NotasPage />} />
-            <Route path="/" element={<Layout />}>
-              <Route index element={<Navigate to="/inbox" replace />} />
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="hoje" element={<HojePage />} />
-              <Route path="amanha" element={<Navigate to="/hoje" replace />} />
-              <Route path="ritual" element={<Navigate to="/" replace />} />
-              <Route path="frentes" element={<WorkspacesPage />} />
-              <Route path="frentes/:workspaceId" element={<WorkspacesPage />} />
-              <Route path="workspaces" element={<Navigate to="/frentes" replace />} />
-              <Route path="workspaces/:workspaceId" element={<Navigate to="/frentes" replace />} />
-              <Route path="projetos" element={<ProjetosPage />} />
-              <Route path="projetos/:projectId" element={<ProjetosPage />} />
-              <Route path="tarefas" element={<TarefasPage />} />
-              <Route path="agenda" element={<AgendaPage />} />
-              <Route path="habitos" element={<HabitosPage />} />
-              <Route path="inbox" element={<InboxPage />} />
-              <Route path="gamificacao" element={<Navigate to="/" replace />} />
-              <Route path="configuracoes" element={<ConfiguracoesPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </Suspense>
-      </>
-    );
+    return <AuthenticatedApp />;
   }
 
   return (
