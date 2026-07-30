@@ -20,12 +20,10 @@
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const nginxConfigPath = fileURLToPath(
-  new URL('../../../ops/nginx-web.conf', import.meta.url)
-);
+const nginxConfigPath = resolve(process.cwd(), '../../ops/nginx-web.conf');
 const nginxConfig = readFileSync(nginxConfigPath, 'utf8');
 const csp = nginxConfig.match(/add_header Content-Security-Policy "([^"]+)"/)?.[1];
 
@@ -97,4 +95,3 @@ Expected: TypeScript and Vite finish with exit code 0.
 Run: `git diff --check && git diff -- ops/nginx-web.conf apps/web/src/security-headers.test.ts`
 
 Expected: no whitespace errors and only the approved CSP correction plus its regression test.
-
