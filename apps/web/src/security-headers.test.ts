@@ -10,7 +10,7 @@ describe('production Content Security Policy', () => {
   it('allows the Clerk runtime and protection resources', () => {
     expect(csp).toBeDefined();
     expect(csp).toContain(
-      "script-src 'self' https://discrete-peacock-45.clerk.accounts.dev https://challenges.cloudflare.com https://*.protect.clerk.com"
+      "script-src 'self' https://clerk.prymeiradigital.com.br https://discrete-peacock-45.clerk.accounts.dev https://challenges.cloudflare.com https://*.protect.clerk.com"
     );
     expect(csp).toContain("worker-src 'self' blob:");
     expect(csp).toContain(
