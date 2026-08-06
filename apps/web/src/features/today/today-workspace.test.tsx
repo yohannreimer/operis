@@ -5,6 +5,38 @@ import type { Commitment } from '../../api';
 import type { TodayEntry } from './types';
 import { CompactAgenda } from './compact-agenda';
 import { RolloverReview } from './rollover-review';
+import { TodayWorkspace } from './today-workspace';
+
+const workspaceState = vi.hoisted(() => ({
+  entries: [],
+  rollover: [],
+  inboxItems: [],
+  inboxCount: 17,
+  commitments: [],
+  loading: false,
+  error: null,
+  inboxError: null,
+  agendaError: null,
+  reload: vi.fn(),
+  addInboxToToday: vi.fn(),
+  addTaskToToday: vi.fn(),
+  toggleCompleted: vi.fn(),
+  removeFromToday: vi.fn(),
+  reorder: vi.fn(),
+  resolveRollover: vi.fn()
+}));
+
+vi.mock('./use-today-workspace', () => ({
+  useTodayWorkspace: () => workspaceState
+}));
+vi.mock('./inbox-tray', () => ({
+  InboxTray: ({ open }: { open: boolean }) => open
+    ? <div role="dialog" aria-label="Inbox contextual" />
+    : null
+}));
+vi.mock('./planner-mode', () => ({
+  PlannerMode: () => <div>Grade do planejador</div>
+}));
 
 function commitment(id: string, title: string, startTime: string): Commitment {
   return {
@@ -75,5 +107,21 @@ describe('RolloverReview', () => {
     expect(screen.getAllByRole('button', { name: /manter em hoje/i })).toHaveLength(2);
     expect(screen.getAllByRole('button', { name: /voltar ao inbox/i })).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: /concluir/i })).toHaveLength(2);
+  });
+});
+
+describe('TodayWorkspace', () => {
+  it('keeps the list as the default and opens planning contextually', async () => {
+    render(<TodayWorkspace date="2026-08-05" />);
+
+    expect(screen.getByRole('heading', { name: /hoje/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /inbox · 17/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /planejar/i })).toBeInTheDocument();
+    expect(screen.queryByText(/07:00/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /planejar/i }));
+
+    expect(await screen.findByRole('dialog', { name: /planejar o dia/i })).toBeInTheDocument();
+    expect(screen.getByText('Grade do planejador')).toBeInTheDocument();
   });
 });
