@@ -41,6 +41,12 @@ const logSchema = z.object({
   note: z.string().max(500).optional().nullable(),
 });
 
+const absoluteLogSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  value: z.number().positive(),
+  note: z.string().max(500).optional().nullable(),
+});
+
 const recaiuSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
@@ -157,9 +163,11 @@ export function registerHabitRoutes(app: FastifyInstance, prisma: PrismaClient) 
   // GET /habits/stats/today
   app.get('/habits/stats/today', async (request) => {
     const clerkUserId = getUserId(request);
-    const query = request.query as { date?: string };
+    const query = request.query as { date?: string; includeUnscheduled?: string };
     const date = query.date ?? new Date().toISOString().slice(0, 10);
-    return service.getTodayStats(date, clerkUserId);
+    return service.getTodayStats(date, clerkUserId, {
+      includeUnscheduled: query.includeUnscheduled === 'true',
+    });
   });
 
   // GET /habits/stats/radar
@@ -285,6 +293,34 @@ export function registerHabitRoutes(app: FastifyInstance, prisma: PrismaClient) 
     // Process XP
     await service.processXP(id, date);
 
+    return log;
+  });
+
+  // PUT /habits/:id/log — set an absolute quantitative total for the date
+  app.put('/habits/:id/log', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const { id } = request.params as { id: string };
+    const body = absoluteLogSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: body.error.message });
+    }
+
+    const habit = await prisma.habit.findUnique({ where: { id, clerkUserId } });
+    if (!habit) {
+      return reply.status(404).send({ error: 'Hábito não encontrado' });
+    }
+    if (habit.type !== 'quantitative') {
+      return reply.status(400).send({ error: 'Valor absoluto exige hábito quantitativo' });
+    }
+
+    const { date, value, note } = body.data;
+    const log = await prisma.habitLog.upsert({
+      where: { habitId_date: { habitId: id, date } },
+      create: { habitId: id, date, value, note: note ?? null },
+      update: { value, note: note ?? null },
+    });
+
+    await service.processXP(id, date);
     return log;
   });
 
