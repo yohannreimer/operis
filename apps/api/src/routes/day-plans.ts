@@ -4,6 +4,33 @@ import { z } from 'zod';
 import { DayPlanService } from '../services/day-plan-service.js';
 import { getUserId } from '../middleware/auth.js';
 
+const sourceFields = {
+  taskId: z.string().uuid().optional().nullable(),
+  inboxItemId: z.string().uuid().optional().nullable()
+};
+
+const createItemSchema = z
+  .object({
+    ...sourceFields,
+    startTime: z.string().datetime(),
+    endTime: z.string().datetime(),
+    orderIndex: z.number().int().optional(),
+    blockType: z.enum(['task', 'fixed'])
+  })
+  .strict();
+
+const updateItemSchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    ...sourceFields,
+    startTime: z.string().datetime().optional(),
+    endTime: z.string().datetime().optional(),
+    orderIndex: z.number().int().optional(),
+    blockType: z.enum(['task', 'fixed']).optional(),
+    completedAt: z.string().datetime().nullable().optional()
+  })
+  .strict();
+
 export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayPlanService) {
   app.get('/day-plans/:date', async (request) => {
     const clerkUserId = getUserId(request);
@@ -25,15 +52,7 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
       })
       .parse(request.params);
 
-    const payload = z
-      .object({
-        taskId: z.string().uuid().optional().nullable(),
-        startTime: z.string().datetime(),
-        endTime: z.string().datetime(),
-        orderIndex: z.number().int().optional(),
-        blockType: z.enum(['task', 'fixed'])
-      })
-      .parse(request.body);
+    const payload = createItemSchema.parse(request.body);
 
     const item = await dayPlanService.addItem({
       clerkUserId,
@@ -70,15 +89,7 @@ export function registerDayPlanRoutes(app: FastifyInstance, dayPlanService: DayP
   app.patch('/day-plan-items/:id', async (request) => {
     const clerkUserId = getUserId(request);
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
-    const payload = z
-      .object({
-        taskId: z.string().uuid().nullable().optional(),
-        startTime: z.string().datetime().optional(),
-        endTime: z.string().datetime().optional(),
-        orderIndex: z.number().int().optional(),
-        blockType: z.enum(['task', 'fixed']).optional()
-      })
-      .parse(request.body);
+    const payload = updateItemSchema.parse(request.body);
 
     return dayPlanService.updateItem(params.id, payload, clerkUserId);
   });

@@ -2,7 +2,7 @@ import { BlockType, FailureReason, PrismaClient } from '@prisma/client';
 
 import { publishEvent } from '../infra/rabbit.js';
 import { queueNames } from '@execution-os/shared';
-import { overlap, startOfDay } from '../utils/time.js';
+import { startOfDay } from '../utils/time.js';
 import { TaskService } from './task-service.js';
 import { safeRecordStrategicDecisionEvent } from './strategic-decision-service.js';
 
@@ -14,6 +14,7 @@ type AddDayPlanItemInput = {
   clerkUserId: string;
   date: string;
   taskId?: string | null;
+  inboxItemId?: string | null;
   startTime: string;
   endTime: string;
   orderIndex?: number;
@@ -21,12 +22,35 @@ type AddDayPlanItemInput = {
 };
 
 type UpdateDayPlanItemInput = Partial<{
+  date: string;
   taskId: string | null;
+  inboxItemId: string | null;
   startTime: string;
   endTime: string;
   orderIndex: number;
   blockType: BlockType;
+  completedAt: string | null;
 }>;
+
+function badRequest(message: string) {
+  return Object.assign(new Error(message), { statusCode: 400 });
+}
+
+function assertSource(input: {
+  blockType: BlockType;
+  taskId?: string | null;
+  inboxItemId?: string | null;
+}) {
+  const sources = Number(Boolean(input.taskId)) + Number(Boolean(input.inboxItemId));
+
+  if (input.blockType === 'task' && sources !== 1) {
+    throw badRequest('Bloco de trabalho precisa de uma única origem.');
+  }
+
+  if (input.blockType === 'fixed' && sources !== 0) {
+    throw badRequest('Bloco fixo legado não aceita origem.');
+  }
+}
 
 export class DayPlanService {
   constructor(
@@ -59,15 +83,14 @@ export class DayPlanService {
   }
 
   async getByDate(date: string, clerkUserId: string) {
-    await this.cleanupPendingTaskDuplicates(clerkUserId);
-
     const normalizedDate = startOfDay(date);
     const plan = await this.prisma.dayPlan.findUnique({
       where: { clerkUserId_date: { clerkUserId, date: normalizedDate } },
       include: {
         items: {
           include: {
-            task: true
+            task: true,
+            inboxItem: true
           },
           orderBy: {
             startTime: 'asc'
@@ -80,6 +103,8 @@ export class DayPlanService {
   }
 
   async addItem(input: AddDayPlanItemInput) {
+    assertSource(input);
+
     const startTime = new Date(input.startTime);
     const endTime = new Date(input.endTime);
 
@@ -127,43 +152,24 @@ export class DayPlanService {
           `Frente ${task.workspace.name} está em manutenção. Tarefa de construção/otimização não pode entrar na agenda.`
         );
       }
-
-      await this.prisma.dayPlanItem.deleteMany({
-        where: {
-          taskId: input.taskId,
-          confirmationState: 'pending',
-          task: {
-            workspace: { clerkUserId: input.clerkUserId }
-          }
-        }
-      });
     }
 
-    const existingItems = await this.prisma.dayPlanItem.findMany({
-      where: {
-        dayPlanId: plan.id
-      }
-    });
+    if (input.inboxItemId) {
+      const inboxItem = await this.prisma.inboxItem.findFirst({
+        where: { id: input.inboxItemId, clerkUserId: input.clerkUserId },
+        select: { id: true }
+      });
 
-    for (const existing of existingItems) {
-      const collides = overlap(startTime, endTime, existing.startTime, existing.endTime);
-
-      if (!collides) {
-        continue;
-      }
-
-      const hasFixedBlockConflict =
-        existing.blockType === 'fixed' || input.blockType === 'fixed';
-
-      if (hasFixedBlockConflict) {
-        throw new Error('Blocos fixos não podem ser sobrepostos.');
+      if (!inboxItem) {
+        throw new Error('Item do Inbox não encontrado para agendamento.');
       }
     }
 
     const created = await this.prisma.dayPlanItem.create({
       data: {
         dayPlanId: plan.id,
-        taskId: input.taskId,
+        taskId: input.taskId ?? null,
+        inboxItemId: input.inboxItemId ?? null,
         startTime,
         endTime,
         orderIndex: input.orderIndex ?? 0,
@@ -171,7 +177,8 @@ export class DayPlanService {
         confirmationState: 'pending'
       },
       include: {
-        task: true
+        task: true,
+        inboxItem: true
       }
     });
 
@@ -219,78 +226,6 @@ export class DayPlanService {
     return created;
   }
 
-  private async cleanupPendingTaskDuplicates(clerkUserId?: string) {
-    const pendingItems = await this.prisma.dayPlanItem.findMany({
-      where: {
-        taskId: {
-          not: null
-        },
-        confirmationState: 'pending',
-        task: clerkUserId ? { workspace: { clerkUserId } } : undefined
-      },
-      orderBy: [
-        {
-          startTime: 'desc'
-        }
-      ]
-    });
-
-    const seen = new Set<string>();
-    const duplicatesToDelete: string[] = [];
-
-    for (const item of pendingItems) {
-      if (!item.taskId) {
-        continue;
-      }
-
-      if (!seen.has(item.taskId)) {
-        seen.add(item.taskId);
-        continue;
-      }
-
-      duplicatesToDelete.push(item.id);
-    }
-
-    if (duplicatesToDelete.length) {
-      await this.prisma.dayPlanItem.deleteMany({
-        where: {
-          id: {
-            in: duplicatesToDelete
-          }
-        }
-      });
-    }
-  }
-
-  private async assertNoForbiddenOverlap(params: {
-    dayPlanId: string;
-    startTime: Date;
-    endTime: Date;
-    blockType: BlockType;
-    skipItemId?: string;
-  }) {
-    const existingItems = await this.prisma.dayPlanItem.findMany({
-      where: {
-        dayPlanId: params.dayPlanId,
-        id: params.skipItemId ? { not: params.skipItemId } : undefined
-      }
-    });
-
-    for (const existing of existingItems) {
-      const collides = overlap(params.startTime, params.endTime, existing.startTime, existing.endTime);
-
-      if (!collides) {
-        continue;
-      }
-
-      const hasFixedBlockConflict = existing.blockType === 'fixed' || params.blockType === 'fixed';
-
-      if (hasFixedBlockConflict) {
-        throw new Error('Blocos fixos não podem ser sobrepostos.');
-      }
-    }
-  }
-
   private async assertItemOwner(dayPlanItemId: string, clerkUserId?: string) {
     if (!clerkUserId) {
       return;
@@ -329,6 +264,14 @@ export class DayPlanService {
     const nextEnd = input.endTime ? new Date(input.endTime) : existingItem.endTime;
     const nextBlockType = input.blockType ?? existingItem.blockType;
     const nextTaskId = input.taskId === undefined ? existingItem.taskId : input.taskId;
+    const nextInboxItemId =
+      input.inboxItemId === undefined ? existingItem.inboxItemId : input.inboxItemId;
+
+    assertSource({
+      blockType: nextBlockType,
+      taskId: nextTaskId,
+      inboxItemId: nextInboxItemId
+    });
 
     if (nextStart >= nextEnd) {
       throw new Error('start_time precisa ser menor que end_time.');
@@ -374,53 +317,57 @@ export class DayPlanService {
       }
     }
 
-    await this.assertNoForbiddenOverlap({
-      dayPlanId: existingItem.dayPlanId,
-      startTime: nextStart,
-      endTime: nextEnd,
-      blockType: nextBlockType,
-      skipItemId: existingItem.id
-    });
-
-    if (nextTaskId) {
-      await this.prisma.dayPlanItem.deleteMany({
+    if (nextInboxItemId) {
+      const inboxItem = await this.prisma.inboxItem.findFirst({
         where: {
-          taskId: nextTaskId,
-          confirmationState: 'pending',
-          task: clerkUserId ? { workspace: { clerkUserId } } : undefined,
-          id: {
-            not: existingItem.id
-          }
-        }
+          id: nextInboxItemId,
+          clerkUserId: clerkUserId ?? existingItem.dayPlan.clerkUserId
+        },
+        select: { id: true }
       });
+
+      if (!inboxItem) {
+        throw new Error('Item do Inbox não encontrado para agendamento.');
+      }
     }
+
+    const targetPlan = input.date
+      ? await this.getOrCreatePlan(
+          input.date,
+          clerkUserId ?? existingItem.dayPlan.clerkUserId
+        )
+      : existingItem.dayPlan;
 
     const updated = await this.prisma.dayPlanItem.update({
       where: { id: dayPlanItemId },
       data: {
+        dayPlanId: input.date ? targetPlan.id : undefined,
         taskId: input.taskId,
+        inboxItemId: input.inboxItemId,
         startTime: input.startTime ? nextStart : undefined,
         endTime: input.endTime ? nextEnd : undefined,
         orderIndex: input.orderIndex,
-        blockType: input.blockType
+        blockType: input.blockType,
+        completedAt:
+          input.completedAt === undefined
+            ? undefined
+            : input.completedAt === null
+              ? null
+              : new Date(input.completedAt)
       },
       include: {
-        task: true
+        task: true,
+        inboxItem: true
       }
     });
 
     if (updated.taskId) {
-      const updatedPlan = await this.prisma.dayPlan.findUnique({
-        where: { id: updated.dayPlanId }
-      });
-
       await this.prisma.task.update({
         where: { id: updated.taskId },
         data: {
-          status:
-            updatedPlan && this.isTodayDate(updatedPlan.date.toISOString().slice(0, 10))
-              ? 'hoje'
-              : 'backlog',
+          status: this.isTodayDate(targetPlan.date.toISOString().slice(0, 10))
+            ? 'hoje'
+            : 'backlog',
           horizon: 'active'
         }
       });
@@ -507,15 +454,20 @@ export class DayPlanService {
   async confirmDone(dayPlanItemId: string, clerkUserId?: string) {
     await this.assertItemOwner(dayPlanItemId, clerkUserId);
 
+    const completedAt = new Date();
     const item = await this.prisma.dayPlanItem.update({
       where: { id: dayPlanItemId },
       data: {
-        confirmationState: 'confirmed_done'
+        confirmationState: 'confirmed_done',
+        completedAt
       }
     });
 
-    if (item.taskId) {
-      await this.taskService.complete(item.taskId, { clerkUserId });
+    if (item.inboxItemId) {
+      await this.prisma.inboxItem.update({
+        where: { id: item.inboxItemId },
+        data: { status: 'feito' }
+      });
     }
 
     return item;
