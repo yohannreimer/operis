@@ -1,5 +1,5 @@
 import type { CSSProperties, HTMLAttributes } from 'react';
-import { Check, GripVertical, MoreHorizontal } from 'lucide-react';
+import { Check, GripVertical, MoreHorizontal, Play } from 'lucide-react';
 
 import type { TodayEntry } from './types';
 
@@ -9,10 +9,12 @@ type Props = {
   total: number;
   onToggle(entry: TodayEntry): void;
   onRemove(entry: TodayEntry): void;
+  onStart(entry: TodayEntry): void;
   onMove(index: number, direction: -1 | 1): void;
   setNodeRef?(element: HTMLElement | null): void;
   style?: CSSProperties;
   dragHandleProps?: HTMLAttributes<HTMLButtonElement>;
+  reorderable?: boolean;
 };
 
 function metadata(entry: TodayEntry) {
@@ -35,10 +37,12 @@ export function TodayExecutionRow({
   total,
   onToggle,
   onRemove,
+  onStart,
   onMove,
   setNodeRef,
   style,
-  dragHandleProps
+  dragHandleProps,
+  reorderable = true
 }: Props) {
   const completed = Boolean(entry.completedAt);
   const meta = metadata(entry);
@@ -78,37 +82,53 @@ export function TodayExecutionRow({
       </div>
 
       <div className="today-execution-row__actions">
-        <button
-          type="button"
-          className="today-execution-row__drag"
-          aria-label={`Reordenar ${entry.title}`}
-          {...dragHandleProps}
-        >
-          <GripVertical aria-hidden="true" size={16} />
-        </button>
+        {!completed ? (
+          <button
+            type="button"
+            className="today-execution-row__start"
+            aria-label={`Iniciar ${entry.title}`}
+            onClick={() => onStart(entry)}
+          >
+            <Play aria-hidden="true" size={15} />
+          </button>
+        ) : null}
+        {reorderable ? (
+          <button
+            type="button"
+            className="today-execution-row__drag"
+            aria-label={`Reordenar ${entry.title}`}
+            {...dragHandleProps}
+          >
+            <GripVertical aria-hidden="true" size={16} />
+          </button>
+        ) : null}
         <details className="today-execution-row__menu">
           <summary aria-label={`Mais ações para ${entry.title}`}>
             <MoreHorizontal aria-hidden="true" size={18} />
           </summary>
           <div role="menu" className="today-execution-row__menu-popover">
-            <button
-              type="button"
-              role="menuitem"
-              aria-label={`Mover ${entry.title} acima`}
-              disabled={index === 0}
-              onClick={() => onMove(index, -1)}
-            >
-              Mover acima
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              aria-label={`Mover ${entry.title} abaixo`}
-              disabled={index === total - 1}
-              onClick={() => onMove(index, 1)}
-            >
-              Mover abaixo
-            </button>
+            {reorderable ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={`Mover ${entry.title} acima`}
+                  disabled={index === 0}
+                  onClick={() => onMove(index, -1)}
+                >
+                  Mover acima
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={`Mover ${entry.title} abaixo`}
+                  disabled={index === total - 1}
+                  onClick={() => onMove(index, 1)}
+                >
+                  Mover abaixo
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               role="menuitem"

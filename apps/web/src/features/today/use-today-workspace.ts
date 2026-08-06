@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-import type { Commitment, InboxItem, Task } from '../../api';
+import type { Commitment, DayPlan, DayPlanItem, ExecutionSession, InboxItem, Task } from '../../api';
 import { api } from '../../api';
 import type { RolloverAction, TodayEntry } from './types';
 
@@ -11,10 +11,13 @@ export type TodayWorkspaceState = {
   inboxItems: InboxItem[];
   inboxCount: number;
   commitments: Commitment[];
+  dayPlan: DayPlan;
+  activeSession: ExecutionSession | null;
   loading: boolean;
   error: string | null;
   inboxError: string | null;
   agendaError: string | null;
+  dayPlanError: string | null;
   reload(): Promise<void>;
   addInboxToToday(item: InboxItem): Promise<void>;
   addTaskToToday(task: Task): Promise<void>;
@@ -22,6 +25,10 @@ export type TodayWorkspaceState = {
   removeFromToday(item: TodayEntry): Promise<void>;
   reorder(orderedIds: string[]): Promise<void>;
   resolveRollover(item: TodayEntry, action: RolloverAction): Promise<void>;
+  startSession(item: TodayEntry): Promise<void>;
+  stopSession(): Promise<void>;
+  cancelSession(): Promise<void>;
+  setPlannedBlockCompleted(item: DayPlanItem, completed: boolean): Promise<void>;
 };
 
 function errorMessage(error: unknown, fallback: string) {
@@ -33,21 +40,27 @@ export function useTodayWorkspace(date: string): TodayWorkspaceState {
   const [rollover, setRollover] = useState<TodayEntry[]>([]);
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [commitments, setCommitments] = useState<Commitment[]>([]);
+  const [dayPlan, setDayPlan] = useState<DayPlan>({ date, items: [] });
+  const [activeSession, setActiveSession] = useState<ExecutionSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inboxError, setInboxError] = useState<string | null>(null);
   const [agendaError, setAgendaError] = useState<string | null>(null);
+  const [dayPlanError, setDayPlanError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     setInboxError(null);
     setAgendaError(null);
+    setDayPlanError(null);
 
-    const [executionResult, commitmentResult, inboxResult] = await Promise.allSettled([
+    const [executionResult, commitmentResult, inboxResult, dayPlanResult, sessionResult] = await Promise.allSettled([
       api.getDailyExecution(date),
       api.getCommitments({ date }),
-      api.getInbox({ view: 'unprocessed', date })
+      api.getInbox({ view: 'unprocessed', date }),
+      api.getDayPlan(date),
+      api.getActiveExecutionSession()
     ]);
 
     if (executionResult.status === 'fulfilled') {
@@ -67,6 +80,18 @@ export function useTodayWorkspace(date: string): TodayWorkspaceState {
       setInboxItems(inboxResult.value.items);
     } else {
       setInboxError(errorMessage(inboxResult.reason, 'Inbox indisponível.'));
+    }
+
+    if (dayPlanResult.status === 'fulfilled') {
+      setDayPlan(dayPlanResult.value);
+    } else {
+      setDayPlanError(errorMessage(dayPlanResult.reason, 'Linha do tempo indisponível.'));
+    }
+
+    if (sessionResult.status === 'fulfilled') {
+      setActiveSession(sessionResult.value);
+    } else {
+      setDayPlanError(errorMessage(sessionResult.reason, 'Execução observada indisponível.'));
     }
 
     setLoading(false);
@@ -214,22 +239,89 @@ export function useTodayWorkspace(date: string): TodayWorkspaceState {
     }
   }, [date]);
 
+  const startSession = useCallback(async (item: TodayEntry) => {
+    const plannedItem = dayPlan.items.find((candidate) =>
+      item.kind === 'task'
+        ? candidate.taskId === item.sourceId
+        : candidate.inboxItemId === item.sourceId
+    );
+    try {
+      const session = await api.startExecutionSession({
+        sourceType: item.kind,
+        sourceId: item.sourceId,
+        dayPlanItemId: plannedItem?.id ?? null,
+        dailyExecutionItemId: item.id
+      });
+      setActiveSession(session);
+    } catch (cause) {
+      toast.error(errorMessage(cause, 'Não foi possível iniciar a execução.'));
+    }
+  }, [dayPlan.items]);
+
+  const stopSession = useCallback(async () => {
+    if (!activeSession) return;
+    try {
+      await api.stopExecutionSession(activeSession.id);
+      setActiveSession(null);
+    } catch (cause) {
+      toast.error(errorMessage(cause, 'Não foi possível encerrar a execução.'));
+    }
+  }, [activeSession]);
+
+  const cancelSession = useCallback(async () => {
+    if (!activeSession) return;
+    try {
+      await api.cancelExecutionSession(activeSession.id);
+      setActiveSession(null);
+    } catch (cause) {
+      toast.error(errorMessage(cause, 'Não foi possível cancelar a execução.'));
+    }
+  }, [activeSession]);
+
+  const setPlannedBlockCompleted = useCallback(async (item: DayPlanItem, completed: boolean) => {
+    const previous = dayPlan;
+    const completedAt = completed ? new Date().toISOString() : null;
+    setDayPlan((current) => ({
+      ...current,
+      items: current.items.map((candidate) => candidate.id === item.id
+        ? { ...candidate, completedAt }
+        : candidate)
+    }));
+    try {
+      const updated = await api.updateDayPlanItem(item.id, { completedAt });
+      setDayPlan((current) => ({
+        ...current,
+        items: current.items.map((candidate) => candidate.id === item.id ? updated : candidate)
+      }));
+    } catch (cause) {
+      setDayPlan(previous);
+      toast.error(errorMessage(cause, 'Não foi possível concluir o bloco.'));
+    }
+  }, [dayPlan]);
+
   return {
     entries,
     rollover,
     inboxItems,
     inboxCount: inboxItems.length,
     commitments,
+    dayPlan,
+    activeSession,
     loading,
     error,
     inboxError,
     agendaError,
+    dayPlanError,
     reload,
     addInboxToToday,
     addTaskToToday,
     toggleCompleted,
     removeFromToday,
     reorder,
-    resolveRollover
+    resolveRollover,
+    startSession,
+    stopSession,
+    cancelSession,
+    setPlannedBlockCompleted
   };
 }

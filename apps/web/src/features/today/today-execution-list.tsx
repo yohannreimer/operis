@@ -24,6 +24,9 @@ type Props = {
   onToggle(entry: TodayEntry): void;
   onRemove(entry: TodayEntry): void;
   onReorder(orderedIds: string[]): void;
+  onStart(entry: TodayEntry): void;
+  label?: string;
+  reorderable?: boolean;
 };
 
 type SortableRowProps = {
@@ -32,7 +35,9 @@ type SortableRowProps = {
   total: number;
   onToggle(entry: TodayEntry): void;
   onRemove(entry: TodayEntry): void;
+  onStart(entry: TodayEntry): void;
   onMove(index: number, direction: -1 | 1): void;
+  reorderable: boolean;
 };
 
 function SortableRow(props: SortableRowProps) {
@@ -55,7 +60,15 @@ function SortableRow(props: SortableRowProps) {
   );
 }
 
-export function TodayExecutionList({ entries, onToggle, onRemove, onReorder }: Props) {
+export function TodayExecutionList({
+  entries,
+  onToggle,
+  onRemove,
+  onReorder,
+  onStart,
+  label = 'Para hoje',
+  reorderable = true
+}: Props) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -94,7 +107,7 @@ export function TodayExecutionList({ entries, onToggle, onRemove, onReorder }: P
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={entries.map((entry) => entry.id)} strategy={verticalListSortingStrategy}>
-        <ul className="today-execution-list" aria-label="Execução de hoje">
+        <ul className="today-execution-list" aria-label={label}>
           {entries.map((entry, index) => (
             <SortableRow
               key={entry.id}
@@ -103,7 +116,9 @@ export function TodayExecutionList({ entries, onToggle, onRemove, onReorder }: P
               total={entries.length}
               onToggle={onToggle}
               onRemove={onRemove}
+              onStart={onStart}
               onMove={move}
+              reorderable={reorderable}
             />
           ))}
         </ul>

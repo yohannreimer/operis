@@ -10,6 +10,12 @@ const apiMock = vi.hoisted(() => ({
   getDailyExecution: vi.fn(),
   getCommitments: vi.fn(),
   getInbox: vi.fn(),
+  getDayPlan: vi.fn(),
+  getActiveExecutionSession: vi.fn(),
+  startExecutionSession: vi.fn(),
+  stopExecutionSession: vi.fn(),
+  cancelExecutionSession: vi.fn(),
+  updateDayPlanItem: vi.fn(),
   assignDailyExecution: vi.fn(),
   setDailyExecutionCompleted: vi.fn(),
   reorderDailyExecution: vi.fn(),
@@ -56,6 +62,8 @@ function seedSuccessfulLoad() {
   apiMock.getDailyExecution.mockResolvedValue({ entries: [dailyEntry], rollover: [] });
   apiMock.getCommitments.mockResolvedValue([]);
   apiMock.getInbox.mockResolvedValue({ items: [inboxItem], contexts: [] });
+  apiMock.getDayPlan.mockResolvedValue({ date: '2026-08-05', items: [] });
+  apiMock.getActiveExecutionSession.mockResolvedValue(null);
 }
 
 describe('useTodayWorkspace', () => {
@@ -72,6 +80,7 @@ describe('useTodayWorkspace', () => {
     expect(result.current.entries).toEqual([dailyEntry]);
     expect(result.current.inboxItems).toEqual([inboxItem]);
     expect(apiMock.getCommitments).toHaveBeenCalledWith({ date: '2026-08-05' });
+    expect(result.current.dayPlan).toEqual({ date: '2026-08-05', items: [] });
   });
 
   it('keeps the daily list when agenda and inbox fail', async () => {
@@ -161,5 +170,32 @@ describe('useTodayWorkspace', () => {
     expect(apiMock.reorderDailyExecution).toHaveBeenCalledWith('2026-08-05', ['daily_2', 'daily_1']);
     expect(result.current.entries.map((item) => item.id)).toEqual(['daily_2', 'daily_1', 'daily_old']);
     expect(result.current.rollover).toEqual([]);
+  });
+
+  it('starts observed execution with the matching daily and planned ids', async () => {
+    apiMock.getDayPlan.mockResolvedValue({
+      id: 'plan_1',
+      date: '2026-08-05',
+      items: [{
+        id: 'block_1', dayPlanId: 'plan_1', taskId: null, inboxItemId: inboxItem.id,
+        startTime: '2026-08-05T14:00:00.000Z', endTime: '2026-08-05T14:15:00.000Z',
+        completedAt: null, orderIndex: 0, blockType: 'task', confirmationState: 'pending'
+      }]
+    });
+    apiMock.startExecutionSession.mockResolvedValue({
+      id: 'session_1', kind: 'inbox', sourceId: inboxItem.id, title: inboxItem.content,
+      startedAt: '2026-08-05T14:00:00.000Z', endedAt: null, state: 'active',
+      dayPlanItemId: 'block_1', dailyExecutionItemId: dailyEntry.id
+    });
+    const { result } = renderHook(() => useTodayWorkspace('2026-08-05'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(() => result.current.startSession(dailyEntry));
+
+    expect(apiMock.startExecutionSession).toHaveBeenCalledWith({
+      sourceType: 'inbox', sourceId: inboxItem.id,
+      dayPlanItemId: 'block_1', dailyExecutionItemId: dailyEntry.id
+    });
+    expect(result.current.activeSession?.id).toBe('session_1');
   });
 });

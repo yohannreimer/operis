@@ -23,6 +23,7 @@ describe('TodayExecutionList', () => {
         onToggle={vi.fn()}
         onRemove={vi.fn()}
         onReorder={vi.fn()}
+        onStart={vi.fn()}
       />
     );
 
@@ -42,6 +43,7 @@ describe('TodayExecutionList', () => {
         onToggle={vi.fn()}
         onRemove={onRemove}
         onReorder={onReorder}
+        onStart={vi.fn()}
       />
     );
 
@@ -59,6 +61,7 @@ describe('TodayExecutionList', () => {
         onToggle={vi.fn()}
         onRemove={vi.fn()}
         onReorder={vi.fn()}
+        onStart={vi.fn()}
       />
     );
 
@@ -82,10 +85,11 @@ describe('TodayExecutionList', () => {
         onToggle={vi.fn()}
         onRemove={vi.fn()}
         onReorder={vi.fn()}
+        onStart={vi.fn()}
       />
     );
 
-    expect(screen.getByRole('list', { name: 'Execução de hoje' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Para hoje' })).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(50);
     expect(screen.getByText('Item diário 50')).toBeInTheDocument();
   });

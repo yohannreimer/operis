@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { Commitment } from '../../api';
+import type { Commitment, DayPlan } from '../../api';
 import type { TodayEntry } from './types';
 import { CompactAgenda } from './compact-agenda';
 import { RolloverReview } from './rollover-review';
@@ -17,13 +17,20 @@ const workspaceState = vi.hoisted(() => ({
   error: null,
   inboxError: null,
   agendaError: null,
+  dayPlanError: null,
+  dayPlan: { date: '2026-08-06', items: [] } as DayPlan,
+  activeSession: null,
   reload: vi.fn(),
   addInboxToToday: vi.fn(),
   addTaskToToday: vi.fn(),
   toggleCompleted: vi.fn(),
   removeFromToday: vi.fn(),
   reorder: vi.fn(),
-  resolveRollover: vi.fn()
+  resolveRollover: vi.fn(),
+  startSession: vi.fn(),
+  stopSession: vi.fn(),
+  cancelSession: vi.fn(),
+  setPlannedBlockCompleted: vi.fn()
 }));
 
 vi.mock('./use-today-workspace', () => ({
@@ -34,13 +41,13 @@ vi.mock('./inbox-tray', () => ({
     ? <div role="dialog" aria-label="Inbox contextual" />
     : null
 }));
-vi.mock('./planner-mode', () => ({
-  PlannerMode: () => <div>Grade do planejador</div>
-}));
-
 afterEach(() => {
   (workspaceState as { error: string | null }).error = null;
   workspaceState.loading = false;
+  workspaceState.entries = [];
+  workspaceState.dayPlan = { date: '2026-08-06', items: [] };
+  workspaceState.activeSession = null;
+  vi.clearAllMocks();
 });
 
 function commitment(id: string, title: string, startTime: string): Commitment {
@@ -73,6 +80,20 @@ const oldTaskEntry: TodayEntry = {
   title: 'Finalizar proposta', position: 0, completedAt: null, project: 'Holand',
   estimatedMinutes: 60, deadline: null
 };
+
+const quickEntry: TodayEntry = {
+  id: 'daily_1', kind: 'inbox', sourceId: 'inbox_1', date: '2026-08-06',
+  title: 'Responder cliente', position: 0, completedAt: null, context: null
+};
+
+const dayPlanWithQuickBlock = (): DayPlan => ({
+  id: 'plan_1', date: '2026-08-06', items: [{
+    id: 'block_1', dayPlanId: 'plan_1', taskId: null, inboxItemId: 'inbox_1',
+    startTime: '2026-08-06T14:00:00.000Z', endTime: '2026-08-06T14:15:00.000Z',
+    completedAt: null, orderIndex: 0, blockType: 'task', confirmationState: 'pending',
+    task: null, inboxItem: { id: 'inbox_1', content: 'Responder cliente' }
+  }]
+});
 
 describe('CompactAgenda', () => {
   it('keeps an empty agenda to one quiet line', () => {
@@ -116,18 +137,39 @@ describe('RolloverReview', () => {
 });
 
 describe('TodayWorkspace', () => {
-  it('keeps the list as the default and opens planning contextually', async () => {
+  it('keeps the list as the default and focuses planning contextually', () => {
     render(<TodayWorkspace date="2026-08-05" />);
 
-    expect(screen.getByRole('heading', { name: /hoje/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /hoje/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /inbox · 17/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /planejar/i })).toBeInTheDocument();
     expect(screen.queryByText(/07:00/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /planejar/i }));
+    expect(screen.getByRole('region', { name: /linha do tempo de/i })).toHaveFocus();
+  });
 
-    expect(await screen.findByRole('dialog', { name: /planejar o dia/i })).toHaveAttribute('aria-modal', 'true');
-    expect(screen.getByText('Grade do planejador')).toBeInTheDocument();
+  it('keeps unscheduled intent outside the timeline and starts observed execution', () => {
+    workspaceState.entries = [quickEntry];
+    workspaceState.dayPlan = { date: '2026-08-06', items: [] };
+    workspaceState.activeSession = null;
+    render(<TodayWorkspace date="2026-08-06" />);
+
+    expect(screen.getByRole('list', { name: 'Para hoje' })).toHaveTextContent('Responder cliente');
+    expect(screen.queryByRole('button', { name: /Item rápido Responder cliente, .* até/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar Responder cliente' }));
+    expect(workspaceState.startSession).toHaveBeenCalledWith(quickEntry);
+  });
+
+  it('shows the same scheduled block returned by the day plan', () => {
+    workspaceState.entries = [quickEntry];
+    workspaceState.dayPlan = dayPlanWithQuickBlock();
+    render(<TodayWorkspace date="2026-08-06" />);
+
+    expect(screen.getByRole('button', {
+      name: 'Item rápido Responder cliente, 14:00 até 14:15'
+    })).toBeInTheDocument();
   });
 
   it('announces loading and recoverable failures', () => {

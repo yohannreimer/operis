@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Check, CheckSquare2, Clock3, MoreHorizontal, Zap } from 'lucide-react';
 
 import type { AgendaBlock, AgendaWeek, CommitmentOccurrence } from '../../api';
+import { blockAccessibleName } from './planner-block';
 import type { AgendaWeekController, PlannerBlockModel } from './types';
 
 const longDate = new Intl.DateTimeFormat('pt-BR', {
@@ -46,11 +47,13 @@ function MobileBlock({
   onOpen,
   onMove,
   onComplete
+  ,planning = true
 }: {
   block: PlannerBlockModel;
   onOpen(block: PlannerBlockModel): void;
   onMove(block: AgendaBlock): void;
   onComplete(block: AgendaBlock): void;
+  planning?: boolean;
 }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressed = useRef(false);
@@ -82,7 +85,7 @@ function MobileBlock({
         onPointerUp={endPress}
         onPointerCancel={endPress}
         onClick={() => { if (!longPressed.current) onOpen(block); }}
-        aria-label={`${block.title}, ${time(block.startTime)} até ${time(block.endTime)}`}
+        aria-label={blockAccessibleName(block)}
       >
         <Icon aria-hidden="true" />
         <span><strong>{block.title}</strong><small>{block.plannedMinutes} min</small></span>
@@ -90,7 +93,7 @@ function MobileBlock({
       {block.kind !== 'commitment' ? (
         <div className="agenda-mobile-block-controls">
           <button type="button" aria-label={`${block.completedAt ? 'Reabrir' : 'Concluir'} ${block.title}`} onClick={() => onComplete(block)}><Check aria-hidden="true" /></button>
-          <button type="button" aria-label={`Mover ${block.title}`} onClick={() => setMoving(true)}><MoreHorizontal aria-hidden="true" /></button>
+          {planning ? <button type="button" aria-label={`Mover ${block.title}`} onClick={() => setMoving(true)}><MoreHorizontal aria-hidden="true" /></button> : null}
         </div>
       ) : null}
       {moving && block.kind !== 'commitment' ? (
@@ -115,6 +118,7 @@ type Props = {
   controller: AgendaWeekController;
   onSelectedDateChange?(date: string): void;
   onOpenBlock?(block: PlannerBlockModel): void;
+  mode?: 'week' | 'single-day';
 };
 
 export function MobileDayTimeline({
@@ -122,7 +126,8 @@ export function MobileDayTimeline({
   selectedDate,
   controller,
   onSelectedDateChange,
-  onOpenBlock = () => undefined
+  onOpenBlock = () => undefined,
+  mode = 'week'
 }: Props) {
   const [date, setDate] = useState(selectedDate);
   const touchStartX = useRef<number | null>(null);
@@ -158,10 +163,11 @@ export function MobileDayTimeline({
     <section
       className="agenda-mobile-timeline"
       aria-label={`Linha do tempo de ${label}`}
+      tabIndex={mode === 'single-day' ? -1 : undefined}
       onTouchStart={(event) => { touchStartX.current = event.touches[0]?.clientX ?? null; }}
       onTouchEnd={(event) => finishSwipe(event.changedTouches[0]?.clientX ?? 0)}
     >
-      <nav className="agenda-mobile-week-strip" aria-label="Dias da semana">
+      {mode === 'week' ? <nav className="agenda-mobile-week-strip" aria-label="Dias da semana">
         {week.days.map((day) => {
           const value = dateAtNoon(day.date);
           const planned = day.blocks.reduce((sum, block) => sum + block.plannedMinutes, 0) + day.commitments.reduce((sum, item) => sum + (item.durationMin ?? 30), 0);
@@ -179,7 +185,7 @@ export function MobileDayTimeline({
             </button>
           );
         })}
-      </nav>
+      </nav> : null}
       <header className="agenda-mobile-day-heading">
         <div><span className="agenda-eyebrow">{monthDay.format(dateAtNoon(selected.date))}</span><h2>{label.split(',')[0]}</h2></div>
         <span><Clock3 aria-hidden="true" /> {blocks.reduce((sum, block) => sum + block.plannedMinutes, 0)} min</span>
@@ -197,6 +203,7 @@ export function MobileDayTimeline({
             onOpen={onOpenBlock}
             onMove={(next) => void controller.moveBlock(next.id, { date: next.date, startTime: next.startTime, endTime: next.endTime })}
             onComplete={(next) => void controller.setBlockCompleted(next.id, !next.completedAt)}
+            planning={mode === 'week'}
           />
         ))}
         {!blocks.length ? <p className="agenda-mobile-empty">Nada marcado.</p> : null}

@@ -168,6 +168,113 @@
   color: var(--primary);
 }
 
+.today-zone {
+  margin-top: 28px;
+}
+
+.today-zone > header {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.today-zone > header span {
+  color: var(--muted);
+  font: 650 0.62rem/1 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.today-zone > header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.91rem;
+  letter-spacing: -0.015em;
+}
+
+.today-now {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(249, 115, 22, 0.24);
+  border-radius: 10px;
+  background: rgba(249, 115, 22, 0.055);
+}
+
+.today-now__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 5px rgba(249, 115, 22, 0.12);
+}
+
+.today-now > div:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.today-now span { color: var(--primary); font: 700 0.62rem/1 'JetBrains Mono', monospace; text-transform: uppercase; }
+.today-now h2 { margin: 0; overflow: hidden; font-size: 0.9rem; text-overflow: ellipsis; white-space: nowrap; }
+.today-now small { color: var(--muted); font-size: 0.66rem; }
+.today-now__actions { display: flex; gap: 4px; }
+.today-now__actions button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; border: 0; border-radius: 7px; background: rgba(255,255,255,0.045); color: var(--text-secondary); box-shadow: none; font-size: 0.72rem; }
+.today-now__actions button:last-child { width: 38px; padding: 0; color: var(--muted); }
+
+.today-timeline-shell .agenda-mobile-timeline {
+  outline: none;
+}
+
+.today-timeline-shell .agenda-mobile-day-heading {
+  display: none;
+}
+
+.today-timeline-shell .agenda-mobile-block-list {
+  padding-top: 2px;
+}
+
+.today-timeline-shell .agenda-mobile-block {
+  position: relative;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+
+.today-timeline-shell .agenda-mobile-block-time {
+  padding: 15px 8px 0 2px;
+  color: var(--muted);
+  font: 500 0.66rem/1 'JetBrains Mono', monospace;
+}
+
+.today-timeline-shell .agenda-mobile-block-main {
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  text-align: left;
+}
+
+.today-timeline-shell .agenda-mobile-block-main:hover { transform: none; background: rgba(255,255,255,0.02); }
+.today-timeline-shell .agenda-mobile-block-main svg { width: 16px; color: var(--text-secondary); }
+.today-timeline-shell .agenda-mobile-block--inbox .agenda-mobile-block-main svg { color: var(--primary); }
+.today-timeline-shell .agenda-mobile-block--commitment .agenda-mobile-block-main svg { color: #91a6d3; }
+.today-timeline-shell .agenda-mobile-block-main span { min-width: 0; display: grid; gap: 3px; }
+.today-timeline-shell .agenda-mobile-block-main strong { overflow: hidden; font-size: 0.83rem; text-overflow: ellipsis; white-space: nowrap; }
+.today-timeline-shell .agenda-mobile-block-main small { color: var(--muted); font: 500 0.64rem/1 'JetBrains Mono', monospace; }
+.today-timeline-shell .agenda-mobile-block-controls { display: flex; align-items: center; }
+.today-timeline-shell .agenda-mobile-block-controls button { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--muted); box-shadow: none; }
+.today-timeline-shell .agenda-mobile-empty { margin: 0; padding: 18px 2px; color: var(--muted); font-size: 0.76rem; }
+.today-zone--completed { opacity: 0.72; }
+
 /* The agenda is context, not a second dashboard. */
 .compact-agenda {
   min-height: 44px;
@@ -370,6 +477,7 @@
 }
 
 .today-execution-row__drag,
+.today-execution-row__start,
 .today-execution-row__menu > summary {
   width: 32px;
   height: 32px;
@@ -390,6 +498,7 @@
 }
 
 .today-execution-row__drag:hover,
+.today-execution-row__start:hover,
 .today-execution-row__menu > summary:hover {
   transform: none;
   background: var(--surface-soft);
@@ -398,6 +507,10 @@
 
 .today-execution-row__drag {
   cursor: grab;
+}
+
+.today-execution-row__start {
+  color: var(--primary);
 }
 
 .today-execution-row__drag:active {
