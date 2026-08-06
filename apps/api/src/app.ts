@@ -34,6 +34,8 @@ import { WhatsappLLMService } from './services/whatsapp-llm-service.js';
 import { InboxWatcherService } from './services/inbox-watcher-service.js';
 import { UserPhoneService } from './services/user-phone-service.js';
 import { registerUserPhoneRoutes } from './routes/user-phone.js';
+import { registerDailyExecutionRoutes } from './routes/daily-execution.js';
+import { DailyExecutionService } from './services/daily-execution-service.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -72,6 +74,7 @@ export async function buildApp() {
 
   const gamificationService = new GamificationService(prisma);
   const taskService = new TaskService(prisma);
+  const dailyExecutionService = new DailyExecutionService(prisma);
   const dayPlanService = new DayPlanService(prisma, taskService);
   const deepWorkService = new DeepWorkService(prisma);
   const executionInsightsService = new ExecutionInsightsService(prisma);
@@ -101,6 +104,7 @@ export async function buildApp() {
   registerWorkspaceRoutes(app, prisma);
   registerProjectRoutes(app, prisma);
   registerTaskRoutes(app, taskService);
+  registerDailyExecutionRoutes(app, dailyExecutionService);
   registerDayPlanRoutes(app, dayPlanService);
   registerDeepWorkRoutes(app, deepWorkService);
   registerExecutionRoutes(app, executionInsightsService);
