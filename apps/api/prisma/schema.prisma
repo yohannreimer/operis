@@ -143,6 +143,12 @@ enum DailyExecutionSource {
   task
 }
 
+enum ExecutionSessionState {
+  active
+  completed
+  cancelled
+}
+
 enum WhatsappDirection {
   in
   out
@@ -322,6 +328,7 @@ model Task {
   strategicDecisionEvents StrategicDecisionEvent[]
   notes Note[]
   dailyExecutionItems DailyExecutionItem[]
+  executionSessions ExecutionSession[]
 
   dependencies     TaskDependency[] @relation("TaskDependsOn")
   dependedBy       TaskDependency[] @relation("TaskDependedBy")
@@ -515,17 +522,22 @@ model DayPlanItem {
   id                String            @id @default(uuid())
   dayPlanId         String            @map("day_plan_id")
   taskId            String?
+  inboxItemId       String?           @map("inbox_item_id")
   startTime         DateTime          @map("start_time")
   endTime           DateTime          @map("end_time")
+  completedAt       DateTime?         @map("completed_at")
   orderIndex        Int               @default(0) @map("order_index")
   blockType         BlockType         @map("block_type")
   confirmationState ConfirmationState @default(pending) @map("confirmation_state")
 
-  dayPlan DayPlan @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
-  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  dayPlan   DayPlan    @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  inboxItem InboxItem? @relation(fields: [inboxItemId], references: [id], onDelete: SetNull)
+  sessions  ExecutionSession[]
 
-  @@index([dayPlanId])
+  @@index([dayPlanId, startTime])
   @@index([taskId])
+  @@index([inboxItemId])
   @@map("day_plan_items")
 }
 
@@ -554,6 +566,8 @@ model InboxItem {
   inboxContext    InboxContext?   @relation(fields: [inboxContextId], references: [id], onDelete: SetNull)
   todayItems      InboxTodayItem[]
   dailyExecutionItems DailyExecutionItem[]
+  dayPlanItems    DayPlanItem[]
+  executionSessions ExecutionSession[]
 
   @@index([clerkUserId, status])
   @@map("inbox_items")
@@ -602,11 +616,38 @@ model DailyExecutionItem {
 
   inboxItem InboxItem? @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
   task      Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  executionSessions ExecutionSession[]
 
   @@unique([clerkUserId, date, inboxItemId])
   @@unique([clerkUserId, date, taskId])
   @@index([clerkUserId, date, position])
   @@map("daily_execution_items")
+}
+
+model ExecutionSession {
+  id                   String                @id @default(uuid())
+  clerkUserId          String                @map("clerk_user_id")
+  dayPlanItemId        String?               @map("day_plan_item_id")
+  dailyExecutionItemId String?               @map("daily_execution_item_id")
+  taskId               String?
+  inboxItemId          String?               @map("inbox_item_id")
+  startedAt            DateTime              @default(now()) @map("started_at")
+  endedAt              DateTime?             @map("ended_at")
+  state                ExecutionSessionState @default(active)
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+
+  dayPlanItem        DayPlanItem?        @relation(fields: [dayPlanItemId], references: [id], onDelete: SetNull)
+  dailyExecutionItem DailyExecutionItem? @relation(fields: [dailyExecutionItemId], references: [id], onDelete: SetNull)
+  task               Task?               @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  inboxItem          InboxItem?          @relation(fields: [inboxItemId], references: [id], onDelete: SetNull)
+
+  @@index([clerkUserId, startedAt])
+  @@index([dayPlanItemId])
+  @@index([dailyExecutionItemId])
+  @@index([taskId])
+  @@index([inboxItemId])
+  @@map("execution_sessions")
 }
 
 model WhatsappEvent {
