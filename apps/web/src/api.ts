@@ -994,12 +994,15 @@ export type DayPlanItem = {
   id: string;
   dayPlanId: string;
   taskId: string | null;
+  inboxItemId: string | null;
   startTime: string;
   endTime: string;
+  completedAt: string | null;
   orderIndex: number;
   blockType: 'task' | 'fixed';
   confirmationState: 'pending' | 'confirmed_done' | 'confirmed_not_done';
   task?: Task | null;
+  inboxItem?: InboxItem | null;
 };
 
 export type DayPlan = {
@@ -1152,6 +1155,84 @@ export type Commitment = {
 };
 
 export type CommitmentWeekResult = Record<string, Commitment[]>;
+
+export type CommitmentOccurrence = {
+  id: string;
+  commitmentId: string;
+  date: string;
+  title: string;
+  startTime: string | null;
+  durationMin: number | null;
+  workspaceId: string | null;
+  recurring: boolean;
+  rescheduled: boolean;
+};
+
+export type AgendaBlock = {
+  id: string;
+  kind: 'task' | 'inbox';
+  sourceId: string;
+  date: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  completedAt: string | null;
+  workspaceId: string | null;
+  plannedMinutes: number;
+};
+
+export type AgendaTaskSource = {
+  id: string;
+  title: string;
+  estimatedMinutes: number;
+  plannedMinutes: number;
+  remainingMinutes: number;
+  workspaceId: string | null;
+  workspaceName: string | null;
+  workspaceColor: string | null;
+  projectName: string | null;
+};
+
+export type AgendaInboxSource = {
+  id: string;
+  title: string;
+  workspaceId: string | null;
+  context: string | null;
+};
+
+export type AgendaWeek = {
+  weekStart: string;
+  resourceErrors: { commitments: string | null };
+  days: Array<{
+    date: string;
+    intents: TodayEntry[];
+    blocks: AgendaBlock[];
+    commitments: CommitmentOccurrence[];
+  }>;
+  unscheduled: {
+    tasks: AgendaTaskSource[];
+    inbox: AgendaInboxSource[];
+  };
+};
+
+export type StartExecutionInput = {
+  sourceType: 'task' | 'inbox';
+  sourceId: string;
+  dayPlanItemId?: string | null;
+  dailyExecutionItemId?: string | null;
+};
+
+export type ExecutionSession = {
+  id: string;
+  kind: 'task' | 'inbox';
+  sourceId: string;
+  title: string;
+  startedAt: string;
+  endedAt: string | null;
+  state: 'active' | 'completed' | 'cancelled';
+  dayPlanItemId: string | null;
+  dailyExecutionItemId: string | null;
+};
 
 export type HabitType = 'binary' | 'quantitative' | 'vice';
 export type HabitLifeArea = 'corpo' | 'mente' | 'trabalho' | 'relacoes' | 'financas' | 'crescimento';
@@ -1924,10 +2005,13 @@ export const api = {
     }),
 
   getDayPlan: (date: string) => apiRequest<DayPlan>(`/day-plans/${date}`),
+  getAgendaWeek: (weekStart: string) =>
+    apiRequest<AgendaWeek>(`/agenda/week/${weekStart}`),
   createDayPlanItem: (
     date: string,
     input: {
-      taskId?: string;
+      taskId?: string | null;
+      inboxItemId?: string | null;
       startTime: string;
       endTime: string;
       orderIndex?: number;
@@ -1950,11 +2034,14 @@ export const api = {
   updateDayPlanItem: (
     id: string,
     input: Partial<{
+      date: string;
       taskId: string | null;
+      inboxItemId: string | null;
       startTime: string;
       endTime: string;
       orderIndex: number;
       blockType: 'task' | 'fixed';
+      completedAt: string | null;
     }>
   ) =>
     apiRequest<DayPlanItem>(`/day-plan-items/${id}`, {
@@ -1964,6 +2051,24 @@ export const api = {
   deleteDayPlanItem: (id: string) =>
     apiRequest<{ ok: boolean }>(`/day-plan-items/${id}`, {
       method: 'DELETE'
+    }),
+
+  getActiveExecutionSession: () =>
+    apiRequest<ExecutionSession | null>('/execution-sessions/active'),
+  startExecutionSession: (input: StartExecutionInput) =>
+    apiRequest<ExecutionSession>('/execution-sessions/start', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+  stopExecutionSession: (id: string) =>
+    apiRequest<ExecutionSession>(`/execution-sessions/${id}/stop`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    }),
+  cancelExecutionSession: (id: string) =>
+    apiRequest<ExecutionSession>(`/execution-sessions/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({})
     }),
 
   getRecurringBlocks: () => apiRequest<RecurringBlock[]>('/recurring-blocks'),

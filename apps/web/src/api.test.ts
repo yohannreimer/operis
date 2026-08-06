@@ -165,3 +165,65 @@ describe('daily execution API client', () => {
     }));
   });
 });
+
+describe('weekly agenda API client', () => {
+  it('loads a week and schedules a quick block without conversion', async () => {
+    const inboxId = '22222222-2222-4222-8222-222222222222';
+    const weekFixture = {
+      weekStart: '2026-08-03',
+      resourceErrors: { commitments: null },
+      days: [],
+      unscheduled: { tasks: [], inbox: [] }
+    };
+    const quickBlockFixture = {
+      id: '11111111-1111-4111-8111-111111111111',
+      kind: 'inbox',
+      sourceId: inboxId
+    };
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => weekFixture })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => quickBlockFixture });
+
+    await api.getAgendaWeek('2026-08-03');
+    await api.createDayPlanItem('2026-08-06', {
+      inboxItemId: inboxId,
+      startTime: '2026-08-06T14:00:00.000Z',
+      endTime: '2026-08-06T14:15:00.000Z',
+      blockType: 'task'
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/agenda/week/2026-08-03',
+      '/api/day-plans/2026-08-06/items'
+    ]);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      expect.objectContaining({ body: expect.stringContaining('"inboxItemId"') })
+    );
+  });
+
+  it('starts, stops and cancels observed execution sessions', async () => {
+    const sessionId = '33333333-3333-4333-8333-333333333333';
+    const sourceId = '22222222-2222-4222-8222-222222222222';
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => null })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ id: sessionId }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: sessionId }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: sessionId }) });
+
+    await api.getActiveExecutionSession();
+    await api.startExecutionSession({ sourceType: 'inbox', sourceId });
+    await api.stopExecutionSession(sessionId);
+    await api.cancelExecutionSession(sessionId);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/execution-sessions/active',
+      '/api/execution-sessions/start',
+      `/api/execution-sessions/${sessionId}/stop`,
+      `/api/execution-sessions/${sessionId}/cancel`
+    ]);
+  });
+});
