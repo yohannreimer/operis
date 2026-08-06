@@ -155,3 +155,12 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .premium-shell,
+  .premium-sidebar,
+  .main-nav-link,
+  .sidebar-capture {
+    transition-duration: .01ms !important;
+  }
+}

@@ -36,12 +36,12 @@ export function HabitValueEditor({ habit, currentValue, disabled, onSave, onClea
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="radix-overlay" />
-        <Dialog.Content className="habit-value-dialog" aria-describedby="habit-value-help" onOpenAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus(); }}>
+        <Dialog.Content className="habit-value-dialog" aria-describedby={undefined} onOpenAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus(); }}>
           <div className="habit-value-dialog-head">
             <Dialog.Title>Valor de {habit.title}</Dialog.Title>
             <Dialog.Close asChild><button type="button" className="habit-icon-button" aria-label="Fechar editor"><X size={16} /></button></Dialog.Close>
           </div>
-          <Dialog.Description id="habit-value-help">Informe o total realizado nesta data. Este valor substitui o total atual.</Dialog.Description>
+          <Dialog.Description>Informe o total realizado nesta data. Este valor substitui o total atual.</Dialog.Description>
           <label>
             Total {habit.unit ? `em ${habit.unit}` : ''}
             <input ref={inputRef} type="number" min="0" step="any" value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void save(); }} />
