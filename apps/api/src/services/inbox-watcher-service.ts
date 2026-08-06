@@ -6,9 +6,9 @@ export class InboxWatcherService {
   constructor(private readonly prisma: PrismaClient) {}
 
   start() {
-    this.runCheck().catch(() => {});
+    this.runOnce().catch(() => {});
     this.timer = setInterval(() => {
-      this.runCheck().catch(() => {});
+      this.runOnce().catch(() => {});
     }, 60 * 60 * 1000);
   }
 
@@ -19,11 +19,8 @@ export class InboxWatcherService {
     }
   }
 
-  private async runCheck() {
-    await Promise.all([
-      this.convertWaitingItems(),
-      this.resetPastTodayItems(),
-    ]);
+  async runOnce() {
+    await this.convertWaitingItems();
   }
 
   private async convertWaitingItems() {
@@ -42,28 +39,4 @@ export class InboxWatcherService {
     });
   }
 
-  private async resetPastTodayItems() {
-    const today = new Date().toISOString().slice(0, 10);
-
-    const pastItems = await this.prisma.inboxTodayItem.findMany({
-      where: { todayDate: { lt: today } },
-    });
-
-    if (pastItems.length === 0) return;
-
-    const completedItemIds = pastItems
-      .filter((t) => t.completedAt !== null)
-      .map((t) => t.inboxItemId);
-
-    if (completedItemIds.length > 0) {
-      await this.prisma.inboxItem.updateMany({
-        where: { id: { in: completedItemIds } },
-        data: { status: 'feito' },
-      });
-    }
-
-    await this.prisma.inboxTodayItem.deleteMany({
-      where: { id: { in: pastItems.map((t) => t.id) } },
-    });
-  }
 }

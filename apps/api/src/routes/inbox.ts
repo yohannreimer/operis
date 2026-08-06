@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { getUserId } from '../middleware/auth.js';
 import { DeepWorkService } from '../services/deep-work-service.js';
+import { startOfDay } from '../utils/time.js';
 
 export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, deepWorkService?: DeepWorkService) {
 
@@ -31,6 +32,10 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
       return { gte: new Date(clientMidnightUTC - 6 * 86400000), lt: todayEnd };
     }
     return undefined; // 'tudo'
+  }
+
+  function localDateKey(utcOffsetMinutes: number) {
+    return new Date(Date.now() + utcOffsetMinutes * 60000).toISOString().slice(0, 10);
   }
 
   function assertOwnership(clerkUserId: string, itemClerkUserId: string) {
@@ -88,17 +93,27 @@ export function registerInboxRoutes(app: FastifyInstance, prisma: PrismaClient, 
   app.get('/inbox', async (request) => {
     const clerkUserId = getUserId(request);
     const query = z.object({
-      filter: z.enum(['hoje', 'ontem', 'semana', 'tudo']).default('hoje'),
+      filter: z.enum(['hoje', 'ontem', 'semana', 'tudo']).optional(),
+      view: z.enum(['all', 'unprocessed']).default('all'),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       utcOffset: z.coerce.number().int().min(-840).max(840).default(0),
     }).parse(request.query);
 
-    const dateRange = dateRangeForFilter(query.filter, query.utcOffset);
+    const filter = query.filter ?? (query.view === 'unprocessed' ? 'tudo' : 'hoje');
+    const dateRange = dateRangeForFilter(filter, query.utcOffset);
+    const executionDate = startOfDay(query.date ?? localDateKey(query.utcOffset));
 
     const [items, contexts] = await Promise.all([
       prisma.inboxItem.findMany({
         where: {
           clerkUserId,
           ...(dateRange ? { createdAt: dateRange } : {}),
+          ...(query.view === 'unprocessed' ? {
+            status: 'pendente' as const,
+            dailyExecutionItems: {
+              none: { clerkUserId, date: executionDate }
+            }
+          } : {}),
         },
         orderBy: [{ position: 'asc' }, { createdAt: 'desc' }],
         include: {
