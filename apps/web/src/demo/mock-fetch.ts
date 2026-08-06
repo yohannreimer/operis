@@ -233,6 +233,20 @@ const HABIT_EVOLUTION = {
   ]
 };
 
+const HABIT_HEATMAP_LOGS = Array.from({ length: 90 }, (_, index) => {
+  const date = new Date(`${today}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - (89 - index));
+  const dateKey = date.toISOString().slice(0, 10);
+  return index % 4 === 0 ? null : {
+    id: `demo-habit-log-${index}`,
+    habitId: 'h-1',
+    date: dateKey,
+    value: 1,
+    note: null,
+    createdAt: dateKey,
+  };
+}).filter(Boolean);
+
 const HABIT_RADAR: Record<string, unknown> = {
   corpo:       { level: 4, name: 'Atleta', totalXp: 840, progressPct: 68, nextLevelXp: 1200 },
   mente:       { level: 5, name: 'Filósofo', totalXp: 1450, progressPct: 45, nextLevelXp: 2000 },
@@ -438,6 +452,7 @@ function matchRoute(url: string): MockResponse | null {
   if (path === '/habits/stats/today') return { status: 200, body: HABIT_TODAY_STATS };
   if (path === '/habits/stats/evolution') return { status: 200, body: HABIT_EVOLUTION };
   if (path === '/habits/stats/radar') return { status: 200, body: HABIT_RADAR };
+  if (path.match(/^\/habits\/stats\/heatmap\/[^/]+$/)) return { status: 200, body: { habitId: path.split('/').at(-1), startDate: HABIT_EVOLUTION.startDate, endDate: today, logs: HABIT_HEATMAP_LOGS } };
   if (path.match(/^\/habits\/[^/]+\/logs/)) return { status: 200, body: [] };
 
   if (path.match(/^\/execution\/briefing\//)) return { status: 200, body: EXECUTION_BRIEFING };
