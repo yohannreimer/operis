@@ -14,6 +14,7 @@ const TarefasPage = lazy(() => import('./pages/tarefas').then((module) => ({ def
 const NotasPage = lazy(() => import('./pages/notas').then((module) => ({ default: module.NotasPage })));
 const AgendaPage = lazy(() => import('./pages/agenda').then((module) => ({ default: module.AgendaPage })));
 const HabitosPage = lazy(() => import('./pages/habitos').then((module) => ({ default: module.HabitosPage })));
+const HabitEvolutionPage = lazy(() => import('./pages/habit-evolution').then((module) => ({ default: module.HabitEvolutionPage })));
 const ConfiguracoesPage = lazy(() => import('./pages/configuracoes').then((module) => ({ default: module.ConfiguracoesPage })));
 
 function RouteFallback() {
@@ -47,6 +48,7 @@ function ProtectedRoutes() {
           <Route path="tarefas" element={<TarefasPage />} />
           <Route path="agenda" element={<AgendaPage />} />
           <Route path="habitos" element={<HabitosPage />} />
+          <Route path="habitos/evolucao" element={<HabitEvolutionPage />} />
           <Route path="inbox" element={<Navigate to="/hoje?inbox=open" replace />} />
           <Route path="gamificacao" element={<Navigate to="/" replace />} />
           <Route path="configuracoes" element={<ConfiguracoesPage />} />
