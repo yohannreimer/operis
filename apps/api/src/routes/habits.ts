@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { PrismaClient, HabitType, HabitLifeArea, HabitFrequency, HabitStatus, RecurrenceDay } from '@prisma/client';
 import { z } from 'zod';
+import { HabitEvolutionService } from '../services/habit-evolution-service.js';
 import { HabitService } from '../services/habit-service.js';
 import { getUserId } from '../middleware/auth.js';
 
@@ -53,6 +54,7 @@ const recaiuSchema = z.object({
 
 export function registerHabitRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const service = new HabitService(prisma);
+  const evolutionService = new HabitEvolutionService(prisma);
 
   // GET /habits
   app.get('/habits', async (request) => {
@@ -174,6 +176,22 @@ export function registerHabitRoutes(app: FastifyInstance, prisma: PrismaClient) 
   app.get('/habits/stats/radar', async (request) => {
     const clerkUserId = getUserId(request);
     return service.getRadarStats(clerkUserId);
+  });
+
+  // GET /habits/stats/evolution
+  app.get('/habits/stats/evolution', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const parsed = z.coerce
+      .number()
+      .int()
+      .refine((days) => days === 30 || days === 90 || days === 365)
+      .safeParse((request.query as { days?: string }).days ?? '90');
+
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Período inválido' });
+    }
+
+    return evolutionService.getEvolution(clerkUserId, parsed.data);
   });
 
   // GET /habits/stats/heatmap/:id

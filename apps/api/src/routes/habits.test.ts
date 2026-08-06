@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { getUserId } from '../middleware/auth.js';
+import { HabitEvolutionService } from '../services/habit-evolution-service.js';
 import { HabitService } from '../services/habit-service.js';
 import { registerHabitRoutes } from './habits.js';
 
@@ -93,6 +94,37 @@ describe('habit routes', () => {
 
     expect(response.statusCode).toBe(400);
     expect(prisma.habitLog.upsert).not.toHaveBeenCalled();
+  });
+
+  it('loads a validated evolution period for the signed-in user', async () => {
+    const evolution = vi.spyOn(HabitEvolutionService.prototype, 'getEvolution').mockResolvedValue({
+      startDate: '2026-05-09',
+      endDate: '2026-08-06',
+      expectedOccurrences: 90,
+      completedOccurrences: 66,
+      rhythmPct: 73,
+      areas: [],
+    });
+    const app = Fastify();
+    registerHabitRoutes(app, {} as never);
+    apps.push(app);
+
+    const response = await app.inject({ method: 'GET', url: '/habits/stats/evolution?days=90' });
+
+    expect(response.statusCode).toBe(200);
+    expect(evolution).toHaveBeenCalledWith('user_1', 90);
+  });
+
+  it('rejects unsupported evolution periods before loading data', async () => {
+    const evolution = vi.spyOn(HabitEvolutionService.prototype, 'getEvolution');
+    const app = Fastify();
+    registerHabitRoutes(app, {} as never);
+    apps.push(app);
+
+    const response = await app.inject({ method: 'GET', url: '/habits/stats/evolution?days=7' });
+
+    expect(response.statusCode).toBe(400);
+    expect(evolution).not.toHaveBeenCalled();
   });
 
   it.each([
