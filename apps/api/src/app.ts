@@ -36,6 +36,9 @@ import { UserPhoneService } from './services/user-phone-service.js';
 import { registerUserPhoneRoutes } from './routes/user-phone.js';
 import { registerDailyExecutionRoutes } from './routes/daily-execution.js';
 import { DailyExecutionService } from './services/daily-execution-service.js';
+import { CommitmentOccurrenceService } from './services/commitment-occurrence-service.js';
+import { AgendaWeekService } from './services/agenda-week-service.js';
+import { registerAgendaWeekRoutes } from './routes/agenda-week.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -76,6 +79,8 @@ export async function buildApp() {
   const taskService = new TaskService(prisma);
   const dailyExecutionService = new DailyExecutionService(prisma);
   const dayPlanService = new DayPlanService(prisma, taskService);
+  const commitmentOccurrenceService = new CommitmentOccurrenceService(prisma);
+  const agendaWeekService = new AgendaWeekService(prisma, commitmentOccurrenceService);
   const deepWorkService = new DeepWorkService(prisma);
   const executionInsightsService = new ExecutionInsightsService(prisma);
   const strategyService = new StrategyService(prisma);
@@ -106,6 +111,7 @@ export async function buildApp() {
   registerTaskRoutes(app, taskService);
   registerDailyExecutionRoutes(app, dailyExecutionService);
   registerDayPlanRoutes(app, dayPlanService);
+  registerAgendaWeekRoutes(app, agendaWeekService);
   registerDeepWorkRoutes(app, deepWorkService);
   registerExecutionRoutes(app, executionInsightsService);
   registerStrategyRoutes(app, strategyService);
