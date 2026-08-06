@@ -164,21 +164,13 @@ model ExecutionSession {
 
 ```sql
 ALTER TABLE "day_plan_items"
-  ADD COLUMN "inbox_item_id" UUID,
+  ADD COLUMN "inbox_item_id" TEXT,
   ADD COLUMN "completed_at" TIMESTAMP(3);
 
 ALTER TABLE "day_plan_items"
   ADD CONSTRAINT "day_plan_items_inbox_item_id_fkey"
   FOREIGN KEY ("inbox_item_id") REFERENCES "inbox_items"("id")
   ON DELETE SET NULL ON UPDATE CASCADE;
-
-ALTER TABLE "day_plan_items"
-  ADD CONSTRAINT "day_plan_items_source_check"
-  CHECK (
-    ("block_type" = 'fixed' AND "task_id" IS NULL AND "inbox_item_id" IS NULL)
-    OR
-    ("block_type" = 'task' AND num_nonnulls("task_id", "inbox_item_id") = 1)
-  );
 
 CREATE INDEX "day_plan_items_day_plan_id_start_time_idx"
   ON "day_plan_items"("day_plan_id", "start_time");
@@ -188,20 +180,18 @@ CREATE INDEX "day_plan_items_inbox_item_id_idx"
 CREATE TYPE "ExecutionSessionState" AS ENUM ('active', 'completed', 'cancelled');
 
 CREATE TABLE "execution_sessions" (
-  "id" UUID NOT NULL,
+  "id" TEXT NOT NULL,
   "clerk_user_id" TEXT NOT NULL,
-  "day_plan_item_id" UUID,
-  "daily_execution_item_id" UUID,
-  "task_id" UUID,
-  "inbox_item_id" UUID,
+  "day_plan_item_id" TEXT,
+  "daily_execution_item_id" TEXT,
+  "task_id" TEXT,
+  "inbox_item_id" TEXT,
   "started_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "ended_at" TIMESTAMP(3),
   "state" "ExecutionSessionState" NOT NULL DEFAULT 'active',
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMP(3) NOT NULL,
-  CONSTRAINT "execution_sessions_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "execution_sessions_source_check"
-    CHECK (num_nonnulls("task_id", "inbox_item_id") = 1)
+  CONSTRAINT "execution_sessions_pkey" PRIMARY KEY ("id")
 );
 
 ALTER TABLE "execution_sessions" ADD CONSTRAINT "execution_sessions_day_plan_item_id_fkey"
