@@ -2,10 +2,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
-  BriefcaseBusiness,
-  Building2,
-  CalendarCheck2,
-  CalendarClock,
   ChevronDown,
   CircleHelp,
   Command,
@@ -15,30 +11,28 @@ import {
   Keyboard,
   LaptopMinimalCheck,
   Layers3,
-  LayoutDashboard,
   ListTodo,
   Menu,
-  NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Search,
-  Settings,
-  Star,
-  Target,
   X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, Gamification, Workspace } from '../api';
 import { ShellContext } from './shell-context';
-
-type NavItem = {
-  to: string;
-  label: string;
-  caption: string;
-  icon: typeof LayoutDashboard;
-};
+import {
+  getActiveShellRoute,
+  getMobileMoreLinks,
+  getMobilePrimaryLinks,
+  settingsLink,
+  shellGroups,
+  shellLinks,
+  type ShellLink,
+} from './layout-navigation';
+import './layout-navigation.css';
 
 type CommandItem = {
   id: string;
@@ -46,7 +40,7 @@ type CommandItem = {
   label: string;
   hint: string;
   keywords: string;
-  icon: typeof LayoutDashboard;
+  icon: ShellLink['icon'];
   run: () => Promise<void> | void;
 };
 
@@ -158,43 +152,7 @@ function readClosedWeeks() {
   }
 }
 
-export const shellLinks: NavItem[] = [
-  { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
-  { to: '/agenda', label: 'Agenda', caption: 'Compromissos', icon: CalendarClock },
-  { to: '/habitos', label: 'Hábitos', caption: 'RPG de vida', icon: Target },
-  { to: '/frentes', label: 'Frentes', caption: 'Estratégia e frentes', icon: Building2 },
-  { to: '/projetos', label: 'Projetos', caption: 'Entregas ativas', icon: BriefcaseBusiness },
-  { to: '/tarefas', label: 'Tarefas', caption: 'Backlog e inbox', icon: ListTodo },
-  { to: '/notas', label: 'Notas', caption: 'Segundo cérebro', icon: NotebookPen },
-  { to: '/', label: 'Dashboard', caption: 'Métricas e ritual', icon: LayoutDashboard },
-  { to: '/configuracoes', label: 'Configurações', caption: 'Conta e sistema', icon: Settings }
-];
-
-export function getMobilePrimaryLinks() {
-  const primaryRoutes = ['/hoje', '/agenda', '/tarefas'];
-  return primaryRoutes
-    .map((route) => shellLinks.find((link) => link.to === route))
-    .filter((link): link is NavItem => Boolean(link));
-}
-
-export function getMobileMoreLinks() {
-  const moreRoutes = ['/frentes', '/projetos', '/notas', '/habitos', '/', '/configuracoes'];
-  return moreRoutes
-    .map((route) => shellLinks.find((link) => link.to === route))
-    .filter((link): link is NavItem => Boolean(link));
-}
-
-export function getActiveShellRoute(pathname: string) {
-  if (pathname === '/inbox' || pathname.startsWith('/inbox/')) {
-    return shellLinks.find((link) => link.to === '/hoje') ?? shellLinks[0]!;
-  }
-  return (
-    shellLinks.find((link) =>
-      link.to === '/' ? pathname === '/' : pathname === link.to || pathname.startsWith(`${link.to}/`)
-    ) ??
-    shellLinks[0]!
-  );
-}
+export { getActiveShellRoute, getMobileMoreLinks, getMobilePrimaryLinks, shellGroups };
 
 const GO_ROUTE_MAP: Record<string, string> = {
   h: '/hoje',
@@ -203,7 +161,7 @@ const GO_ROUTE_MAP: Record<string, string> = {
   p: '/projetos',
   t: '/tarefas',
   n: '/notas',
-  d: '/'
+  d: '/dashboard'
 };
 
 function formatToday() {
@@ -212,6 +170,26 @@ function formatToday() {
     month: 'long',
     year: 'numeric'
   });
+}
+
+function ShellNavLink({ link, collapsed, onClick }: {
+  link: ShellLink;
+  collapsed: boolean;
+  onClick?: () => void;
+}) {
+  const Icon = link.icon;
+  return (
+    <NavLink
+      to={link.to}
+      end={link.to === '/dashboard'}
+      title={collapsed ? link.label : undefined}
+      className={({ isActive }) => `main-nav-link premium-nav-link${isActive ? ' active' : ''}`}
+      onClick={onClick}
+    >
+      <span className="premium-nav-icon"><Icon size={16} strokeWidth={1.8} /></span>
+      <span>{link.label}</span>
+    </NavLink>
+  );
 }
 
 function isTypingTarget(target: EventTarget | null) {
@@ -1042,41 +1020,31 @@ export function Layout() {
           <span className="brand-tagline">Execution OS</span>
         </div>
 
-        <nav className="main-nav premium-nav">
-          {shellLinks.map((link) => {
-            const Icon = link.icon;
-            return (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={({ isActive }) => (isActive ? 'main-nav-link active premium-nav-link' : 'main-nav-link premium-nav-link')}
-                end={link.to === '/'}
-                onClick={() => setIsMenuOpen(false)}
-                title={sidebarCollapsed ? link.label : undefined}
-              >
-                <div className="premium-nav-icon">
-                  <Icon size={16} />
-                </div>
-                <div className="premium-nav-copy">
-                  <strong>{link.label}</strong>
-                  <small>{link.caption}</small>
-                </div>
-              </NavLink>
-            );
-          })}
+        <button type="button" className="sidebar-capture" onClick={focusCaptureInput} title={sidebarCollapsed ? 'Capturar' : undefined}>
+          <Plus size={16} />
+          <span>Capturar</span>
+          <kbd>Q</kbd>
+        </button>
+
+        <nav className="main-nav premium-nav" aria-label="Navegação principal">
+          {shellGroups.map((group) => (
+            <section className="shell-nav-group" key={group.id} aria-label={group.label}>
+              <p className="shell-nav-group-label">{group.label}</p>
+              {group.links.map((link) => (
+                <ShellNavLink
+                  key={link.to}
+                  link={link}
+                  collapsed={sidebarCollapsed}
+                  onClick={() => setIsMenuOpen(false)}
+                />
+              ))}
+            </section>
+          ))}
         </nav>
 
-        <section className="sidebar-score premium-score-card">
-          <div className="score-row">
-            <Star size={13} className="score-icon" />
-            <span className="score-value">{gamification?.scoreSemanal ?? 0}</span>
-            <span className="score-label">pts</span>
-          </div>
-          <div className="streak-row">
-            <Flame size={12} className="streak-icon" />
-            <span>{gamification?.streak ?? 0} dias</span>
-          </div>
-        </section>
+        <div className="sidebar-settings">
+          <ShellNavLink link={settingsLink} collapsed={sidebarCollapsed} onClick={() => setIsMenuOpen(false)} />
+        </div>
       </aside>
 
       {isMenuOpen && <button type="button" className="sidebar-backdrop" onClick={() => setIsMenuOpen(false)} />}
@@ -1116,7 +1084,7 @@ export function Layout() {
                     key={link.to}
                     to={link.to}
                     className={({ isActive }) => (isActive ? 'mobile-more-link active' : 'mobile-more-link')}
-                    end={link.to === '/'}
+                    end={link.to === '/dashboard'}
                     onClick={() => setMobileMoreOpen(false)}
                   >
                     <span className="mobile-more-icon">
@@ -1124,7 +1092,6 @@ export function Layout() {
                     </span>
                     <span>
                       <strong>{link.label}</strong>
-                      <small>{link.caption}</small>
                     </span>
                   </NavLink>
                 );
@@ -1272,7 +1239,7 @@ export function Layout() {
               key={link.to}
               to={link.to}
               className={({ isActive }) => (isActive ? 'mobile-bottom-link active' : 'mobile-bottom-link')}
-              end={link.to === '/'}
+              end={link.to === '/dashboard'}
             >
               <Icon size={18} />
               <span>{link.label}</span>

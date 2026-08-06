@@ -5,7 +5,8 @@ import {
   getActiveShellRoute,
   getMobileMoreLinks,
   getMobilePrimaryLinks,
-  Layout
+  Layout,
+  shellGroups
 } from './layout';
 
 const apiMock = vi.hoisted(() => ({
@@ -49,27 +50,34 @@ beforeEach(() => {
 });
 
 describe('Layout mobile navigation helpers', () => {
-  it('keeps the three daily routes in the primary mobile nav', () => {
+  it('groups the desktop shell by intent', () => {
+    expect(shellGroups.map((group) => group.label)).toEqual(['Planejar', 'Organizar', 'Evoluir']);
+    expect(shellGroups[0].links.map((link) => link.label)).toEqual(['Hoje', 'Agenda']);
+    expect(shellGroups[1].links.map((link) => link.label)).toEqual(['Tarefas', 'Projetos', 'Frentes', 'Notas']);
+    expect(shellGroups[2].links.map((link) => link.label)).toEqual(['Hábitos', 'Dashboard']);
+  });
+
+  it('keeps the four execution routes in the primary mobile nav', () => {
     expect(getMobilePrimaryLinks().map((link) => link.label)).toEqual([
       'Hoje',
       'Agenda',
-      'Tarefas'
+      'Tarefas',
+      'Hábitos'
     ]);
   });
 
   it('keeps Agenda on its stable route without restoring Inbox as a separate destination', () => {
     expect(getMobilePrimaryLinks().find((link) => link.label === 'Agenda')?.to).toBe('/agenda');
     expect(getMobilePrimaryLinks().some((link) => link.label === 'Inbox')).toBe(false);
-    expect(getMobilePrimaryLinks()).toHaveLength(3);
-    expect(getMobileMoreLinks()).toHaveLength(6);
+    expect(getMobilePrimaryLinks()).toHaveLength(4);
+    expect(getMobileMoreLinks()).toHaveLength(5);
   });
 
   it('moves secondary routes into the mobile more drawer', () => {
     expect(getMobileMoreLinks().map((link) => link.label)).toEqual([
-      'Frentes',
       'Projetos',
+      'Frentes',
       'Notas',
-      'Hábitos',
       'Dashboard',
       'Configurações'
     ]);
@@ -80,6 +88,7 @@ describe('Layout mobile navigation helpers', () => {
     expect(getActiveShellRoute('/frentes/ws_123')?.label).toBe('Frentes');
     expect(getActiveShellRoute('/desconhecida')?.label).toBe('Hoje');
     expect(getActiveShellRoute('/inbox')?.label).toBe('Hoje');
+    expect(getActiveShellRoute('/dashboard')?.label).toBe('Dashboard');
   });
 
   it('does not match sibling-looking route prefixes', () => {
