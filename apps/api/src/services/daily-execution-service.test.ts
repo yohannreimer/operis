@@ -92,3 +92,142 @@ describe('DailyExecutionService assignment', () => {
     }));
   });
 });
+
+describe('DailyExecutionService transitions', () => {
+  it.each([
+    ['inbox', 'inbox_1'],
+    ['task', 'task_1']
+  ] as const)('completes %s source and assignment atomically', async (sourceType, sourceId) => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findFirst.mockResolvedValue({
+      id: 'daily_1',
+      clerkUserId: 'user_1',
+      sourceType,
+      inboxItemId: sourceType === 'inbox' ? sourceId : null,
+      taskId: sourceType === 'task' ? sourceId : null
+    });
+    prisma.dailyExecutionItem.update.mockResolvedValue({ id: 'daily_1', sourceType });
+    const service = new DailyExecutionService(prisma as never);
+
+    await service.setCompleted('user_1', 'daily_1', true);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    if (sourceType === 'inbox') {
+      expect(prisma.inboxItem.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: { status: 'feito' }
+      }));
+    } else {
+      expect(prisma.task.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ status: 'feito' })
+      }));
+    }
+  });
+
+  it('undoes completion on both the task and assignment', async () => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findFirst.mockResolvedValue({
+      id: 'daily_1', clerkUserId: 'user_1', sourceType: 'task', inboxItemId: null, taskId: 'task_1'
+    });
+    prisma.dailyExecutionItem.update.mockResolvedValue({ id: 'daily_1', sourceType: 'task' });
+    const service = new DailyExecutionService(prisma as never);
+
+    await service.setCompleted('user_1', 'daily_1', false);
+
+    expect(prisma.task.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { status: 'hoje', completedAt: null }
+    }));
+    expect(prisma.dailyExecutionItem.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { completedAt: null }
+    }));
+  });
+
+  it('reorders mixed sources in one transaction', async () => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+    const service = new DailyExecutionService(prisma as never);
+
+    await service.reorder('user_1', '2026-08-05', ['b', 'a']);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.dailyExecutionItem.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'b' }, data: { position: 0 }
+    });
+  });
+
+  it('rejects a partial reorder', async () => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+    const service = new DailyExecutionService(prisma as never);
+
+    await expect(service.reorder('user_1', '2026-08-05', ['a'])).rejects.toThrow(
+      'A ordem deve conter todos os itens do dia.'
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('lists every older incomplete item for rollover', async () => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findMany.mockResolvedValue([]);
+    const service = new DailyExecutionService(prisma as never);
+
+    await service.listRollover('user_1', '2026-08-05');
+
+    expect(prisma.dailyExecutionItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ completedAt: null, date: { lt: expect.any(Date) } })
+    }));
+  });
+
+  it('returns a removed task to backlog so legacy backfill does not recreate it', async () => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findFirst.mockResolvedValue({
+      id: 'daily_1', sourceType: 'task', taskId: 'task_1', inboxItemId: null
+    });
+    const service = new DailyExecutionService(prisma as never);
+
+    await service.remove('user_1', 'daily_1');
+
+    expect(prisma.task.updateMany).toHaveBeenCalledWith({
+      where: { id: 'task_1', status: 'hoje' }, data: { status: 'backlog' }
+    });
+    expect(prisma.dailyExecutionItem.delete).toHaveBeenCalledWith({ where: { id: 'daily_1' } });
+  });
+
+  it('moves an older allocation into today at the end of the list', async () => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findFirst
+      .mockResolvedValueOnce({
+        id: 'daily_1',
+        clerkUserId: 'user_1',
+        date: new Date('2026-08-04T00:00:00.000Z'),
+        sourceType: 'inbox',
+        inboxItemId: 'inbox_1',
+        taskId: null
+      })
+      .mockResolvedValueOnce(null);
+    prisma.dailyExecutionItem.findMany.mockResolvedValue([]);
+    prisma.dailyExecutionItem.count.mockResolvedValue(3);
+    prisma.dailyExecutionItem.update.mockResolvedValue({ id: 'daily_1', position: 3 });
+    const service = new DailyExecutionService(prisma as never);
+
+    await service.resolveRollover('user_1', 'daily_1', {
+      action: 'keep_today', targetDate: '2026-08-05'
+    });
+
+    expect(prisma.dailyExecutionItem.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'daily_1' },
+      data: { date: new Date('2026-08-05T00:00:00.000Z'), position: 3 }
+    }));
+  });
+
+  it('does not offer the inbox rollover action to tasks', async () => {
+    const prisma = createPrismaMock();
+    prisma.dailyExecutionItem.findFirst.mockResolvedValue({
+      id: 'daily_1', sourceType: 'task', taskId: 'task_1', inboxItemId: null
+    });
+    const service = new DailyExecutionService(prisma as never);
+
+    await expect(service.resolveRollover('user_1', 'daily_1', {
+      action: 'return_inbox', targetDate: '2026-08-05'
+    })).rejects.toThrow('Somente capturas rápidas podem voltar ao Inbox.');
+  });
+});
