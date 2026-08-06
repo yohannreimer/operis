@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PrismaClient, CommitmentType, CommitmentStatus, RecurrenceDay } from '@prisma/client';
 import { getUserId } from '../middleware/auth.js';
+import { CommitmentOccurrenceService } from '../services/commitment-occurrence-service.js';
 
 const recurrenceDaySchema = z.enum(['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom']);
 
@@ -71,6 +72,7 @@ async function assertOwnsCommitment(prisma: PrismaClient, id: string, clerkUserI
 }
 
 export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { prisma: PrismaClient }) {
+  const occurrenceService = new CommitmentOccurrenceService(prisma);
 
   // GET /commitments — list all (optionally filtered by date or workspaceId)
   app.get('/commitments', async (request) => {
@@ -263,46 +265,24 @@ export async function commitmentsRoutes(app: FastifyInstance, { prisma }: { pris
   // GET /commitments/week/:weekStart — retorna todos os compromissos da semana (7 dias)
   app.get('/commitments/week/:weekStart', async (request) => {
     const clerkUserId = getUserId(request);
-    const { weekStart } = z.object({ weekStart: z.string() }).parse(request.params);
+    const { weekStart } = z
+      .object({ weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+      .parse(request.params);
     const { workspaceId } = z.object({ workspaceId: z.string().optional() }).parse(request.query);
 
     const startDate = new Date(weekStart + 'T00:00:00.000Z');
-    const endDate = new Date(startDate);
-    endDate.setUTCDate(endDate.getUTCDate() + 6);
+    const occurrences = await occurrenceService.listWeek(clerkUserId, weekStart, workspaceId);
 
-    const where: Record<string, unknown> = {
-      clerkUserId,
-      status: { not: 'encerrado' },
-    };
-    if (workspaceId) where['workspaceId'] = workspaceId;
-
-    const commitments = await prisma.commitment.findMany({
-      where,
-      include: { exceptions: true },
-      orderBy: [{ startTime: 'asc' }],
-    });
-
-    // Expand each day
-    const result: Record<string, unknown[]> = {};
+    const result: Record<string, typeof occurrences> = {};
     for (let i = 0; i < 7; i++) {
       const day = new Date(startDate);
       day.setUTCDate(day.getUTCDate() + i);
       const dayKey = day.toISOString().slice(0, 10);
+      result[dayKey] = [];
+    }
 
-      result[dayKey] = commitments
-        .filter(c => {
-          if (!matchesDate(c, day)) return false;
-          const exc = c.exceptions.find(e => e.date.toISOString().slice(0, 10) === dayKey);
-          return exc?.action !== 'cancelled';
-        })
-        .map(c => {
-          const exc = c.exceptions.find(e => e.date.toISOString().slice(0, 10) === dayKey);
-          return {
-            ...c,
-            startTime: exc?.action === 'rescheduled' && exc.newTime ? exc.newTime : c.startTime,
-          };
-        })
-        .sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''));
+    for (const occurrence of occurrences) {
+      result[occurrence.date]?.push(occurrence);
     }
 
     return result;
