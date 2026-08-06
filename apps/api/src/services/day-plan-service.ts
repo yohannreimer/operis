@@ -353,7 +353,13 @@ export class DayPlanService {
             ? undefined
             : input.completedAt === null
               ? null
-              : new Date(input.completedAt)
+              : new Date(input.completedAt),
+        confirmationState:
+          input.completedAt === undefined
+            ? undefined
+            : input.completedAt === null
+              ? 'pending'
+              : 'confirmed_done'
       },
       include: {
         task: true,
@@ -370,6 +376,13 @@ export class DayPlanService {
             : 'backlog',
           horizon: 'active'
         }
+      });
+    }
+
+    if (updated.inboxItemId && input.completedAt !== undefined) {
+      await this.prisma.inboxItem.update({
+        where: { id: updated.inboxItemId },
+        data: { status: input.completedAt === null ? 'pendente' : 'feito' }
       });
     }
 

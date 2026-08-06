@@ -231,4 +231,61 @@ describe('DayPlanService', () => {
       data: { status: 'feito' }
     });
   });
+
+  it('keeps the capture status in sync when completion is patched and undone', async () => {
+    const prisma = createPrismaMock();
+    prisma.dayPlanItem.findUnique.mockResolvedValue({
+      id: ITEM_ID,
+      dayPlanId: PLAN_ID,
+      taskId: null,
+      inboxItemId: INBOX_ID,
+      startTime: new Date('2026-08-06T14:00:00.000Z'),
+      endTime: new Date('2026-08-06T14:15:00.000Z'),
+      completedAt: null,
+      blockType: 'task',
+      dayPlan: {
+        id: PLAN_ID,
+        clerkUserId: USER_ID,
+        date: new Date('2026-08-06T00:00:00.000Z')
+      }
+    });
+    prisma.inboxItem.findFirst.mockResolvedValue({ id: INBOX_ID });
+    prisma.dayPlanItem.update
+      .mockResolvedValueOnce({ id: ITEM_ID, taskId: null, inboxItemId: INBOX_ID })
+      .mockResolvedValueOnce({ id: ITEM_ID, taskId: null, inboxItemId: INBOX_ID });
+
+    await service(prisma).updateItem(
+      ITEM_ID,
+      { completedAt: '2026-08-06T14:10:00.000Z' },
+      USER_ID
+    );
+    await service(prisma).updateItem(ITEM_ID, { completedAt: null }, USER_ID);
+
+    expect(prisma.dayPlanItem.update).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          completedAt: new Date('2026-08-06T14:10:00.000Z'),
+          confirmationState: 'confirmed_done'
+        })
+      })
+    );
+    expect(prisma.dayPlanItem.update).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          completedAt: null,
+          confirmationState: 'pending'
+        })
+      })
+    );
+    expect(prisma.inboxItem.update).toHaveBeenNthCalledWith(1, {
+      where: { id: INBOX_ID },
+      data: { status: 'feito' }
+    });
+    expect(prisma.inboxItem.update).toHaveBeenNthCalledWith(2, {
+      where: { id: INBOX_ID },
+      data: { status: 'pendente' }
+    });
+  });
 });
