@@ -2,7 +2,7 @@
 
 **Data:** 2026-08-06
 
-**Status:** Aguardando revisão final do usuário
+**Status:** Aprovado pelo usuário
 
 **Escopo:** redesign da página Hábitos, nova página Evolução, sidebar desktop e navegação mobile
 
