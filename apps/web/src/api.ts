@@ -1,3 +1,11 @@
+import type {
+  DailyExecutionResponse,
+  RolloverAction,
+  TodayEntry
+} from './features/today/types';
+
+export type { DailyExecutionResponse, RolloverAction, TodayEntry } from './features/today/types';
+
 export type WorkspaceType = 'empresa' | 'pessoal' | 'vida' | 'autoridade' | 'geral' | 'outro';
 export type WorkspaceMode = 'expansao' | 'manutencao' | 'standby';
 export type ProjectType = 'construcao' | 'operacao' | 'crescimento';
@@ -1976,8 +1984,19 @@ export const api = {
     }),
 
   // ── Inbox Operacional ──────────────────────────────────────────────────
-  getInbox: (filter: 'hoje' | 'ontem' | 'semana' | 'tudo' = 'hoje') =>
-    apiRequest<InboxListResponse>(`/inbox?filter=${filter}&utcOffset=${-new Date().getTimezoneOffset()}`),
+  getInbox: (
+    input: 'hoje' | 'ontem' | 'semana' | 'tudo' | {
+      filter?: 'hoje' | 'ontem' | 'semana' | 'tudo';
+      view?: 'all' | 'unprocessed';
+      date?: string;
+    } = 'hoje'
+  ) => {
+    const query = typeof input === 'string' ? { filter: input } : input;
+    return apiRequest<InboxListResponse>(withQuery('/inbox', {
+      ...query,
+      utcOffset: -new Date().getTimezoneOffset()
+    }));
+  },
 
   createInboxItem: (payload: {
     content: string;
@@ -2066,6 +2085,43 @@ export const api = {
 
   removeTodayItem: (id: string) =>
     apiRequest<void>(`/inbox/today/${id}`, { method: 'DELETE' }),
+
+  getDailyExecution: (date: string) =>
+    apiRequest<DailyExecutionResponse>(`/daily-execution/${date}`),
+
+  assignDailyExecution: (
+    date: string,
+    payload: { sourceType: 'inbox' | 'task'; sourceId: string }
+  ) =>
+    apiRequest<TodayEntry>(`/daily-execution/${date}/items`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
+  setDailyExecutionCompleted: (id: string, completed: boolean) =>
+    apiRequest<TodayEntry>(`/daily-execution-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ completed })
+    }),
+
+  reorderDailyExecution: (date: string, orderedIds: string[]) =>
+    apiRequest<void>(`/daily-execution/${date}/order`, {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds })
+    }),
+
+  removeDailyExecution: (id: string) =>
+    apiRequest<void>(`/daily-execution-items/${id}`, { method: 'DELETE' }),
+
+  resolveDailyRollover: (
+    id: string,
+    action: RolloverAction,
+    targetDate: string
+  ) =>
+    apiRequest<TodayEntry | void>(`/daily-execution-items/${id}/rollover`, {
+      method: 'POST',
+      body: JSON.stringify({ action, targetDate })
+    }),
 
   getGamification: () => apiRequest<Gamification>('/gamification'),
   getGamificationDetails: () => apiRequest<GamificationDetails>('/gamification/details'),

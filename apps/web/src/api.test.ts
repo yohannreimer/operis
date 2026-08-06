@@ -14,6 +14,24 @@ async function loadApiWithBase(apiBase: string) {
   return import('./api.js');
 }
 
+async function loadApiForRequests() {
+  vi.resetModules();
+  vi.stubEnv('VITE_API_URL', '/api');
+  vi.stubGlobal('window', {
+    clearTimeout,
+    location: {
+      origin: 'https://operis.prymeiradigital.com.br',
+      href: 'https://operis.prymeiradigital.com.br/hoje',
+      assign: vi.fn()
+    },
+    setTimeout
+  });
+  const fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+  const module = await import('./api.js');
+  return { ...module, fetchMock };
+}
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -88,5 +106,62 @@ describe('protected API access denial', () => {
     expect(assign).toHaveBeenCalledWith(
       'https://hub.prymeiradigital.com.br/acesso-negado?product_key=operis'
     );
+  });
+});
+
+describe('daily execution API client', () => {
+  it('loads and assigns daily entries with the expected contract', async () => {
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ entries: [], rollover: [] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({ id: 'daily_1', kind: 'inbox', sourceId: 'inbox_1' })
+      });
+
+    await api.getDailyExecution('2026-08-05');
+    await api.assignDailyExecution('2026-08-05', {
+      sourceType: 'inbox', sourceId: 'inbox_1'
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/daily-execution/2026-08-05',
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/daily-execution/2026-08-05/items',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ sourceType: 'inbox', sourceId: 'inbox_1' })
+      })
+    );
+  });
+
+  it('completes, reorders, removes and resolves rollover entries', async () => {
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: 'daily_1' }) })
+      .mockResolvedValueOnce({ ok: true, status: 204 })
+      .mockResolvedValueOnce({ ok: true, status: 204 })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: 'daily_1' }) });
+
+    await api.setDailyExecutionCompleted('daily_1', true);
+    await api.reorderDailyExecution('2026-08-05', ['daily_1']);
+    await api.removeDailyExecution('daily_1');
+    await api.resolveDailyRollover('daily_1', 'keep_today', '2026-08-05');
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/daily-execution-items/daily_1',
+      '/api/daily-execution/2026-08-05/order',
+      '/api/daily-execution-items/daily_1',
+      '/api/daily-execution-items/daily_1/rollover'
+    ]);
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.any(String), expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ action: 'keep_today', targetDate: '2026-08-05' })
+    }));
   });
 });
