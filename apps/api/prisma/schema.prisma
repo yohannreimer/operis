@@ -138,6 +138,11 @@ enum InboxItemStatus {
   aguardando
 }
 
+enum DailyExecutionSource {
+  inbox
+  task
+}
+
 enum WhatsappDirection {
   in
   out
@@ -316,6 +321,7 @@ model Task {
   deepWorkSessions DeepWorkSession[]
   strategicDecisionEvents StrategicDecisionEvent[]
   notes Note[]
+  dailyExecutionItems DailyExecutionItem[]
 
   dependencies     TaskDependency[] @relation("TaskDependsOn")
   dependedBy       TaskDependency[] @relation("TaskDependedBy")
@@ -547,6 +553,7 @@ model InboxItem {
   workspace       Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   inboxContext    InboxContext?   @relation(fields: [inboxContextId], references: [id], onDelete: SetNull)
   todayItems      InboxTodayItem[]
+  dailyExecutionItems DailyExecutionItem[]
 
   @@index([clerkUserId, status])
   @@map("inbox_items")
@@ -579,6 +586,27 @@ model InboxTodayItem {
   @@unique([clerkUserId, inboxItemId, todayDate])
   @@index([clerkUserId, todayDate])
   @@map("inbox_today_items")
+}
+
+model DailyExecutionItem {
+  id          String               @id @default(uuid())
+  clerkUserId String               @map("clerk_user_id")
+  date        DateTime             @db.Date
+  sourceType  DailyExecutionSource @map("source_type")
+  inboxItemId String?              @map("inbox_item_id")
+  taskId      String?              @map("task_id")
+  position    Int                  @default(0)
+  completedAt DateTime?            @map("completed_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  inboxItem InboxItem? @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([clerkUserId, date, inboxItemId])
+  @@unique([clerkUserId, date, taskId])
+  @@index([clerkUserId, date, position])
+  @@map("daily_execution_items")
 }
 
 model WhatsappEvent {
