@@ -20,7 +20,7 @@ vi.mock('../api', () => ({
   api: apiMock
 }));
 
-function renderLayout(path = '/inbox') {
+function renderLayout(path = '/hoje') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
@@ -49,9 +49,8 @@ beforeEach(() => {
 });
 
 describe('Layout mobile navigation helpers', () => {
-  it('keeps the four daily routes in the primary mobile nav', () => {
+  it('keeps the three daily routes in the primary mobile nav', () => {
     expect(getMobilePrimaryLinks().map((link) => link.label)).toEqual([
-      'Inbox',
       'Hoje',
       'Agenda',
       'Tarefas'
@@ -69,14 +68,15 @@ describe('Layout mobile navigation helpers', () => {
     ]);
   });
 
-  it('matches nested route prefixes before falling back to inbox', () => {
+  it('matches nested route prefixes before falling back to today', () => {
     expect(getActiveShellRoute('/projetos/proj_123')?.label).toBe('Projetos');
     expect(getActiveShellRoute('/frentes/ws_123')?.label).toBe('Frentes');
-    expect(getActiveShellRoute('/desconhecida')?.label).toBe('Inbox');
+    expect(getActiveShellRoute('/desconhecida')?.label).toBe('Hoje');
+    expect(getActiveShellRoute('/inbox')?.label).toBe('Hoje');
   });
 
   it('does not match sibling-looking route prefixes', () => {
-    expect(getActiveShellRoute('/projetos-old')?.label).toBe('Inbox');
+    expect(getActiveShellRoute('/projetos-old')?.label).toBe('Hoje');
   });
 });
 
@@ -91,7 +91,7 @@ describe('Layout mobile shell rendering', () => {
   });
 
   it('opens the mobile more drawer with secondary routes', async () => {
-    renderLayout('/inbox');
+    renderLayout('/hoje');
 
     const moreTrigger = screen.getByRole('button', { name: /mais opções/i });
     fireEvent.click(moreTrigger);
@@ -103,7 +103,7 @@ describe('Layout mobile shell rendering', () => {
   });
 
   it('closes the mobile more drawer from the close button', async () => {
-    renderLayout('/inbox');
+    renderLayout('/hoje');
 
     const moreTrigger = screen.getByRole('button', { name: /mais opções/i });
     fireEvent.click(moreTrigger);
@@ -144,7 +144,7 @@ describe('Layout mobile shell rendering', () => {
       }))
     );
 
-    renderLayout('/inbox');
+    renderLayout('/hoje');
 
     const moreTrigger = screen.getByRole('button', { name: /mais opções/i });
     fireEvent.click(moreTrigger);
@@ -163,7 +163,7 @@ describe('Layout mobile shell rendering', () => {
   });
 
   it('closes the mobile more drawer after navigating to a secondary route', async () => {
-    renderLayout('/inbox');
+    renderLayout('/hoje');
 
     fireEvent.click(screen.getByRole('button', { name: /mais opções/i }));
     expect(await screen.findByRole('dialog', { name: /mais opções/i })).toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('Layout mobile shell rendering', () => {
   });
 
   it('submits quick capture from the mobile floating action', async () => {
-    renderLayout('/inbox');
+    renderLayout('/hoje');
 
     fireEvent.click(screen.getByRole('button', { name: /capturar rápido/i }));
     fireEvent.change(await screen.findByPlaceholderText(/capturar ideia/i), {

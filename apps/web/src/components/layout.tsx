@@ -159,7 +159,6 @@ function readClosedWeeks() {
 }
 
 export const shellLinks: NavItem[] = [
-  { to: '/inbox', label: 'Inbox', caption: 'Captura rápida', icon: Inbox },
   { to: '/hoje', label: 'Hoje', caption: 'Execução diária', icon: CalendarCheck2 },
   { to: '/agenda', label: 'Agenda', caption: 'Compromissos', icon: CalendarClock },
   { to: '/habitos', label: 'Hábitos', caption: 'RPG de vida', icon: Target },
@@ -172,7 +171,7 @@ export const shellLinks: NavItem[] = [
 ];
 
 export function getMobilePrimaryLinks() {
-  const primaryRoutes = ['/inbox', '/hoje', '/agenda', '/tarefas'];
+  const primaryRoutes = ['/hoje', '/agenda', '/tarefas'];
   return primaryRoutes
     .map((route) => shellLinks.find((link) => link.to === route))
     .filter((link): link is NavItem => Boolean(link));
@@ -186,17 +185,20 @@ export function getMobileMoreLinks() {
 }
 
 export function getActiveShellRoute(pathname: string) {
+  if (pathname === '/inbox' || pathname.startsWith('/inbox/')) {
+    return shellLinks.find((link) => link.to === '/hoje') ?? shellLinks[0]!;
+  }
   return (
     shellLinks.find((link) =>
       link.to === '/' ? pathname === '/' : pathname === link.to || pathname.startsWith(`${link.to}/`)
     ) ??
-    shellLinks[0]
+    shellLinks[0]!
   );
 }
 
 const GO_ROUTE_MAP: Record<string, string> = {
   h: '/hoje',
-  i: '/inbox',
+  i: '/hoje?inbox=open',
   a: '/agenda',
   p: '/projetos',
   t: '/tarefas',
