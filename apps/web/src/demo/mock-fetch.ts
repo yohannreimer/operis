@@ -214,7 +214,24 @@ const HABIT_TODAY_STATS = HABITS.map((h: any) => ({
   streak: ({ 'h-1': 14, 'h-2': 7, 'h-3': 21, 'h-4': 28, 'h-5': 9, 'h-6': 12, 'h-7': 4, 'h-8': 8, 'h-9': 6 } as Record<string, number>)[h.id] ?? 0,
   periodProgress: { done: 1, target: (h as any).frequencyTarget },
   isCompletedToday: ['h-1','h-3','h-4','h-5','h-6','h-9'].includes(h.id),
+  isScheduledForDate: h.id !== 'h-8',
 }));
+
+const HABIT_EVOLUTION = {
+  startDate: yesterday,
+  endDate: today,
+  expectedOccurrences: 90,
+  completedOccurrences: 66,
+  rhythmPct: 73,
+  areas: [
+    { lifeArea: 'corpo', level: 4, name: 'Atleta', totalXp: 840, progressPct: 68, nextLevelXp: 1200 },
+    { lifeArea: 'mente', level: 5, name: 'Filósofo', totalXp: 1450, progressPct: 45, nextLevelXp: 2000 },
+    { lifeArea: 'trabalho', level: 5, name: 'Executor', totalXp: 1620, progressPct: 81, nextLevelXp: 2000 },
+    { lifeArea: 'relacoes', level: 2, name: 'Conectado', totalXp: 320, progressPct: 32, nextLevelXp: 500 },
+    { lifeArea: 'financas', level: 3, name: 'Consciente', totalXp: 580, progressPct: 58, nextLevelXp: 800 },
+    { lifeArea: 'crescimento', level: 3, name: 'Aprendiz', totalXp: 490, progressPct: 49, nextLevelXp: 800 },
+  ]
+};
 
 const HABIT_RADAR: Record<string, unknown> = {
   corpo:       { level: 4, name: 'Atleta', totalXp: 840, progressPct: 68, nextLevelXp: 1200 },
@@ -419,6 +436,7 @@ function matchRoute(url: string): MockResponse | null {
 
   if (path === '/habits') return { status: 200, body: HABITS };
   if (path === '/habits/stats/today') return { status: 200, body: HABIT_TODAY_STATS };
+  if (path === '/habits/stats/evolution') return { status: 200, body: HABIT_EVOLUTION };
   if (path === '/habits/stats/radar') return { status: 200, body: HABIT_RADAR };
   if (path.match(/^\/habits\/[^/]+\/logs/)) return { status: 200, body: [] };
 
@@ -743,6 +761,21 @@ export function installMockFetch() {
         const ended = ACTIVE_EXECUTION;
         ACTIVE_EXECUTION = null;
         return new Response(JSON.stringify(ended), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (/^\/habits\/[^/]+\/log$/.test(path) && (method === 'PUT' || method === 'POST')) {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { date: string; value?: number };
+        return new Response(JSON.stringify({
+          id: method === 'PUT' ? 'demo-absolute-log' : 'demo-increment-log',
+          habitId: path.split('/')[2],
+          date: payload.date,
+          value: payload.value ?? 1,
+          note: null,
+          createdAt: new Date().toISOString()
+        }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });

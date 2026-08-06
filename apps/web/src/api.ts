@@ -1256,6 +1256,7 @@ export type HabitTodayStat = Habit & {
   currentLog: HabitLog | null; streak: number;
   periodProgress: { done: number; target: number } | null;
   isCompletedToday: boolean;
+  isScheduledForDate: boolean;
 };
 
 export type HabitLevelInfo = {
@@ -1264,6 +1265,15 @@ export type HabitLevelInfo = {
 };
 
 export type HabitRadarStats = Record<HabitLifeArea, HabitLevelInfo>;
+
+export type HabitEvolution = {
+  startDate: string;
+  endDate: string;
+  expectedOccurrences: number;
+  completedOccurrences: number;
+  rhythmPct: number;
+  areas: Array<HabitLevelInfo & { lifeArea: HabitLifeArea }>;
+};
 
 export type GhostFrontResolution = {
   ok: boolean;
@@ -2291,8 +2301,11 @@ export const api = {
     apiRequest<Habit>(`/habits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   archiveHabit: (id: string) =>
     apiRequest<{ ok: boolean }>(`/habits/${id}`, { method: 'DELETE' }),
-  getHabitsTodayStats: (date: string) =>
-    apiRequest<HabitTodayStat[]>(withQuery('/habits/stats/today', { date })),
+  getHabitsTodayStats: (date: string, options: { includeUnscheduled?: boolean } = {}) =>
+    apiRequest<HabitTodayStat[]>(withQuery('/habits/stats/today', {
+      date,
+      includeUnscheduled: options.includeUnscheduled || undefined
+    })),
   getHabitsRadar: () =>
     apiRequest<HabitRadarStats>('/habits/stats/radar'),
   getHabitHeatmap: (id: string, days?: number) =>
@@ -2300,6 +2313,10 @@ export const api = {
       withQuery(`/habits/stats/heatmap/${id}`, days ? { days } : undefined)),
   logHabit: (id: string, data: { date: string; value?: number; note?: string }) =>
     apiRequest<HabitLog>(`/habits/${id}/log`, { method: 'POST', body: JSON.stringify(data) }),
+  setHabitTotal: (id: string, data: { date: string; value: number; note?: string | null }) =>
+    apiRequest<HabitLog>(`/habits/${id}/log`, { method: 'PUT', body: JSON.stringify(data) }),
+  getHabitEvolution: (days: 30 | 90 | 365) =>
+    apiRequest<HabitEvolution>(withQuery('/habits/stats/evolution', { days })),
   deleteHabitLog: (id: string, date: string) =>
     apiRequest<{ ok: boolean }>(`/habits/${id}/log/${date}`, { method: 'DELETE' }),
   habitRecaiu: (id: string, date: string) =>

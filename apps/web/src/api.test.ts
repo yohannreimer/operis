@@ -75,6 +75,33 @@ describe('productAccessDeniedUrl', () => {
   });
 });
 
+describe('habit ritual API client', () => {
+  it('loads all date stats, sets an absolute total and loads evolution', async () => {
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+
+    await api.getHabitsTodayStats('2026-08-06', { includeUnscheduled: true });
+    await api.setHabitTotal('h-1', { date: '2026-08-06', value: 20 });
+    await api.getHabitEvolution(90);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/habits/stats/today?date=2026-08-06&includeUnscheduled=true',
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/habits/h-1/log',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ date: '2026-08-06', value: 20 }) })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/habits/stats/evolution?days=90',
+      expect.any(Object)
+    );
+  });
+});
+
 describe('protected API access denial', () => {
   it('redirects to the Hub only after the protected API reports denied product access', async () => {
     const assign = vi.fn();
