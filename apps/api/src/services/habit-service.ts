@@ -1,4 +1,5 @@
 import { PrismaClient, HabitLifeArea } from '@prisma/client';
+import { classifyHabitDate, periodBounds } from './habit-schedule.js';
 
 const LEVELS = [
   { level: 1, xp: 0, name: 'Iniciante' },
@@ -202,37 +203,11 @@ export class HabitService {
     return result;
   }
 
-  async getTodayStats(date: string, clerkUserId = 'legacy') {
-    // Day of week for specific_days filtering (0=Sun,1=Mon,...)
-    const dateObj = new Date(date + 'T00:00:00Z');
-    const utcDay = dateObj.getUTCDay(); // 0=Sun,...,6=Sat
-
-    const dayMap: Record<number, string> = {
-      0: 'dom',
-      1: 'seg',
-      2: 'ter',
-      3: 'qua',
-      4: 'qui',
-      5: 'sex',
-      6: 'sab',
-    };
-    const todayDayKey = dayMap[utcDay];
-
-    // Week boundaries (Mon-start)
-    const weekStart = new Date(dateObj);
-    const dayOfWeek = (utcDay + 6) % 7; // Mon=0
-    weekStart.setUTCDate(weekStart.getUTCDate() - dayOfWeek);
-    const weekStartStr = weekStart.toISOString().slice(0, 10);
-
-    const weekEnd = new Date(weekStart);
-    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
-    const weekEndStr = weekEnd.toISOString().slice(0, 10);
-
-    // Month boundaries
-    const monthStart = date.slice(0, 7) + '-01';
-    const monthLastDay = new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth() + 1, 0));
-    const monthEnd = monthLastDay.toISOString().slice(0, 10);
-
+  async getTodayStats(
+    date: string,
+    clerkUserId = 'legacy',
+    options: { includeUnscheduled?: boolean } = {},
+  ) {
     const habits = await this.prisma.habit.findMany({
       where: { clerkUserId, status: { not: 'arquivado' } },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -241,13 +216,6 @@ export class HabitService {
     const results = [];
 
     for (const habit of habits) {
-      // Filter specific_days habits
-      if (habit.frequencyType === 'specific_days') {
-        if (!habit.specificDays.includes(todayDayKey as any)) {
-          continue;
-        }
-      }
-
       // Get current log for today
       const currentLog = await this.prisma.habitLog.findUnique({
         where: { habitId_date: { habitId: habit.id, date } },
@@ -260,23 +228,36 @@ export class HabitService {
       let periodProgress: { done: number; target: number } | null = null;
 
       if (habit.frequencyType === 'weekly') {
+        const bounds = periodBounds('weekly', date);
         const weekLogs = await this.prisma.habitLog.count({
           where: {
             habitId: habit.id,
-            date: { gte: weekStartStr, lte: weekEndStr },
+            date: { gte: bounds.start, lte: bounds.end },
             value: { gt: 0 },
           },
         });
         periodProgress = { done: weekLogs, target: habit.frequencyTarget };
       } else if (habit.frequencyType === 'monthly') {
+        const bounds = periodBounds('monthly', date);
         const monthLogs = await this.prisma.habitLog.count({
           where: {
             habitId: habit.id,
-            date: { gte: monthStart, lte: monthEnd },
+            date: { gte: bounds.start, lte: bounds.end },
             value: { gt: 0 },
           },
         });
         periodProgress = { done: monthLogs, target: habit.frequencyTarget };
+      }
+
+      const isScheduledForDate = classifyHabitDate(
+        habit,
+        date,
+        periodProgress?.done ?? 0,
+        Boolean(currentLog),
+      );
+
+      if (!options.includeUnscheduled && habit.frequencyType === 'specific_days' && !isScheduledForDate) {
+        continue;
       }
 
       // isCompletedToday
@@ -297,6 +278,7 @@ export class HabitService {
         streak,
         periodProgress,
         isCompletedToday,
+        isScheduledForDate,
       });
     }
 
