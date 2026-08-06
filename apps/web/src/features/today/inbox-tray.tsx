@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Inbox, X } from 'lucide-react';
 
 import type { InboxItem, Task } from '../../api';
@@ -6,6 +6,7 @@ import { CreateTaskModal } from '../../components/create-task-modal';
 import { InboxGroup } from '../../components/inbox-group';
 import { InboxInput } from '../../components/inbox-input';
 import { useInboxController } from '../inbox/use-inbox-controller';
+import { useModalFocus } from './use-modal-focus';
 
 type Props = {
   open: boolean;
@@ -17,29 +18,10 @@ type Props = {
 export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
   const controller = useInboxController({ view: 'unprocessed', date });
   const inputRef = useRef<HTMLInputElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const trayRef = useRef<HTMLElement>(null);
   const [convertingItem, setConvertingItem] = useState<InboxItem | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [onClose, open]);
+  useModalFocus({ active: open, containerRef: trayRef, initialFocusRef: inputRef, onClose });
 
   async function handleAddToToday(item: InboxItem) {
     await onAddToToday(item);
@@ -68,6 +50,7 @@ export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
       }}
     >
       <aside
+        ref={trayRef}
         className="inbox-tray"
         role="dialog"
         aria-modal="true"

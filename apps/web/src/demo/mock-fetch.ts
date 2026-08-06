@@ -2,8 +2,12 @@
 // Intercepts window.fetch and returns mock data for all API routes.
 // Installed before React mounts when VITE_DEMO_MODE=true.
 
-const today = new Date().toISOString().slice(0, 10);
-const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+import type { TodayEntry } from '../features/today/types';
+
+const localNow = new Date();
+const today = [localNow.getFullYear(), String(localNow.getMonth() + 1).padStart(2, '0'), String(localNow.getDate()).padStart(2, '0')].join('-');
+const localYesterday = new Date(localNow.getFullYear(), localNow.getMonth(), localNow.getDate() - 1);
+const yesterday = [localYesterday.getFullYear(), String(localYesterday.getMonth() + 1).padStart(2, '0'), String(localYesterday.getDate()).padStart(2, '0')].join('-');
 
 // ─── Shared entities ──────────────────────────────────────────────────────────
 
@@ -265,6 +269,17 @@ const INBOX_ITEMS = [
   { id: 'inbox-5', content: 'Protocolo de respiração box breathing — testar antes do trabalho profundo', source: 'app', status: 'pendente', workspaceId: 'ws-2', inboxContextId: null, position: 5, waitingDate: null, waitingPerson: null, waitingNote: null, scheduledAt: null, convertedTaskId: null, createdAt: yesterday, updatedAt: today, workspace: WS_VIDA, inboxContext: null },
 ];
 
+let DAILY_EXECUTION_ITEMS: TodayEntry[] = [
+  { id: 'daily-1', kind: 'task', sourceId: 't-1', date: today, title: 'Finalizar proposta Empresa Alfa', position: 0, completedAt: null, project: 'Lançamento Produto Q3', estimatedMinutes: 90, deadline: null },
+  { id: 'daily-2', kind: 'inbox', sourceId: 'inbox-2', date: today, title: 'Ideia: criar checklist de onboarding para novos clientes', position: 1, completedAt: null, context: 'Negócios' },
+  { id: 'daily-3', kind: 'task', sourceId: 't-2', date: today, title: 'Revisar copy da landing page', position: 2, completedAt: null, project: 'Autoridade Digital', estimatedMinutes: 60, deadline: null },
+  { id: 'daily-4', kind: 'inbox', sourceId: 'inbox-5', date: today, title: 'Testar box breathing antes do trabalho profundo', position: 3, completedAt: new Date().toISOString(), context: 'Vida' },
+];
+
+let DAILY_EXECUTION_ROLLOVER: TodayEntry[] = [
+  { id: 'daily-old-1', kind: 'task', sourceId: 't-8', date: yesterday, title: 'Revisar pipeline de vendas com time', position: 0, completedAt: null, project: 'Lançamento Produto Q3', estimatedMinutes: 60, deadline: null },
+];
+
 // ─── Route matcher ────────────────────────────────────────────────────────────
 
 type MockResponse = { status: number; body: unknown };
@@ -454,6 +469,9 @@ function matchRoute(url: string): MockResponse | null {
 
   if (path === '/inbox') return { status: 200, body: { items: INBOX_ITEMS, contexts: [] } };
   if (path === '/inbox/contexts') return { status: 200, body: [] };
+  if (path.match(/^\/daily-execution\/\d{4}-\d{2}-\d{2}$/)) {
+    return { status: 200, body: { entries: DAILY_EXECUTION_ITEMS, rollover: DAILY_EXECUTION_ROLLOVER } };
+  }
 
   if (path === '/notes') return { status: 200, body: [] };
   if (path === '/note-folders') return { status: 200, body: [] };
@@ -479,8 +497,43 @@ export function installMockFetch() {
 
     // Only mock calls to our local API (port 3000 or VITE_API_URL)
     if (url.includes('localhost:3000') || url.includes('localhost:3001')) {
-      // Skip non-GET mutations in demo — just pretend they succeed
       const method = (init?.method ?? 'GET').toUpperCase();
+      const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+
+      if (method === 'PATCH' && path.match(/^\/daily-execution-items\/[^/]+$/)) {
+        const id = path.split('/').at(-1);
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { completed?: boolean };
+        DAILY_EXECUTION_ITEMS = DAILY_EXECUTION_ITEMS.map((item) => item.id === id
+          ? { ...item, completedAt: payload.completed ? new Date().toISOString() : null }
+          : item);
+        return new Response(JSON.stringify(DAILY_EXECUTION_ITEMS.find((item) => item.id === id)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'DELETE' && path.match(/^\/daily-execution-items\/[^/]+$/)) {
+        const id = path.split('/').at(-1);
+        DAILY_EXECUTION_ITEMS = DAILY_EXECUTION_ITEMS.filter((item) => item.id !== id);
+        return new Response(null, { status: 204 });
+      }
+
+      if (method === 'POST' && path.match(/^\/daily-execution-items\/[^/]+\/rollover$/)) {
+        const id = path.split('/').at(-2);
+        const source = DAILY_EXECUTION_ROLLOVER.find((item) => item.id === id);
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { action?: string; targetDate?: string };
+        DAILY_EXECUTION_ROLLOVER = DAILY_EXECUTION_ROLLOVER.filter((item) => item.id !== id);
+        const resolved = source && payload.action === 'keep_today'
+          ? { ...source, date: payload.targetDate ?? today, position: DAILY_EXECUTION_ITEMS.length }
+          : null;
+        if (resolved) DAILY_EXECUTION_ITEMS = [...DAILY_EXECUTION_ITEMS, resolved];
+        return new Response(resolved ? JSON.stringify(resolved) : null, {
+          status: resolved ? 200 : 204,
+          headers: resolved ? { 'Content-Type': 'application/json' } : undefined,
+        });
+      }
+
+      // Other demo mutations are accepted without persisting them.
       if (method !== 'GET') {
         return new Response(JSON.stringify({ ok: true }), {
           status: 200,

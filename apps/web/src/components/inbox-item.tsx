@@ -1,5 +1,5 @@
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Check, Clock, Play, Calendar, ArrowRight, Trash2, MoveRight, ChevronUp, ChevronDown, Sun } from 'lucide-react';
+import { Check, Clock, Play, Calendar, ArrowRight, Trash2, MoveRight, ChevronUp, ChevronDown, Sun, MoreHorizontal } from 'lucide-react';
 import { InboxItem as InboxItemType, InboxContext, Workspace } from '../api';
 
 type Props = {
@@ -280,6 +280,34 @@ export function InboxItem({
             <Trash2 size={13} />
           </button>
         </div>
+
+        {onAddToToday ? (
+          <details className="inbox-item-mobile-menu">
+            <summary aria-label={`Mais ações para ${item.content}`}>
+              <MoreHorizontal aria-hidden="true" size={18} />
+            </summary>
+            <div className="inbox-item-mobile-menu-popover" role="menu">
+              <button type="button" role="menuitem" onClick={() => onToggleDone(item)}>
+                <Check aria-hidden="true" size={14} /> {isDone ? 'Desmarcar' : 'Concluir'}
+              </button>
+              <button type="button" role="menuitem" onClick={() => { setShowWaiting((value) => !value); setShowMoveContext(false); }}>
+                <Clock aria-hidden="true" size={14} /> Aguardando
+              </button>
+              <button type="button" role="menuitem" onClick={() => onExecute(item)} disabled={!item.workspaceId}>
+                <Play aria-hidden="true" size={14} /> Executar agora
+              </button>
+              <button type="button" role="menuitem" onClick={() => onConvert(item)}>
+                <ArrowRight aria-hidden="true" size={14} /> Transformar em tarefa
+              </button>
+              <button type="button" role="menuitem" onClick={() => { setShowMoveContext((value) => !value); setShowWaiting(false); }}>
+                <MoveRight aria-hidden="true" size={14} /> Mover contexto
+              </button>
+              <button type="button" role="menuitem" onClick={() => onDelete(item)}>
+                <Trash2 aria-hidden="true" size={14} /> Deletar
+              </button>
+            </div>
+          </details>
+        ) : null}
       </div>
 
       {/* Waiting form (inline expand) */}

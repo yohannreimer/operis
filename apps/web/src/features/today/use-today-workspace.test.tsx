@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InboxItem } from '../../api';
@@ -116,6 +117,26 @@ describe('useTodayWorkspace', () => {
 
     await act(() => result.current.toggleCompleted(dailyEntry));
 
+    expect(result.current.entries[0]?.completedAt).toBeNull();
+  });
+
+  it('offers an undo action after completion', async () => {
+    const completedEntry = { ...dailyEntry, completedAt: '2026-08-05T12:00:00.000Z' };
+    apiMock.setDailyExecutionCompleted
+      .mockResolvedValueOnce(completedEntry)
+      .mockResolvedValueOnce(dailyEntry);
+    const { result } = renderHook(() => useTodayWorkspace('2026-08-05'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(() => result.current.toggleCompleted(dailyEntry));
+
+    const options = vi.mocked(toast).mock.calls.at(-1)?.[1] as {
+      action?: { label: string; onClick(): void };
+    };
+    expect(options.action?.label).toBe('Desfazer');
+    act(() => options.action?.onClick());
+
+    await waitFor(() => expect(apiMock.setDailyExecutionCompleted).toHaveBeenLastCalledWith('daily_1', false));
     expect(result.current.entries[0]?.completedAt).toBeNull();
   });
 

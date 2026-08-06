@@ -66,4 +66,27 @@ describe('TodayExecutionList', () => {
       'aria-pressed', 'true'
     );
   });
+
+  it('keeps a long execution list in one accessible collection', () => {
+    const entries = Array.from({ length: 50 }, (_, index): TodayEntry => ({
+      ...quickEntry,
+      id: `daily_${index}`,
+      sourceId: `inbox_${index}`,
+      title: `Item diário ${index + 1}`,
+      position: index
+    }));
+
+    render(
+      <TodayExecutionList
+        entries={entries}
+        onToggle={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('list', { name: 'Execução de hoje' })).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(50);
+    expect(screen.getByText('Item diário 50')).toBeInTheDocument();
+  });
 });

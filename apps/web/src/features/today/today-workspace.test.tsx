@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Commitment } from '../../api';
 import type { TodayEntry } from './types';
@@ -37,6 +37,11 @@ vi.mock('./inbox-tray', () => ({
 vi.mock('./planner-mode', () => ({
   PlannerMode: () => <div>Grade do planejador</div>
 }));
+
+afterEach(() => {
+  (workspaceState as { error: string | null }).error = null;
+  workspaceState.loading = false;
+});
 
 function commitment(id: string, title: string, startTime: string): Commitment {
   return {
@@ -121,7 +126,21 @@ describe('TodayWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /planejar/i }));
 
-    expect(await screen.findByRole('dialog', { name: /planejar o dia/i })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: /planejar o dia/i })).toHaveAttribute('aria-modal', 'true');
     expect(screen.getByText('Grade do planejador')).toBeInTheDocument();
+  });
+
+  it('announces loading and recoverable failures', () => {
+    workspaceState.loading = true;
+    const view = render(<TodayWorkspace date="2026-08-05" />);
+    expect(screen.getByLabelText('Carregando o dia')).toBeInTheDocument();
+
+    view.unmount();
+    workspaceState.loading = false;
+    (workspaceState as { error: string | null }).error = 'Não foi possível carregar o dia.';
+    render(<TodayWorkspace date="2026-08-05" />);
+
+    expect(screen.getByRole('alert')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
   });
 });

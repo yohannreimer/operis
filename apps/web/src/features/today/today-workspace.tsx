@@ -13,6 +13,7 @@ import { InboxTray } from './inbox-tray';
 import { RolloverReview } from './rollover-review';
 import { TodayExecutionList } from './today-execution-list';
 import { useTodayWorkspace } from './use-today-workspace';
+import { useModalFocus } from './use-modal-focus';
 
 const LazyPlannerMode = lazy(() => import('./planner-mode').then((module) => ({
   default: module.PlannerMode
@@ -37,23 +38,8 @@ type PlannerSurfaceProps = {
 
 function PlannerSurface({ date, onClose }: PlannerSurfaceProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [onClose]);
+  const plannerRef = useRef<HTMLElement>(null);
+  useModalFocus({ active: true, containerRef: plannerRef, initialFocusRef: closeRef, onClose });
 
   return (
     <div
@@ -65,6 +51,7 @@ function PlannerSurface({ date, onClose }: PlannerSurfaceProps) {
       }}
     >
       <section
+        ref={plannerRef}
         className="planner-surface"
         role="dialog"
         aria-modal="true"
@@ -127,7 +114,7 @@ export function TodayWorkspace({ date, initialInboxOpen = false }: Props) {
             onClick={() => setPlannerOpen(true)}
           >
             <CalendarRange aria-hidden="true" size={16} />
-            Planejar
+            <span>Planejar</span>
           </button>
         </div>
       </header>
