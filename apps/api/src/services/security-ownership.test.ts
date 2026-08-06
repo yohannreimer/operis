@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DayPlanService } from './day-plan-service.js';
 import { DeepWorkService } from './deep-work-service.js';
+import { ExecutionSessionService } from './execution-session-service.js';
 import { TaskService } from './task-service.js';
 import { WhatsappCommandService } from './whatsapp-command-service.js';
 
@@ -75,6 +76,24 @@ describe('multi-user ownership guards', () => {
     );
 
     expect(prisma.deepWorkSession.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects stopping another user execution session', async () => {
+    const prisma = {
+      executionSession: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        update: vi.fn()
+      }
+    };
+    const service = new ExecutionSessionService(prisma as any);
+
+    await expect(service.stop('user_current', 'session_other')).rejects.toThrow(
+      'Sessão de execução não encontrada.'
+    );
+    expect(prisma.executionSession.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'session_other', clerkUserId: 'user_current' } })
+    );
+    expect(prisma.executionSession.update).not.toHaveBeenCalled();
   });
 
   it('scopes WhatsApp task lists to the linked Clerk user', async () => {

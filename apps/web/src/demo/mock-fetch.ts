@@ -98,6 +98,75 @@ const COMMITMENTS = [
   { id: 'c-3', workspaceId: 'ws-1', projectId: null, title: 'Review semanal', description: 'Revisão e planejamento da semana', type: 'fixo', status: 'ativo', startTime: '08:00', durationMin: 90, recurrenceDays: ['sex'], date: null, recurrenceEnd: null, createdAt: today, updatedAt: today, exceptions: [] },
 ];
 
+function buildAgendaWeekFixture(weekStart: string) {
+  const start = new Date(`${weekStart}T12:00:00.000Z`);
+  const recurrenceByDay = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const value = new Date(start);
+    value.setUTCDate(start.getUTCDate() + index);
+    const date = value.toISOString().slice(0, 10);
+    return {
+      date,
+      intents: DAILY_EXECUTION_ITEMS.filter((item) => item.date === date),
+      blocks: date === today
+        ? DAY_PLAN.items.flatMap((item) => {
+            const kind = item.taskId ? 'task' as const : null;
+            if (!kind || !item.taskId || !item.task) return [];
+            return [{
+              id: item.id,
+              kind,
+              sourceId: item.taskId,
+              date,
+              title: item.task.title,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              completedAt: null,
+              workspaceId: item.task.workspaceId ?? null,
+              plannedMinutes: Math.round((new Date(item.endTime).getTime() - new Date(item.startTime).getTime()) / 60_000)
+            }];
+          })
+        : [],
+      commitments: COMMITMENTS
+        .filter((item) => item.recurrenceDays.includes(recurrenceByDay[value.getUTCDay()]))
+        .map((item) => ({
+          id: `${item.id}:${date}`,
+          commitmentId: item.id,
+          date,
+          title: item.title,
+          startTime: item.startTime,
+          durationMin: item.durationMin,
+          workspaceId: item.workspaceId,
+          recurring: true,
+          rescheduled: false
+        }))
+    };
+  });
+  return {
+    weekStart,
+    resourceErrors: { commitments: null },
+    days,
+    unscheduled: {
+      tasks: TASKS.filter((item) => item.status === 'backlog').map((item) => ({
+        id: item.id,
+        title: item.title,
+        estimatedMinutes: item.estimatedMinutes,
+        plannedMinutes: 0,
+        remainingMinutes: item.estimatedMinutes,
+        workspaceId: item.workspaceId ?? null,
+        workspaceName: item.workspace?.name ?? null,
+        workspaceColor: item.workspace?.color ?? null,
+        projectName: item.project?.title ?? null
+      })),
+      inbox: INBOX_ITEMS.map((item) => ({
+        id: item.id,
+        title: item.content,
+        workspaceId: item.workspaceId,
+        context: item.workspace?.name ?? null
+      }))
+    }
+  };
+}
+
 const HABITS: unknown[] = [
   { id: 'h-1', title: 'Treino', lifeArea: 'corpo', type: 'binary', icon: '💪', color: '#e07c4a', frequencyType: 'daily', frequencyTarget: 1, specificDays: [], unit: null, dailyTarget: null, xpPerCompletion: 20, status: 'ativo', sortOrder: 1, createdAt: yesterday, updatedAt: today },
   { id: 'h-2', title: 'Dormir 7-8h', lifeArea: 'corpo', type: 'binary', icon: '😴', color: '#e07c4a', frequencyType: 'daily', frequencyTarget: 1, specificDays: [], unit: null, dailyTarget: null, xpPerCompletion: 15, status: 'ativo', sortOrder: 2, createdAt: yesterday, updatedAt: today },
@@ -280,6 +349,8 @@ let DAILY_EXECUTION_ROLLOVER: TodayEntry[] = [
   { id: 'daily-old-1', kind: 'task', sourceId: 't-8', date: yesterday, title: 'Revisar pipeline de vendas com time', position: 0, completedAt: null, project: 'Lançamento Produto Q3', estimatedMinutes: 60, deadline: null },
 ];
 
+let ACTIVE_EXECUTION: Record<string, unknown> | null = null;
+
 // ─── Route matcher ────────────────────────────────────────────────────────────
 
 type MockResponse = { status: number; body: unknown };
@@ -302,6 +373,10 @@ function matchRoute(url: string): MockResponse | null {
   if (path.match(/^\/tasks\/[^/]+\/waiting-followup/)) return { status: 200, body: null };
 
   if (path.match(/^\/day-plans\//)) return { status: 200, body: DAY_PLAN };
+  if (path.match(/^\/agenda\/week\/\d{4}-\d{2}-\d{2}$/)) {
+    return { status: 200, body: buildAgendaWeekFixture(path.slice(-10)) };
+  }
+  if (path === '/execution-sessions/active') return { status: 200, body: ACTIVE_EXECUTION };
   if (path === '/commitments') return { status: 200, body: COMMITMENTS };
   if (path === '/commitments/week') return { status: 200, body: {} };
 
@@ -530,6 +605,45 @@ export function installMockFetch() {
         return new Response(resolved ? JSON.stringify(resolved) : null, {
           status: resolved ? 200 : 204,
           headers: resolved ? { 'Content-Type': 'application/json' } : undefined,
+        });
+      }
+
+      if (method === 'POST' && path === '/execution-sessions/start') {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as {
+          sourceType: 'task' | 'inbox';
+          sourceId: string;
+          dayPlanItemId?: string | null;
+          dailyExecutionItemId?: string | null;
+        };
+        const task = TASKS.find((item) => payload.sourceType === 'task' && item.id === payload.sourceId);
+        const inbox = INBOX_ITEMS.find((item) => payload.sourceType === 'inbox' && item.id === payload.sourceId);
+        ACTIVE_EXECUTION = {
+          id: `execution-${Date.now()}`,
+          kind: payload.sourceType,
+          sourceId: payload.sourceId,
+          title: task?.title ?? inbox?.content ?? 'Execução atual',
+          startedAt: new Date().toISOString(),
+          endedAt: null,
+          state: 'active',
+          dayPlanItemId: payload.dayPlanItemId ?? null,
+          dailyExecutionItemId: payload.dailyExecutionItemId ?? null
+        };
+        return new Response(JSON.stringify(ACTIVE_EXECUTION), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (method === 'POST' && path.match(/^\/execution-sessions\/[^/]+\/(stop|cancel)$/)) {
+        const cancelled = path.endsWith('/cancel');
+        ACTIVE_EXECUTION = ACTIVE_EXECUTION
+          ? { ...ACTIVE_EXECUTION, endedAt: new Date().toISOString(), state: cancelled ? 'cancelled' : 'completed' }
+          : null;
+        const ended = ACTIVE_EXECUTION;
+        ACTIVE_EXECUTION = null;
+        return new Response(JSON.stringify(ended), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
         });
       }
 

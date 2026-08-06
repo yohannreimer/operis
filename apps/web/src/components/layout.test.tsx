@@ -57,6 +57,13 @@ describe('Layout mobile navigation helpers', () => {
     ]);
   });
 
+  it('keeps Agenda on its stable route without restoring Inbox as a separate destination', () => {
+    expect(getMobilePrimaryLinks().find((link) => link.label === 'Agenda')?.to).toBe('/agenda');
+    expect(getMobilePrimaryLinks().some((link) => link.label === 'Inbox')).toBe(false);
+    expect(getMobilePrimaryLinks()).toHaveLength(3);
+    expect(getMobileMoreLinks()).toHaveLength(6);
+  });
+
   it('moves secondary routes into the mobile more drawer', () => {
     expect(getMobileMoreLinks().map((link) => link.label)).toEqual([
       'Frentes',
