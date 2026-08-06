@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { blockGeometry, findConflictIds, snapMinutes } from './time-grid.js';
+import { toIsoDateTime } from '../../utils/date.js';
+import { agendaTime, blockGeometry, findConflictIds, snapMinutes } from './time-grid.js';
 
 describe('time grid', () => {
   it('maps pointer minutes to 15-minute slots', () => {
@@ -15,6 +16,10 @@ describe('time grid', () => {
       height: 44,
       visualOverflow: 26
     });
+  });
+
+  it('renders persisted instants in the user local wall clock', () => {
+    expect(agendaTime(toIsoDateTime('2026-08-06', '09:00'))).toBe('09:00');
   });
 
   it('detects overlaps but never rejects them', () => {

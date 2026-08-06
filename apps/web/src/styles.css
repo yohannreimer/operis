@@ -1387,6 +1387,7 @@ button:active:not(:disabled) {
 }
 
 .app-main {
+  min-width: 0;
   padding: 16px 20px 26px;
 }
 

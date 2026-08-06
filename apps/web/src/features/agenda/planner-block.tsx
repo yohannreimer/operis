@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CalendarDays, CheckSquare2, MoreHorizontal, Zap } from 'lucide-react';
 
+import { agendaTime } from './time-grid';
 import type { PlannerBlockModel } from './types';
 
 export type BlockCommand =
@@ -21,12 +22,8 @@ const commandLabels: Array<[BlockCommand, string]> = [
   ['shorter', 'Reduzir 15 minutos']
 ];
 
-function time(value: string) {
-  return value.match(/(?:T|^)(\d{2}:\d{2})/)?.[1] ?? value;
-}
-
 export function formatBlockRange(block: PlannerBlockModel) {
-  return `${time(block.startTime)}–${time(block.endTime)}`;
+  return `${agendaTime(block.startTime)}–${agendaTime(block.endTime)}`;
 }
 
 export function blockAccessibleName(block: PlannerBlockModel) {
@@ -36,7 +33,7 @@ export function blockAccessibleName(block: PlannerBlockModel) {
       : block.kind === 'task'
         ? 'Tarefa'
         : 'Item rápido';
-  return `${kind} ${block.title}, ${time(block.startTime)} até ${time(block.endTime)}`;
+  return `${kind} ${block.title}, ${agendaTime(block.startTime)} até ${agendaTime(block.endTime)}`;
 }
 
 type Props = {
@@ -60,6 +57,7 @@ export function PlannerBlock({ block, geometry, conflicted, onOpen, onCommand }:
     <div
       className={`agenda-block-shell agenda-block-shell--${block.kind}`}
       data-conflict={conflicted || undefined}
+      data-menu-open={menuOpen || undefined}
       style={{ top: geometry.top, height: geometry.height }}
     >
       <button
@@ -69,8 +67,8 @@ export function PlannerBlock({ block, geometry, conflicted, onOpen, onCommand }:
         aria-label={blockAccessibleName(block)}
         onClick={() => onOpen(block)}
         style={{ transform: draggable.transform ? `translate3d(${draggable.transform.x}px, ${draggable.transform.y}px, 0)` : undefined }}
-        {...draggable.attributes}
-        {...draggable.listeners}
+        {...(block.kind === 'commitment' ? {} : draggable.attributes)}
+        {...(block.kind === 'commitment' ? {} : draggable.listeners)}
       >
         <Icon aria-hidden="true" size={13} />
         <span className="agenda-block-copy">

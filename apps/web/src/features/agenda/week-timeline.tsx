@@ -11,6 +11,7 @@ import {
 } from '@dnd-kit/core';
 
 import type { AgendaWeek, CommitmentOccurrence } from '../../api';
+import { localDateKey, toIsoDateTime, todayIsoDate } from '../../utils/date';
 import { DayIntentLane } from './day-intent-lane';
 import { PlannerBlock, type BlockCommand } from './planner-block';
 import { blockGeometry, findConflictIds } from './time-grid';
@@ -33,7 +34,7 @@ function addDays(value: string, days: number) {
 
 function commitmentBlock(item: CommitmentOccurrence): PlannerBlockModel | null {
   if (!item.startTime) return null;
-  const startTime = `${item.date}T${item.startTime}:00.000Z`;
+  const startTime = toIsoDateTime(item.date, item.startTime);
   const endTime = addMinutes(startTime, item.durationMin ?? 30);
   return {
     id: item.id,
@@ -54,7 +55,7 @@ function commitmentBlock(item: CommitmentOccurrence): PlannerBlockModel | null {
 function Slot({ date, minute }: { date: string; minute: number }) {
   const hour = String(Math.floor(minute / 60)).padStart(2, '0');
   const minutes = String(minute % 60).padStart(2, '0');
-  const startTime = `${date}T${hour}:${minutes}:00.000Z`;
+  const startTime = toIsoDateTime(date, `${hour}:${minutes}`);
   const droppable = useDroppable({
     id: `slot:${date}:${hour}:${minutes}`,
     data: { date, startTime }
@@ -78,7 +79,7 @@ type Props = {
 export function WeekTimeline({ week, controller, onOpenBlock = () => undefined }: Props) {
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIsoDate();
   const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, index) => START_HOUR + index);
   const slots = Array.from(
     { length: (END_HOUR - START_HOUR) * 4 },
@@ -137,7 +138,7 @@ export function WeekTimeline({ week, controller, onOpenBlock = () => undefined }
     const startTime = addDays(addMinutes(block.startTime, delta), dayDelta);
     const endTime = addDays(addMinutes(block.endTime, delta), dayDelta);
     void controller.moveBlock(block.id, {
-      date: startTime.slice(0, 10),
+      date: localDateKey(new Date(startTime)),
       startTime,
       endTime
     });

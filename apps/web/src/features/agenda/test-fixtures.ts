@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 
 import type { AgendaWeek } from '../../api';
+import { toIsoDateTime } from '../../utils/date';
 import type { AgendaWeekController } from './types';
 
 export const IDS = {
@@ -16,8 +17,8 @@ export const quickBlockFixture = {
   sourceId: IDS.inbox,
   date: '2026-08-06',
   title: 'Responder cliente',
-  startTime: '2026-08-06T14:00:00.000Z',
-  endTime: '2026-08-06T14:15:00.000Z',
+  startTime: toIsoDateTime('2026-08-06', '14:00'),
+  endTime: toIsoDateTime('2026-08-06', '14:15'),
   completedAt: null,
   workspaceId: null,
   plannedMinutes: 15
@@ -55,8 +56,8 @@ export function weekFixture(): AgendaWeek {
                 sourceId: IDS.task,
                 date: '2026-08-06',
                 title: 'Gravar vídeo',
-                startTime: '2026-08-06T11:00:00.000Z',
-                endTime: '2026-08-06T12:30:00.000Z',
+                startTime: toIsoDateTime('2026-08-06', '11:00'),
+                endTime: toIsoDateTime('2026-08-06', '12:30'),
                 completedAt: null,
                 workspaceId: null,
                 plannedMinutes: 90

@@ -93,7 +93,7 @@ export function AgendaPage() {
         <div className="agenda-studio-actions">
           <button type="button" onClick={goToday}>Hoje</button>
           <button type="button" aria-label="Abrir Rotinas" onClick={() => setRoutinesOpen(true)}><RefreshCw aria-hidden="true" /><span>Rotinas</span></button>
-          <button type="button" className="agenda-new-block" onClick={() => setInspector({ mode: 'create' })}><Plus aria-hidden="true" /><span>Novo bloco</span></button>
+          <button type="button" className="agenda-new-block" aria-label="Novo bloco" onClick={() => setInspector({ mode: 'create' })}><Plus aria-hidden="true" /><span>Novo bloco</span></button>
         </div>
       </header>
 

@@ -4,6 +4,7 @@ import { ChevronDown, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, type CommitmentOccurrence } from '../../api';
+import { agendaTime } from './time-grid';
 import type { PlannerBlockModel } from './types';
 
 type EditableBlock = PlannerBlockModel | CommitmentOccurrence;
@@ -31,7 +32,7 @@ type Props = {
 };
 
 function rawTime(value?: string | null) {
-  return value?.match(/(?:T|^)(\d{2}:\d{2})/)?.[1] ?? '';
+  return value ? agendaTime(value) : '';
 }
 
 function blockDate(block?: EditableBlock) {

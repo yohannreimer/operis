@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Check, CheckSquare2, Clock3, MoreHorizontal, Zap } from 'lucide-react';
 
 import type { AgendaBlock, AgendaWeek, CommitmentOccurrence } from '../../api';
+import { toIsoDateTime } from '../../utils/date';
 import { blockAccessibleName } from './planner-block';
+import { agendaTime } from './time-grid';
 import type { AgendaWeekController, PlannerBlockModel } from './types';
 
 const longDate = new Intl.DateTimeFormat('pt-BR', {
@@ -15,17 +17,13 @@ function dateAtNoon(date: string) {
   return new Date(`${date}T12:00:00.000Z`);
 }
 
-function time(value: string) {
-  return value.match(/(?:T|^)(\d{2}:\d{2})/)?.[1] ?? value;
-}
-
 function addMinutes(value: string, minutes: number) {
   return new Date(new Date(value).getTime() + minutes * 60_000).toISOString();
 }
 
 function commitmentToBlock(item: CommitmentOccurrence): PlannerBlockModel | null {
   if (!item.startTime) return null;
-  const startTime = `${item.date}T${item.startTime}:00.000Z`;
+  const startTime = toIsoDateTime(item.date, item.startTime);
   return {
     id: item.id,
     kind: 'commitment',
@@ -59,7 +57,7 @@ function MobileBlock({
   const longPressed = useRef(false);
   const [moving, setMoving] = useState(false);
   const [date, setDate] = useState(block.date);
-  const [startTime, setStartTime] = useState(time(block.startTime));
+  const [startTime, setStartTime] = useState(agendaTime(block.startTime));
   const [duration, setDuration] = useState(block.plannedMinutes);
   const Icon = block.kind === 'commitment' ? CalendarDays : block.kind === 'task' ? CheckSquare2 : Zap;
 
@@ -77,7 +75,7 @@ function MobileBlock({
 
   return (
     <article className={`agenda-mobile-block agenda-mobile-block--${block.kind}`} data-completed={Boolean(block.completedAt) || undefined}>
-      <span className="agenda-mobile-block-time">{time(block.startTime)}</span>
+      <span className="agenda-mobile-block-time">{agendaTime(block.startTime)}</span>
       <button
         type="button"
         className="agenda-mobile-block-main"
@@ -102,7 +100,7 @@ function MobileBlock({
           <label>Horário<input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
           <label>Duração<select value={duration} onChange={(event) => setDuration(Number(event.target.value))}>{[15, 30, 45, 60, 90, 120].map((value) => <option key={value} value={value}>{value} min</option>)}</select></label>
           <button type="button" onClick={() => {
-            const nextStart = `${date}T${startTime}:00.000Z`;
+            const nextStart = toIsoDateTime(date, startTime);
             onMove({ ...block, date, startTime: nextStart, endTime: addMinutes(nextStart, duration), plannedMinutes: duration });
             setMoving(false);
           }}>Confirmar mudança</button>

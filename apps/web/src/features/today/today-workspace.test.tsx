@@ -89,7 +89,7 @@ const quickEntry: TodayEntry = {
 const dayPlanWithQuickBlock = (): DayPlan => ({
   id: 'plan_1', date: '2026-08-06', items: [{
     id: 'block_1', dayPlanId: 'plan_1', taskId: null, inboxItemId: 'inbox_1',
-    startTime: '2026-08-06T14:00:00.000Z', endTime: '2026-08-06T14:15:00.000Z',
+    startTime: new Date('2026-08-06T14:00:00').toISOString(), endTime: new Date('2026-08-06T14:15:00').toISOString(),
     completedAt: null, orderIndex: 0, blockType: 'task', confirmationState: 'pending',
     task: null, inboxItem: { id: 'inbox_1', content: 'Responder cliente' }
   }]

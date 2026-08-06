@@ -24,6 +24,29 @@ describe('mobile agenda planning', () => {
     expect(screen.queryByText('Nada marcado.')).not.toBeInTheDocument();
   });
 
+  it('switches to the next day with a horizontal swipe', () => {
+    const onSelectedDateChange = vi.fn();
+    render(
+      <MobileDayTimeline
+        week={weekFixture()}
+        selectedDate="2026-08-06"
+        onSelectedDateChange={onSelectedDateChange}
+        controller={controller()}
+      />
+    );
+
+    const timeline = screen.getByRole('region', {
+      name: 'Linha do tempo de quinta-feira, 6 de agosto'
+    });
+    fireEvent.touchStart(timeline, { touches: [{ clientX: 220 }] });
+    fireEvent.touchEnd(timeline, { changedTouches: [{ clientX: 120 }] });
+
+    expect(onSelectedDateChange).toHaveBeenCalledWith('2026-08-07');
+    expect(screen.getByRole('region', {
+      name: 'Linha do tempo de sexta-feira, 7 de agosto'
+    })).toBeInTheDocument();
+  });
+
   it('schedules a drawer item with explicit touch controls', () => {
     const onSchedule = vi.fn();
     render(<PlanningDrawer sources={sources()} onSchedule={onSchedule} />);

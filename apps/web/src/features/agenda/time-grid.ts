@@ -7,8 +7,20 @@ export function snapMinutes(minutes: number) {
   return Math.round(minutes / SLOT_MINUTES) * SLOT_MINUTES;
 }
 
+export function agendaTime(value: string) {
+  const wallTime = value.match(/^(\d{2}:\d{2})/);
+  if (wallTime) return wallTime[1];
+
+  const instant = new Date(value);
+  if (!Number.isNaN(instant.getTime())) {
+    return `${String(instant.getHours()).padStart(2, '0')}:${String(instant.getMinutes()).padStart(2, '0')}`;
+  }
+
+  return value.match(/(?:T|^)(\d{2}:\d{2})/)?.[1] ?? value;
+}
+
 export function minutesOfDay(value: string) {
-  const match = value.match(/(?:T|^)(\d{2}):(\d{2})/);
+  const match = agendaTime(value).match(/^(\d{2}):(\d{2})/);
   if (!match) {
     throw new Error(`Horário inválido: ${value}`);
   }

@@ -76,19 +76,44 @@ const TASKS = [
 ];
 
 function makeIso(date: string, h: number, m = 0) {
-  return `${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00.000Z`;
+  return new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).toISOString();
 }
 
-const DAY_PLAN = {
+function instantDateKey(value: string) {
+  const date = new Date(value);
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+type DemoDayPlanItem = {
+  id: string;
+  dayPlanId: string;
+  taskId: string | null;
+  inboxItemId: string | null;
+  startTime: string;
+  endTime: string;
+  completedAt: string | null;
+  orderIndex: number;
+  blockType: 'task' | 'fixed';
+  confirmationState: 'pending' | 'confirmed_done' | 'confirmed_not_done';
+  task: (typeof TASKS)[number] | null;
+  inboxItem: null | {
+    id: string;
+    content: string;
+    workspaceId: string | null;
+    workspace: typeof WS_NEGOCIOS | typeof WS_VIDA | null;
+  };
+};
+
+const DAY_PLAN: { id: string; date: string; items: DemoDayPlanItem[] } = {
   id: 'dp-today',
   date: today,
   items: [
-    { id: 'dpi-1', dayPlanId: 'dp-today', taskId: 't-1', startTime: makeIso(today, 8), endTime: makeIso(today, 9, 30), orderIndex: 0, blockType: 'task', confirmationState: 'pending', task: TASKS[0] },
-    { id: 'dpi-2', dayPlanId: 'dp-today', taskId: 't-2', startTime: makeIso(today, 10), endTime: makeIso(today, 11), orderIndex: 1, blockType: 'task', confirmationState: 'pending', task: TASKS[1] },
-    { id: 'dpi-3', dayPlanId: 'dp-today', taskId: 't-3', startTime: makeIso(today, 11), endTime: makeIso(today, 11, 45), orderIndex: 2, blockType: 'task', confirmationState: 'pending', task: TASKS[2] },
-    { id: 'dpi-4', dayPlanId: 'dp-today', taskId: null, startTime: makeIso(today, 14), endTime: makeIso(today, 15), orderIndex: 3, blockType: 'fixed', confirmationState: 'pending', task: null },
-    { id: 'dpi-5', dayPlanId: 'dp-today', taskId: 't-4', startTime: makeIso(today, 15), endTime: makeIso(today, 15, 30), orderIndex: 4, blockType: 'task', confirmationState: 'pending', task: TASKS[3] },
-    { id: 'dpi-6', dayPlanId: 'dp-today', taskId: 't-5', startTime: makeIso(today, 16), endTime: makeIso(today, 18), orderIndex: 5, blockType: 'task', confirmationState: 'pending', task: TASKS[4] },
+    { id: 'dpi-1', dayPlanId: 'dp-today', taskId: 't-1', inboxItemId: null, startTime: makeIso(today, 8), endTime: makeIso(today, 9, 30), completedAt: null, orderIndex: 0, blockType: 'task', confirmationState: 'pending', task: TASKS[0], inboxItem: null },
+    { id: 'dpi-2', dayPlanId: 'dp-today', taskId: 't-2', inboxItemId: null, startTime: makeIso(today, 10), endTime: makeIso(today, 11), completedAt: null, orderIndex: 1, blockType: 'task', confirmationState: 'pending', task: TASKS[1], inboxItem: null },
+    { id: 'dpi-3', dayPlanId: 'dp-today', taskId: 't-3', inboxItemId: null, startTime: makeIso(today, 11), endTime: makeIso(today, 11, 45), completedAt: null, orderIndex: 2, blockType: 'task', confirmationState: 'pending', task: TASKS[2], inboxItem: null },
+    { id: 'dpi-4', dayPlanId: 'dp-today', taskId: null, inboxItemId: null, startTime: makeIso(today, 14), endTime: makeIso(today, 15), completedAt: null, orderIndex: 3, blockType: 'fixed', confirmationState: 'pending', task: null, inboxItem: null },
+    { id: 'dpi-5', dayPlanId: 'dp-today', taskId: 't-4', inboxItemId: null, startTime: makeIso(today, 15), endTime: makeIso(today, 15, 30), completedAt: null, orderIndex: 4, blockType: 'task', confirmationState: 'pending', task: TASKS[3], inboxItem: null },
+    { id: 'dpi-6', dayPlanId: 'dp-today', taskId: 't-5', inboxItemId: null, startTime: makeIso(today, 16), endTime: makeIso(today, 18), completedAt: null, orderIndex: 5, blockType: 'task', confirmationState: 'pending', task: TASKS[4], inboxItem: null },
   ],
 };
 
@@ -108,24 +133,26 @@ function buildAgendaWeekFixture(weekStart: string) {
     return {
       date,
       intents: DAILY_EXECUTION_ITEMS.filter((item) => item.date === date),
-      blocks: date === today
-        ? DAY_PLAN.items.flatMap((item) => {
-            const kind = item.taskId ? 'task' as const : null;
-            if (!kind || !item.taskId || !item.task) return [];
+      blocks: DAY_PLAN.items
+        .filter((item) => instantDateKey(item.startTime) === date)
+        .flatMap((item) => {
+            const kind = item.taskId ? 'task' as const : item.inboxItemId ? 'inbox' as const : null;
+            if (!kind) return [];
+            const source = kind === 'task' ? item.task : item.inboxItem;
+            if (!source) return [];
             return [{
               id: item.id,
               kind,
-              sourceId: item.taskId,
+              sourceId: item.taskId ?? item.inboxItemId!,
               date,
-              title: item.task.title,
+              title: 'title' in source ? source.title : source.content,
               startTime: item.startTime,
               endTime: item.endTime,
-              completedAt: null,
-              workspaceId: item.task.workspaceId ?? null,
+              completedAt: item.completedAt,
+              workspaceId: source.workspaceId ?? null,
               plannedMinutes: Math.round((new Date(item.endTime).getTime() - new Date(item.startTime).getTime()) / 60_000)
             }];
-          })
-        : [],
+          }),
       commitments: COMMITMENTS
         .filter((item) => item.recurrenceDays.includes(recurrenceByDay[value.getUTCDay()]))
         .map((item) => ({
@@ -350,6 +377,7 @@ let DAILY_EXECUTION_ROLLOVER: TodayEntry[] = [
 ];
 
 let ACTIVE_EXECUTION: Record<string, unknown> | null = null;
+let NEXT_DAY_PLAN_ITEM_ID = 7;
 
 // ─── Route matcher ────────────────────────────────────────────────────────────
 
@@ -372,7 +400,13 @@ function matchRoute(url: string): MockResponse | null {
   if (path.match(/^\/tasks\/[^/]+\/multiblock/)) return { status: 200, body: null };
   if (path.match(/^\/tasks\/[^/]+\/waiting-followup/)) return { status: 200, body: null };
 
-  if (path.match(/^\/day-plans\//)) return { status: 200, body: DAY_PLAN };
+  if (path.match(/^\/day-plans\/\d{4}-\d{2}-\d{2}$/)) {
+    const date = path.slice(-10);
+    return {
+      status: 200,
+      body: { ...DAY_PLAN, date, items: DAY_PLAN.items.filter((item) => instantDateKey(item.startTime) === date) }
+    };
+  }
   if (path.match(/^\/agenda\/week\/\d{4}-\d{2}-\d{2}$/)) {
     return { status: 200, body: buildAgendaWeekFixture(path.slice(-10)) };
   }
@@ -574,6 +608,73 @@ export function installMockFetch() {
     if (url.includes('localhost:3000') || url.includes('localhost:3001')) {
       const method = (init?.method ?? 'GET').toUpperCase();
       const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+
+      if (method === 'POST' && path.match(/^\/day-plans\/\d{4}-\d{2}-\d{2}\/items$/)) {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as {
+          taskId?: string | null;
+          inboxItemId?: string | null;
+          startTime: string;
+          endTime: string;
+          orderIndex?: number;
+          blockType?: 'task' | 'fixed';
+        };
+        const task = TASKS.find((item) => item.id === payload.taskId) ?? null;
+        const inbox = INBOX_ITEMS.find((item) => item.id === payload.inboxItemId) ?? null;
+        const created: DemoDayPlanItem = {
+          id: `dpi-${NEXT_DAY_PLAN_ITEM_ID++}`,
+          dayPlanId: DAY_PLAN.id,
+          taskId: task?.id ?? null,
+          inboxItemId: inbox?.id ?? null,
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          completedAt: null,
+          orderIndex: payload.orderIndex ?? DAY_PLAN.items.length,
+          blockType: payload.blockType ?? 'task',
+          confirmationState: 'pending',
+          task,
+          inboxItem: inbox
+            ? {
+                id: inbox.id,
+                content: inbox.content,
+                workspaceId: inbox.workspaceId,
+                workspace: inbox.workspace
+              }
+            : null
+        };
+        DAY_PLAN.items = [...DAY_PLAN.items, created];
+        return new Response(JSON.stringify(created), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (method === 'PATCH' && path.match(/^\/day-plan-items\/[^/]+$/)) {
+        const id = path.split('/').at(-1);
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<DemoDayPlanItem>;
+        const index = DAY_PLAN.items.findIndex((item) => item.id === id);
+        if (index < 0) return new Response(JSON.stringify({ message: 'Bloco não encontrado.' }), { status: 404 });
+        const updated = { ...DAY_PLAN.items[index], ...payload, id: DAY_PLAN.items[index].id };
+        DAY_PLAN.items = DAY_PLAN.items.map((item, itemIndex) => itemIndex === index ? updated : item);
+        if (updated.inboxItemId) {
+          const inbox = INBOX_ITEMS.find((item) => item.id === updated.inboxItemId);
+          if (inbox && Object.prototype.hasOwnProperty.call(payload, 'completedAt')) {
+            inbox.status = updated.completedAt ? 'feito' : 'pendente';
+          }
+        }
+        return new Response(JSON.stringify(updated), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (method === 'DELETE' && path.match(/^\/day-plan-items\/[^/]+$/)) {
+        const id = path.split('/').at(-1);
+        DAY_PLAN.items = DAY_PLAN.items.filter((item) => item.id !== id);
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
 
       if (method === 'PATCH' && path.match(/^\/daily-execution-items\/[^/]+$/)) {
         const id = path.split('/').at(-1);
