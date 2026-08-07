@@ -3,8 +3,34 @@ import type {
   RolloverAction,
   TodayEntry
 } from './features/today/types';
+import type {
+  CreateExecutionProjectInput,
+  CreateExecutionProjectResult,
+  FrontOverview,
+  FrontOverviewListItem,
+  ProjectCockpit,
+  ProjectExecutionListItem,
+  ProjectNextMove,
+  Responsibility,
+  ResponsibilityCadence,
+  ResponsibilityHealth,
+  ResponsibilityReview
+} from './features/projects/types';
 
 export type { DailyExecutionResponse, RolloverAction, TodayEntry } from './features/today/types';
+export type {
+  CreateExecutionProjectInput,
+  CreateExecutionProjectResult,
+  FrontOverview,
+  FrontOverviewListItem,
+  ProjectCockpit,
+  ProjectExecutionListItem,
+  ProjectNextMove,
+  Responsibility,
+  ResponsibilityCadence,
+  ResponsibilityHealth,
+  ResponsibilityReview
+} from './features/projects/types';
 
 export type WorkspaceType = 'empresa' | 'pessoal' | 'vida' | 'autoridade' | 'geral' | 'outro';
 export type WorkspaceMode = 'expansao' | 'manutencao' | 'standby';
@@ -1379,8 +1405,8 @@ async function apiRequest<T>(path: string, options?: ApiRequestOptions): Promise
     }
 
     const response = await fetch(`${API_BASE}${path}`, {
-      headers,
       ...fetchOptions,
+      headers,
       signal: controller.signal
     });
 
@@ -1456,8 +1482,93 @@ export const api = {
       }
     ),
 
+  getFrontsOverview: () =>
+    apiRequest<FrontOverviewListItem[]>('/workspaces/overview'),
+  getFrontOverview: (workspaceId: string) =>
+    apiRequest<FrontOverview>(`/workspaces/${workspaceId}/overview`),
+  getResponsibilities: (workspaceId: string) =>
+    apiRequest<Responsibility[]>(`/workspaces/${workspaceId}/responsibilities`),
+  createResponsibility: (
+    workspaceId: string,
+    input: {
+      title: string;
+      expectedStandard: string;
+      cadence: ResponsibilityCadence;
+      cadenceIntervalDays?: number | null;
+      health?: ResponsibilityHealth;
+      nextCare: string;
+      nextReviewAt: string;
+    }
+  ) => apiRequest<Responsibility>(`/workspaces/${workspaceId}/responsibilities`, {
+    method: 'POST',
+    body: JSON.stringify(input)
+  }),
+  updateResponsibility: (
+    responsibilityId: string,
+    input: Partial<{
+      title: string;
+      expectedStandard: string;
+      cadence: ResponsibilityCadence;
+      cadenceIntervalDays: number | null;
+      health: ResponsibilityHealth;
+      nextCare: string;
+      nextReviewAt: string;
+    }>
+  ) => apiRequest<Responsibility>(`/responsibilities/${responsibilityId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input)
+  }),
+  reviewResponsibility: (
+    responsibilityId: string,
+    input: {
+      health: ResponsibilityHealth;
+      note?: string;
+      nextCare: string;
+      nextReviewAt?: string;
+      createTask?: 'backlog' | 'today';
+    }
+  ) => apiRequest<{ responsibility: Responsibility; review: ResponsibilityReview; task: Task | null }>(
+    `/responsibilities/${responsibilityId}/reviews`,
+    { method: 'POST', body: JSON.stringify(input) }
+  ),
+  getResponsibilityReviews: (responsibilityId: string) =>
+    apiRequest<ResponsibilityReview[]>(`/responsibilities/${responsibilityId}/reviews`),
+  pauseResponsibility: (responsibilityId: string, paused = true) =>
+    apiRequest<Responsibility>(`/responsibilities/${responsibilityId}/pause`, {
+      method: 'POST',
+      body: JSON.stringify({ paused })
+    }),
+  archiveResponsibility: (responsibilityId: string) =>
+    apiRequest<Responsibility>(`/responsibilities/${responsibilityId}/archive`, { method: 'POST' }),
+
   getProjects: (query?: { workspaceId?: string }) =>
     apiRequest<Project[]>(withQuery('/projects', query)),
+  getProjectExecutionList: (query?: { workspaceId?: string; status?: ProjectStatus; search?: string }) =>
+    apiRequest<ProjectExecutionListItem[]>(withQuery('/project-execution', query)),
+  getProjectCockpit: (projectId: string) =>
+    apiRequest<ProjectCockpit>(`/project-execution/${projectId}`),
+  createExecutionProject: (input: CreateExecutionProjectInput, idempotencyKey: string) =>
+    apiRequest<CreateExecutionProjectResult>('/project-execution', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(input)
+    }),
+  createProjectNextMove: (
+    projectId: string,
+    input: { text: string; source: 'manual' | 'recommendation'; reason?: string; ruleKey?: string }
+  ) => apiRequest<ProjectNextMove>(`/projects/${projectId}/next-moves`, {
+    method: 'POST',
+    body: JSON.stringify(input)
+  }),
+  sendProjectMoveToToday: (projectId: string, nextMoveId: string, idempotencyKey: string) =>
+    apiRequest<{ move: ProjectNextMove; task: Task }>(
+      `/projects/${projectId}/next-moves/${nextMoveId}/to-today`,
+      { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey } }
+    ),
+  resolveProjectNextMove: (projectId: string, nextMoveId: string) =>
+    apiRequest<ProjectNextMove>(`/projects/${projectId}/next-moves/${nextMoveId}/resolve`, {
+      method: 'POST'
+    }),
   createProject: (input: {
     workspaceId: string;
     title: string;

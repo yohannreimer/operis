@@ -254,3 +254,58 @@ describe('weekly agenda API client', () => {
     ]);
   });
 });
+
+describe('fronts and project cockpit API client', () => {
+  it('loads a project cockpit and sends a recommendation to Today idempotently', async () => {
+    const cockpitFixture = { id: 'p1', title: 'Pipeline Q3' };
+    const moveFixture = { move: { id: 'm1' }, task: { id: 't1' } };
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => cockpitFixture })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => moveFixture });
+
+    await api.getProjectCockpit('p1');
+    await api.sendProjectMoveToToday('p1', 'm1', 'key-1');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/project-execution/p1',
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/p1/next-moves/m1/to-today',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.any(Headers)
+      })
+    );
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('Idempotency-Key')).toBe('key-1');
+  });
+
+  it('creates a project with a stable idempotency key', async () => {
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ project: { id: 'p1' }, activeMove: { id: 'm1' }, task: null })
+    });
+    const input = {
+      workspaceId: 'w1', methodology: 'entrega' as const, title: 'Novo site',
+      objective: 'Publicar o site', methodologyData: { milestones: [] },
+      nextMove: 'Definir escopo', nextMoveDestination: 'project' as const
+    };
+
+    await api.createExecutionProject(input, 'wizard-key-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/project-execution',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.any(Headers),
+        body: JSON.stringify(input)
+      })
+    );
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Idempotency-Key')).toBe('wizard-key-1');
+  });
+});
