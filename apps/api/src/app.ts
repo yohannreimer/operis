@@ -13,6 +13,7 @@ import { registerDayPlanRoutes } from './routes/day-plans.js';
 import { registerInboxRoutes } from './routes/inbox.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
 import { registerNoteRoutes } from './routes/notes.js';
+import { registerNoteArtifactRoutes } from './routes/note-artifacts.js';
 import { registerGamificationRoutes } from './routes/gamification.js';
 import { registerRecurringBlockRoutes } from './routes/recurring-blocks.js';
 import { registerDeepWorkRoutes } from './routes/deep-work.js';
@@ -137,6 +138,7 @@ export async function buildApp() {
   registerRecurringBlockRoutes(app, prisma, dayPlanService);
   registerInboxRoutes(app, prisma, deepWorkService);
   registerNoteRoutes(app, prisma);
+  registerNoteArtifactRoutes(app, prisma);
   registerGamificationRoutes(app, gamificationService);
   const userPhoneService = new UserPhoneService(prisma);
   registerWebhookRoutes(app, whatsappCommandService, whatsappConversationService, prisma, userPhoneService);
