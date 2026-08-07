@@ -65,4 +65,48 @@ describe('demo fetch contracts', () => {
       health: 'healthy', nextCare: 'Conferir caixa na sexta'
     });
   });
+
+  it('serves a mutable notes workspace with folders, detail and two artifacts', async () => {
+    const folders = await (await window.fetch('/api/note-folders')).json() as Array<{ name: string }>;
+    const library = await (await window.fetch('/api/notes/library?view=recent')).json() as Array<{
+      id: string;
+      title: string;
+      editVersion: number;
+    }>;
+    const meeting = library.find((note) => note.title === 'Reunião — funil de vendas');
+
+    expect(folders.map((folder) => folder.name)).toEqual(
+      expect.arrayContaining(['Vendas', 'Produto', 'Referências'])
+    );
+    expect(meeting).toBeTruthy();
+
+    const detail = await (await window.fetch(`/api/notes/${meeting!.id}`)).json() as {
+      id: string;
+      contentBlocks: unknown[];
+      editVersion: number;
+      artifacts: unknown[];
+    };
+    const artifacts = await (
+      await window.fetch(`/api/notes/${meeting!.id}/artifacts`)
+    ).json() as unknown[];
+
+    expect(detail.contentBlocks.length).toBeGreaterThan(0);
+    expect(detail.artifacts).toHaveLength(2);
+    expect(artifacts).toHaveLength(2);
+
+    const updatedResponse = await window.fetch(`/api/notes/${meeting!.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'Reunião — funil revisado', baseVersion: detail.editVersion })
+    });
+    const updated = await updatedResponse.json() as { editVersion: number };
+    expect(updatedResponse.status).toBe(200);
+    expect(updated.editVersion).toBe(detail.editVersion + 1);
+
+    const staleResponse = await window.fetch(`/api/notes/${meeting!.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: 'Sobrescrita antiga', baseVersion: detail.editVersion })
+    });
+    expect(staleResponse.status).toBe(409);
+    expect(await staleResponse.json()).toMatchObject({ error: 'note_version_conflict' });
+  });
 });

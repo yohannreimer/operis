@@ -16,6 +16,12 @@ import type {
   ResponsibilityHealth,
   ResponsibilityReview
 } from './features/projects/types';
+import type {
+  NoteArtifact,
+  NoteArtifactKind,
+  NoteArtifactSummary,
+  NoteSummary
+} from './features/notes/types';
 
 export type { DailyExecutionResponse, RolloverAction, TodayEntry } from './features/today/types';
 export type {
@@ -31,6 +37,12 @@ export type {
   ResponsibilityHealth,
   ResponsibilityReview
 } from './features/projects/types';
+export type {
+  NoteArtifact,
+  NoteArtifactKind,
+  NoteArtifactSummary,
+  NoteSummary
+} from './features/notes/types';
 
 export type WorkspaceType = 'empresa' | 'pessoal' | 'vida' | 'autoridade' | 'geral' | 'outro';
 export type WorkspaceMode = 'expansao' | 'manutencao' | 'standby';
@@ -206,6 +218,7 @@ export type Note = {
   contentText?: string | null;
   contentHtml?: string | null;
   contentVersion?: number;
+  editVersion: number;
   type: NoteType;
   tags: string[];
   pinned: boolean;
@@ -220,6 +233,7 @@ export type Note = {
   workspace?: Workspace | null;
   project?: Project | null;
   task?: Pick<Task, 'id' | 'title' | 'status'> | null;
+  artifacts?: NoteArtifactSummary[];
 };
 
 export type NoteRevision = {
@@ -1932,6 +1946,49 @@ export const api = {
     q?: string;
     limit?: number;
   }) => apiRequest<Note[]>(withQuery('/notes', query)),
+  getNotesLibrary: (query?: {
+    view?: 'inbox' | 'pinned' | 'recent';
+    folderId?: string;
+    q?: string;
+    type?: NoteType;
+    updatedAfter?: string;
+    long?: boolean;
+    workspaceId?: string;
+    projectId?: string;
+    taskId?: string;
+  }) => apiRequest<NoteSummary[]>(withQuery('/notes/library', query)),
+  getNote: (noteId: string) => apiRequest<Note>(`/notes/${noteId}`),
+  getNoteArtifacts: (noteId: string) =>
+    apiRequest<NoteArtifactSummary[]>(`/notes/${noteId}/artifacts`),
+  getNoteArtifact: (noteId: string, artifactId: string) =>
+    apiRequest<NoteArtifact>(`/notes/${noteId}/artifacts/${artifactId}`),
+  createNoteArtifact: (
+    noteId: string,
+    input: {
+      kind: NoteArtifactKind;
+      title?: string | null;
+      data: Record<string, unknown>;
+    }
+  ) =>
+    apiRequest<NoteArtifact>(`/notes/${noteId}/artifacts`, {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+  updateNoteArtifact: (
+    noteId: string,
+    artifactId: string,
+    input: {
+      title?: string | null;
+      data?: Record<string, unknown>;
+      baseVersion: number;
+    }
+  ) =>
+    apiRequest<NoteArtifact>(`/notes/${noteId}/artifacts/${artifactId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input)
+    }),
+  deleteNoteArtifact: (noteId: string, artifactId: string) =>
+    apiRequest<void>(`/notes/${noteId}/artifacts/${artifactId}`, { method: 'DELETE' }),
   createNote: (input: {
     title: string;
     content?: string | null;
@@ -1968,6 +2025,7 @@ export const api = {
       projectId: string | null;
       taskId: string | null;
       archived: boolean;
+      baseVersion: number;
       saveSource: 'manual' | 'autosave' | 'restore' | 'system';
     }>
   ) =>

@@ -4,6 +4,8 @@
 
 import type { TodayEntry } from '../features/today/types';
 import type { ProjectCockpit, Responsibility } from '../features/projects/types';
+import type { Note, NoteFolder } from '../api';
+import type { NoteArtifact } from '../features/notes/types';
 
 const localNow = new Date();
 const today = [localNow.getFullYear(), String(localNow.getMonth() + 1).padStart(2, '0'), String(localNow.getDate()).padStart(2, '0')].join('-');
@@ -132,6 +134,135 @@ let DEMO_PROJECT_COCKPITS: ProjectCockpit[] = [
     tasks: []
   }
 ];
+
+const INITIAL_DEMO_NOTE_FOLDERS: NoteFolder[] = [
+  {
+    id: 'note-folder-sales',
+    name: 'Vendas',
+    color: '#f07a32',
+    parentId: null,
+    sortOrder: 0,
+    createdAt: new Date(`${yesterday}T09:00:00`).toISOString(),
+    updatedAt: new Date(`${today}T09:00:00`).toISOString(),
+    archivedAt: null
+  },
+  {
+    id: 'note-folder-product',
+    name: 'Produto',
+    color: '#62a8ff',
+    parentId: null,
+    sortOrder: 1,
+    createdAt: new Date(`${yesterday}T09:00:00`).toISOString(),
+    updatedAt: new Date(`${today}T09:00:00`).toISOString(),
+    archivedAt: null
+  },
+  {
+    id: 'note-folder-reference',
+    name: 'Referências',
+    color: '#9a83ff',
+    parentId: null,
+    sortOrder: 2,
+    createdAt: new Date(`${yesterday}T09:00:00`).toISOString(),
+    updatedAt: new Date(`${today}T09:00:00`).toISOString(),
+    archivedAt: null
+  }
+];
+
+const SAMPLE_NOTE_ID = 'note-meeting-sales';
+const INITIAL_DEMO_NOTES: Note[] = [
+  {
+    id: SAMPLE_NOTE_ID,
+    title: 'Reunião — funil de vendas',
+    content: 'Decisões e próximos passos da reunião comercial.',
+    contentBlocks: [
+      { id: 'block-heading', type: 'heading', props: { level: 2 }, content: 'Decisões' },
+      {
+        id: 'block-paragraph',
+        type: 'paragraph',
+        content: 'O gargalo atual está entre proposta enviada e negociação.'
+      },
+      {
+        id: 'block-diagram',
+        type: 'operisArtifact',
+        props: {
+          artifactId: 'artifact-sales-diagram',
+          artifactKind: 'diagram',
+          title: 'Fluxo comercial'
+        },
+        content: []
+      },
+      {
+        id: 'block-whiteboard',
+        type: 'operisArtifact',
+        props: {
+          artifactId: 'artifact-sales-whiteboard',
+          artifactKind: 'whiteboard',
+          title: 'Hipóteses da reunião'
+        },
+        content: []
+      }
+    ],
+    contentText: 'Decisões. O gargalo atual está entre proposta enviada e negociação.',
+    contentHtml: '<h2>Decisões</h2><p>O gargalo atual está entre proposta enviada e negociação.</p>',
+    contentVersion: 1,
+    editVersion: 1,
+    type: 'geral',
+    tags: ['vendas', 'reunião'],
+    pinned: true,
+    folderId: 'note-folder-sales',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    taskId: null,
+    createdAt: new Date(`${yesterday}T10:00:00`).toISOString(),
+    updatedAt: new Date(`${today}T10:30:00`).toISOString(),
+    archivedAt: null,
+    folder: INITIAL_DEMO_NOTE_FOLDERS[0],
+    workspace: WS_NEGOCIOS,
+    project: null,
+    task: null
+  }
+];
+
+const INITIAL_DEMO_NOTE_ARTIFACTS: NoteArtifact[] = [
+  {
+    id: 'artifact-sales-diagram',
+    noteId: SAMPLE_NOTE_ID,
+    kind: 'diagram',
+    title: 'Fluxo comercial',
+    data: {
+      nodes: [
+        { id: 'lead', label: 'Lead' },
+        { id: 'proposal', label: 'Proposta' },
+        { id: 'closed', label: 'Fechado' }
+      ],
+      edges: [
+        { id: 'lead-proposal', source: 'lead', target: 'proposal' },
+        { id: 'proposal-closed', source: 'proposal', target: 'closed' }
+      ]
+    },
+    editVersion: 1,
+    createdAt: new Date(`${yesterday}T10:15:00`).toISOString(),
+    updatedAt: new Date(`${today}T10:30:00`).toISOString()
+  },
+  {
+    id: 'artifact-sales-whiteboard',
+    noteId: SAMPLE_NOTE_ID,
+    kind: 'whiteboard',
+    title: 'Hipóteses da reunião',
+    data: { elements: [], appState: { viewBackgroundColor: '#171719' }, files: {} },
+    editVersion: 1,
+    createdAt: new Date(`${yesterday}T10:25:00`).toISOString(),
+    updatedAt: new Date(`${today}T10:30:00`).toISOString()
+  }
+];
+
+function cloneDemoValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+let DEMO_NOTES = cloneDemoValue(INITIAL_DEMO_NOTES);
+let DEMO_NOTE_ARTIFACTS = cloneDemoValue(INITIAL_DEMO_NOTE_ARTIFACTS);
+let DEMO_NOTE_FOLDERS = cloneDemoValue(INITIAL_DEMO_NOTE_FOLDERS);
 
 function frontOverview(workspaceId: string) {
   const workspace = [WS_NEGOCIOS, WS_VIDA, WS_CRIACAO].find((item) => item.id === workspaceId);
@@ -746,6 +877,9 @@ function matchRoute(url: string): MockResponse | null {
 
 export function installMockFetch() {
   const originalFetch = window.fetch.bind(window);
+  DEMO_NOTES = cloneDemoValue(INITIAL_DEMO_NOTES);
+  DEMO_NOTE_ARTIFACTS = cloneDemoValue(INITIAL_DEMO_NOTE_ARTIFACTS);
+  DEMO_NOTE_FOLDERS = cloneDemoValue(INITIAL_DEMO_NOTE_FOLDERS);
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
@@ -756,6 +890,268 @@ export function installMockFetch() {
     if (isDemoApi) {
       const method = (init?.method ?? 'GET').toUpperCase();
       const path = rawPath.replace(/^\/api(?=\/|$)/, '');
+      const requestUrl = new URL(url, window.location.origin);
+      const jsonResponse = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      const artifactSummary = ({ data: _data, createdAt: _createdAt, ...artifact }: NoteArtifact) =>
+        artifact;
+
+      if (method === 'GET' && path === '/note-folders') {
+        return jsonResponse(DEMO_NOTE_FOLDERS);
+      }
+
+      if (method === 'POST' && path === '/note-folders') {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<NoteFolder>;
+        const timestamp = new Date().toISOString();
+        const folder: NoteFolder = {
+          id: `note-folder-demo-${Date.now()}`,
+          name: payload.name?.trim() || 'Nova pasta',
+          color: payload.color ?? null,
+          parentId: payload.parentId ?? null,
+          sortOrder: payload.sortOrder ?? DEMO_NOTE_FOLDERS.length,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          archivedAt: null
+        };
+        DEMO_NOTE_FOLDERS = [...DEMO_NOTE_FOLDERS, folder];
+        return jsonResponse(folder, 201);
+      }
+
+      if (method === 'PATCH' && /^\/note-folders\/[^/]+$/.test(path)) {
+        const folderId = path.split('/').at(-1)!;
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<NoteFolder>;
+        const index = DEMO_NOTE_FOLDERS.findIndex((folder) => folder.id === folderId);
+        if (index < 0) return jsonResponse({ message: 'Pasta não encontrada.' }, 404);
+        const folder = {
+          ...DEMO_NOTE_FOLDERS[index],
+          ...payload,
+          id: folderId,
+          updatedAt: new Date().toISOString()
+        };
+        DEMO_NOTE_FOLDERS = DEMO_NOTE_FOLDERS.map((item, itemIndex) =>
+          itemIndex === index ? folder : item
+        );
+        return jsonResponse(folder);
+      }
+
+      if (method === 'DELETE' && /^\/note-folders\/[^/]+$/.test(path)) {
+        const folderId = path.split('/').at(-1)!;
+        DEMO_NOTE_FOLDERS = DEMO_NOTE_FOLDERS.filter((folder) => folder.id !== folderId);
+        DEMO_NOTES = DEMO_NOTES.map((note) =>
+          note.folderId === folderId ? { ...note, folderId: null, folder: null } : note
+        );
+        return jsonResponse({ ok: true });
+      }
+
+      if (method === 'GET' && path === '/notes/library') {
+        const view = requestUrl.searchParams.get('view');
+        const folderId = requestUrl.searchParams.get('folderId');
+        const query = requestUrl.searchParams.get('q')?.trim().toLowerCase();
+        const rows = DEMO_NOTES
+          .filter((note) => !note.archivedAt)
+          .filter((note) => {
+            if (folderId) return note.folderId === folderId;
+            if (view === 'inbox') return note.folderId == null;
+            if (view === 'pinned') return note.pinned;
+            return true;
+          })
+          .filter((note) => {
+            if (!query) return true;
+            return [note.title, note.contentText, note.content, ...note.tags]
+              .filter(Boolean)
+              .some((value) => String(value).toLowerCase().includes(query));
+          })
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+          .map((note) => ({
+            id: note.id,
+            title: note.title,
+            type: note.type,
+            tags: note.tags,
+            pinned: note.pinned,
+            folderId: note.folderId,
+            createdAt: note.createdAt,
+            updatedAt: note.updatedAt,
+            editVersion: note.editVersion,
+            excerpt: (note.contentText ?? note.content ?? '').replace(/\s+/g, ' ').slice(0, 180),
+            folder: note.folder
+              ? { id: note.folder.id, name: note.folder.name, parentId: note.folder.parentId }
+              : null
+          }));
+        return jsonResponse(rows);
+      }
+
+      if (method === 'GET' && path === '/notes') {
+        return jsonResponse(DEMO_NOTES.filter((note) => !note.archivedAt));
+      }
+
+      if (method === 'POST' && path === '/notes') {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<Note>;
+        const timestamp = new Date().toISOString();
+        const folder = DEMO_NOTE_FOLDERS.find((item) => item.id === payload.folderId) ?? null;
+        const note: Note = {
+          id: `note-demo-${Date.now()}`,
+          title: payload.title?.trim() || 'Sem título',
+          content: payload.content ?? null,
+          contentBlocks: payload.contentBlocks ?? [],
+          contentText: payload.contentText ?? payload.content ?? null,
+          contentHtml: payload.contentHtml ?? null,
+          contentVersion: payload.contentVersion ?? 1,
+          editVersion: 1,
+          type: payload.type ?? 'geral',
+          tags: payload.tags ?? [],
+          pinned: payload.pinned ?? false,
+          folderId: payload.folderId ?? null,
+          workspaceId: payload.workspaceId ?? null,
+          projectId: payload.projectId ?? null,
+          taskId: payload.taskId ?? null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          archivedAt: null,
+          folder,
+          workspace: null,
+          project: null,
+          task: null
+        };
+        DEMO_NOTES = [note, ...DEMO_NOTES];
+        return jsonResponse(note, 201);
+      }
+
+      if (method === 'GET' && path === '/notes/transcription-capabilities') {
+        return jsonResponse({ available: false });
+      }
+
+      if (method === 'GET' && /^\/notes\/[^/]+\/artifacts$/.test(path)) {
+        const noteId = path.split('/')[2];
+        return jsonResponse(
+          DEMO_NOTE_ARTIFACTS.filter((artifact) => artifact.noteId === noteId).map(artifactSummary)
+        );
+      }
+
+      if (method === 'POST' && /^\/notes\/[^/]+\/artifacts$/.test(path)) {
+        const noteId = path.split('/')[2];
+        if (!DEMO_NOTES.some((note) => note.id === noteId)) {
+          return jsonResponse({ error: 'note_not_found' }, 404);
+        }
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Pick<
+          NoteArtifact,
+          'kind' | 'title' | 'data'
+        >;
+        const timestamp = new Date().toISOString();
+        const artifact: NoteArtifact = {
+          id: `artifact-demo-${Date.now()}`,
+          noteId,
+          kind: payload.kind,
+          title: payload.title ?? null,
+          data: payload.data ?? {},
+          editVersion: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        DEMO_NOTE_ARTIFACTS = [...DEMO_NOTE_ARTIFACTS, artifact];
+        return jsonResponse(artifact, 201);
+      }
+
+      if (method === 'GET' && /^\/notes\/[^/]+\/artifacts\/[^/]+$/.test(path)) {
+        const [, , noteId, , artifactId] = path.split('/');
+        const artifact = DEMO_NOTE_ARTIFACTS.find(
+          (item) => item.id === artifactId && item.noteId === noteId
+        );
+        return artifact
+          ? jsonResponse(artifact)
+          : jsonResponse({ error: 'artifact_not_found' }, 404);
+      }
+
+      if (method === 'PATCH' && /^\/notes\/[^/]+\/artifacts\/[^/]+$/.test(path)) {
+        const [, , noteId, , artifactId] = path.split('/');
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<NoteArtifact> & {
+          baseVersion?: number;
+        };
+        const index = DEMO_NOTE_ARTIFACTS.findIndex(
+          (artifact) => artifact.id === artifactId && artifact.noteId === noteId
+        );
+        if (index < 0) return jsonResponse({ error: 'artifact_not_found' }, 404);
+        if (payload.baseVersion !== DEMO_NOTE_ARTIFACTS[index].editVersion) {
+          return jsonResponse({ error: 'artifact_version_conflict' }, 409);
+        }
+        const artifact = {
+          ...DEMO_NOTE_ARTIFACTS[index],
+          ...(payload.title !== undefined ? { title: payload.title } : {}),
+          ...(payload.data !== undefined ? { data: payload.data } : {}),
+          editVersion: DEMO_NOTE_ARTIFACTS[index].editVersion + 1,
+          updatedAt: new Date().toISOString()
+        };
+        DEMO_NOTE_ARTIFACTS = DEMO_NOTE_ARTIFACTS.map((item, itemIndex) =>
+          itemIndex === index ? artifact : item
+        );
+        return jsonResponse(artifact);
+      }
+
+      if (method === 'DELETE' && /^\/notes\/[^/]+\/artifacts\/[^/]+$/.test(path)) {
+        const artifactId = path.split('/').at(-1)!;
+        DEMO_NOTE_ARTIFACTS = DEMO_NOTE_ARTIFACTS.filter(
+          (artifact) => artifact.id !== artifactId
+        );
+        return new Response(null, { status: 204 });
+      }
+
+      if (method === 'GET' && /^\/notes\/[^/]+$/.test(path)) {
+        const noteId = path.split('/')[2];
+        const note = DEMO_NOTES.find((item) => item.id === noteId);
+        if (!note) return jsonResponse({ message: 'Nota não encontrada.' }, 404);
+        const artifacts = DEMO_NOTE_ARTIFACTS.filter(
+          (artifact) => artifact.noteId === noteId
+        ).map(artifactSummary);
+        return jsonResponse({ ...note, artifacts });
+      }
+
+      if (method === 'PATCH' && /^\/notes\/[^/]+$/.test(path)) {
+        const noteId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<Note> & {
+          baseVersion?: number;
+          archived?: boolean;
+          saveSource?: string;
+        };
+        const index = DEMO_NOTES.findIndex((note) => note.id === noteId);
+        if (index < 0) return jsonResponse({ message: 'Nota não encontrada.' }, 404);
+        const current = DEMO_NOTES[index];
+        if (
+          payload.baseVersion !== current.editVersion &&
+          !(payload.baseVersion === undefined && payload.saveSource === 'system')
+        ) {
+          return jsonResponse({ error: 'note_version_conflict' }, 409);
+        }
+        const { baseVersion: _baseVersion, archived, saveSource: _saveSource, ...changes } = payload;
+        const folder = changes.folderId === undefined
+          ? current.folder
+          : DEMO_NOTE_FOLDERS.find((item) => item.id === changes.folderId) ?? null;
+        const note: Note = {
+          ...current,
+          ...changes,
+          id: noteId,
+          folder,
+          archivedAt: archived === undefined
+            ? current.archivedAt
+            : archived
+              ? new Date().toISOString()
+              : null,
+          editVersion: current.editVersion + 1,
+          updatedAt: new Date().toISOString()
+        };
+        DEMO_NOTES = DEMO_NOTES.map((item, itemIndex) => (itemIndex === index ? note : item));
+        return jsonResponse(note);
+      }
+
+      if (method === 'DELETE' && /^\/notes\/[^/]+$/.test(path)) {
+        const noteId = path.split('/')[2];
+        DEMO_NOTES = DEMO_NOTES.filter((note) => note.id !== noteId);
+        DEMO_NOTE_ARTIFACTS = DEMO_NOTE_ARTIFACTS.filter(
+          (artifact) => artifact.noteId !== noteId
+        );
+        return jsonResponse({ ok: true });
+      }
 
       if (method === 'POST' && path === '/project-execution') {
         const payload = JSON.parse(String(init?.body ?? '{}')) as {
