@@ -66,6 +66,36 @@ enum ProjectMetricKind {
   lag
 }
 
+enum ProjectNextMoveSource {
+  manual
+  recommendation
+}
+
+enum ProjectNextMoveStatus {
+  active
+  resolved
+}
+
+enum ResponsibilityHealth {
+  healthy
+  attention
+  critical
+}
+
+enum ResponsibilityStatus {
+  active
+  paused
+  archived
+}
+
+enum ResponsibilityCadence {
+  weekly
+  biweekly
+  monthly
+  quarterly
+  custom
+}
+
 enum TaskStatus {
   backlog
   hoje
@@ -217,14 +247,15 @@ model Workspace {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  projects Project[]
-  tasks    Task[]
-  notes    Note[]
-  deepWorkSessions DeepWorkSession[]
-  weeklyEnergyPlans WeeklyEnergyPlan[]
-  strategicReviews StrategicReview[]
+  projects                Project[]
+  tasks                   Task[]
+  notes                   Note[]
+  deepWorkSessions        DeepWorkSession[]
+  weeklyEnergyPlans       WeeklyEnergyPlan[]
+  strategicReviews        StrategicReview[]
   strategicDecisionEvents StrategicDecisionEvent[]
-  inboxItems InboxItem[]
+  inboxItems              InboxItem[]
+  responsibilities        Responsibility[]
 
   @@index([clerkUserId])
   @@map("workspaces")
@@ -251,87 +282,91 @@ model NoteFolder {
 }
 
 model Project {
-  id                String        @id @default(uuid())
-  workspaceId       String        @map("workspace_id")
-  title             String
-  description       String?
-  status            ProjectStatus @default(ativo)
-  type              ProjectType   @default(operacao)
-  methodology       ProjectMethodology @default(fourdx)
-  objective         String?
-  primaryMetric     String?       @map("primary_metric")
-  actionStatement   String?       @map("action_statement")
-  methodologyExtraOne String?     @map("methodology_extra_one")
-  methodologyExtraTwo String?     @map("methodology_extra_two")
-  methodologyData   Json?         @map("methodology_data")
-  timeHorizonEnd    DateTime?     @map("time_horizon_end")
-  resultStartValue  Float?        @map("result_start_value")
-  resultCurrentValue Float?       @map("result_current_value")
-  resultTargetValue Float?        @map("result_target_value")
-  scorecardCadenceDays Int        @default(7) @map("scorecard_cadence_days")
-  lastScorecardCheckinAt DateTime? @map("last_scorecard_checkin_at")
-  lastStrategicAt   DateTime      @default(now()) @map("last_strategic_at")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
-  archivedAt        DateTime?     @map("archived_at")
+  id                     String             @id @default(uuid())
+  workspaceId            String             @map("workspace_id")
+  title                  String
+  description            String?
+  status                 ProjectStatus      @default(ativo)
+  type                   ProjectType        @default(operacao)
+  methodology            ProjectMethodology @default(fourdx)
+  objective              String?
+  primaryMetric          String?            @map("primary_metric")
+  actionStatement        String?            @map("action_statement")
+  methodologyExtraOne    String?            @map("methodology_extra_one")
+  methodologyExtraTwo    String?            @map("methodology_extra_two")
+  methodologyData        Json?              @map("methodology_data")
+  timeHorizonEnd         DateTime?          @map("time_horizon_end")
+  resultStartValue       Float?             @map("result_start_value")
+  resultCurrentValue     Float?             @map("result_current_value")
+  resultTargetValue      Float?             @map("result_target_value")
+  scorecardCadenceDays   Int                @default(7) @map("scorecard_cadence_days")
+  lastScorecardCheckinAt DateTime?          @map("last_scorecard_checkin_at")
+  lastStrategicAt        DateTime           @default(now()) @map("last_strategic_at")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+  archivedAt             DateTime?          @map("archived_at")
+  creationKey            String?            @map("creation_key")
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  tasks     Task[]
-  notes     Note[]
-  deepWorkSessions DeepWorkSession[]
+  workspace               Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks                   Task[]
+  notes                   Note[]
+  deepWorkSessions        DeepWorkSession[]
   strategicDecisionEvents StrategicDecisionEvent[]
-  metrics ProjectMetric[]
-  metricCheckins ProjectMetricCheckin[]
+  metrics                 ProjectMetric[]
+  metricCheckins          ProjectMetricCheckin[]
+  nextMoves               ProjectNextMove[]
 
+  @@unique([workspaceId, creationKey])
   @@index([workspaceId])
   @@map("projects")
 }
 
 model Task {
-  id               String            @id @default(uuid())
-  workspaceId      String            @map("workspace_id")
-  projectId        String?           @map("project_id")
-  title            String
-  description      String?
-  definitionOfDone String?           @map("definition_of_done")
-  status           TaskStatus        @default(backlog)
-  taskType         TaskType          @default(b) @map("task_type")
-  energyLevel      TaskEnergy        @default(media) @map("energy_level")
-  executionKind    TaskExecutionKind @default(operacao) @map("execution_kind")
-  horizon          TaskHorizon       @default(active)
-  priority         Int               @default(3)
-  dueDate          DateTime?         @map("due_date")
-  estimatedMinutes Int?              @map("estimated_minutes")
-  fixedTimeStart   DateTime?         @map("fixed_time_start")
-  fixedTimeEnd     DateTime?         @map("fixed_time_end")
-  windowStart      DateTime?         @map("window_start")
-  windowEnd        DateTime?         @map("window_end")
-  isMultiBlock     Boolean           @default(false) @map("is_multi_block")
-  multiBlockGoalMinutes Int?         @map("multi_block_goal_minutes")
-  waitingOnPerson  String?           @map("waiting_on_person")
-  waitingType      WaitingType?      @map("waiting_type")
-  waitingPriority  WaitingPriority?  @map("waiting_priority")
-  waitingDueDate   DateTime?         @map("waiting_due_date")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  completedAt      DateTime?         @map("completed_at")
-  archivedAt       DateTime?         @map("archived_at")
+  id                    String            @id @default(uuid())
+  workspaceId           String            @map("workspace_id")
+  projectId             String?           @map("project_id")
+  title                 String
+  description           String?
+  definitionOfDone      String?           @map("definition_of_done")
+  status                TaskStatus        @default(backlog)
+  taskType              TaskType          @default(b) @map("task_type")
+  energyLevel           TaskEnergy        @default(media) @map("energy_level")
+  executionKind         TaskExecutionKind @default(operacao) @map("execution_kind")
+  horizon               TaskHorizon       @default(active)
+  priority              Int               @default(3)
+  dueDate               DateTime?         @map("due_date")
+  estimatedMinutes      Int?              @map("estimated_minutes")
+  fixedTimeStart        DateTime?         @map("fixed_time_start")
+  fixedTimeEnd          DateTime?         @map("fixed_time_end")
+  windowStart           DateTime?         @map("window_start")
+  windowEnd             DateTime?         @map("window_end")
+  isMultiBlock          Boolean           @default(false) @map("is_multi_block")
+  multiBlockGoalMinutes Int?              @map("multi_block_goal_minutes")
+  waitingOnPerson       String?           @map("waiting_on_person")
+  waitingType           WaitingType?      @map("waiting_type")
+  waitingPriority       WaitingPriority?  @map("waiting_priority")
+  waitingDueDate        DateTime?         @map("waiting_due_date")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  completedAt           DateTime?         @map("completed_at")
+  archivedAt            DateTime?         @map("archived_at")
 
-  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project       Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  subtasks      Subtask[]
-  restrictions  TaskRestriction[]
-  dayPlanItems  DayPlanItem[]
-  executionEvents ExecutionEvent[]
-  whatsappEvents WhatsappEvent[]
-  deepWorkSessions DeepWorkSession[]
+  workspace               Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                 Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  subtasks                Subtask[]
+  restrictions            TaskRestriction[]
+  dayPlanItems            DayPlanItem[]
+  executionEvents         ExecutionEvent[]
+  whatsappEvents          WhatsappEvent[]
+  deepWorkSessions        DeepWorkSession[]
   strategicDecisionEvents StrategicDecisionEvent[]
-  notes Note[]
-  dailyExecutionItems DailyExecutionItem[]
-  executionSessions ExecutionSession[]
+  notes                   Note[]
+  dailyExecutionItems     DailyExecutionItem[]
+  executionSessions       ExecutionSession[]
+  projectNextMoves        ProjectNextMove[]
 
-  dependencies     TaskDependency[] @relation("TaskDependsOn")
-  dependedBy       TaskDependency[] @relation("TaskDependedBy")
+  dependencies TaskDependency[] @relation("TaskDependsOn")
+  dependedBy   TaskDependency[] @relation("TaskDependedBy")
 
   @@index([workspaceId])
   @@index([projectId])
@@ -343,6 +378,66 @@ model Task {
   @@index([waitingDueDate])
   @@index([isMultiBlock])
   @@map("tasks")
+}
+
+model ProjectNextMove {
+  id             String                @id @default(uuid())
+  projectId      String                @map("project_id")
+  taskId         String?               @map("task_id")
+  idempotencyKey String?               @unique @map("idempotency_key")
+  text           String
+  source         ProjectNextMoveSource
+  reason         String?
+  ruleKey        String?               @map("rule_key")
+  status         ProjectNextMoveStatus @default(active)
+  createdAt      DateTime              @default(now()) @map("created_at")
+  resolvedAt     DateTime?             @map("resolved_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([taskId])
+  @@map("project_next_moves")
+}
+
+model Responsibility {
+  id                  String                @id @default(uuid())
+  workspaceId         String                @map("workspace_id")
+  title               String
+  expectedStandard    String                @map("expected_standard")
+  cadence             ResponsibilityCadence
+  cadenceIntervalDays Int?                  @map("cadence_interval_days")
+  health              ResponsibilityHealth  @default(healthy)
+  nextCare            String                @map("next_care")
+  nextReviewAt        DateTime              @map("next_review_at")
+  lastReviewedAt      DateTime?             @map("last_reviewed_at")
+  status              ResponsibilityStatus  @default(active)
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+  archivedAt          DateTime?             @map("archived_at")
+
+  workspace Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reviews   ResponsibilityReview[]
+
+  @@index([workspaceId, status, nextReviewAt])
+  @@map("responsibilities")
+}
+
+model ResponsibilityReview {
+  id               String               @id @default(uuid())
+  responsibilityId String               @map("responsibility_id")
+  createdTaskId    String?              @map("created_task_id")
+  health           ResponsibilityHealth
+  note             String?
+  nextCare         String               @map("next_care")
+  nextReviewAt     DateTime             @map("next_review_at")
+  reviewedAt       DateTime             @default(now()) @map("reviewed_at")
+
+  responsibility Responsibility @relation(fields: [responsibilityId], references: [id], onDelete: Cascade)
+
+  @@index([responsibilityId, reviewedAt])
+  @@map("responsibility_reviews")
 }
 
 model ProjectMetric {
@@ -359,7 +454,7 @@ model ProjectMetric {
   updatedAt     DateTime          @updatedAt @map("updated_at")
   archivedAt    DateTime?         @map("archived_at")
 
-  project  Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project  Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
   checkins ProjectMetricCheckin[]
 
   @@index([projectId, kind])
@@ -371,7 +466,7 @@ model ProjectMetricCheckin {
   id              String   @id @default(uuid())
   projectMetricId String   @map("project_metric_id")
   projectId       String   @map("project_id")
-  weekStart       DateTime @db.Date @map("week_start")
+  weekStart       DateTime @map("week_start") @db.Date
   value           Float
   note            String?
   createdAt       DateTime @default(now()) @map("created_at")
@@ -386,8 +481,8 @@ model ProjectMetricCheckin {
 }
 
 model Subtask {
-  id     String @id @default(uuid())
-  taskId String @map("task_id")
+  id     String     @id @default(uuid())
+  taskId String     @map("task_id")
   title  String
   status TaskStatus @default(backlog)
 
@@ -398,14 +493,14 @@ model Subtask {
 }
 
 model TaskRestriction {
-  id         String               @id @default(uuid())
-  taskId     String               @map("task_id")
+  id         String                @id @default(uuid())
+  taskId     String                @map("task_id")
   title      String
   detail     String?
   status     TaskRestrictionStatus @default(aberta)
-  createdAt  DateTime             @default(now()) @map("created_at")
-  updatedAt  DateTime             @updatedAt @map("updated_at")
-  resolvedAt DateTime?            @map("resolved_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
+  resolvedAt DateTime?             @map("resolved_at")
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
@@ -416,29 +511,29 @@ model TaskRestriction {
 }
 
 model Note {
-  id          String    @id @default(uuid())
-  clerkUserId String    @map("clerk_user_id") @default("legacy")
-  title       String
-  content     String?
-  contentBlocks  Json?   @map("content_blocks")
-  contentText    String? @map("content_text")
-  contentHtml    String? @map("content_html")
-  contentVersion Int     @default(1) @map("content_version")
-  type        NoteType  @default(geral)
-  tags        String[]  @default([])
-  pinned      Boolean   @default(false)
-  folderId    String?   @map("folder_id")
-  workspaceId String?   @map("workspace_id")
-  projectId   String?   @map("project_id")
-  taskId      String?   @map("task_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  archivedAt  DateTime? @map("archived_at")
+  id             String    @id @default(uuid())
+  clerkUserId    String    @default("legacy") @map("clerk_user_id")
+  title          String
+  content        String?
+  contentBlocks  Json?     @map("content_blocks")
+  contentText    String?   @map("content_text")
+  contentHtml    String?   @map("content_html")
+  contentVersion Int       @default(1) @map("content_version")
+  type           NoteType  @default(geral)
+  tags           String[]  @default([])
+  pinned         Boolean   @default(false)
+  folderId       String?   @map("folder_id")
+  workspaceId    String?   @map("workspace_id")
+  projectId      String?   @map("project_id")
+  taskId         String?   @map("task_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  archivedAt     DateTime? @map("archived_at")
 
-  folder    NoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  folder     NoteFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  workspace  Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  project    Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task       Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
   revisions  NoteRevision[]
   diagram    Diagram?
   mindMap    MindMap?
@@ -454,23 +549,23 @@ model Note {
 }
 
 model NoteRevision {
-  id          String   @id @default(uuid())
-  noteId      String   @map("note_id")
-  title       String
-  content     String?
-  contentBlocks  Json?   @map("content_blocks")
-  contentText    String? @map("content_text")
-  contentHtml    String? @map("content_html")
-  contentVersion Int     @default(1) @map("content_version")
-  type        NoteType @default(geral)
-  tags        String[] @default([])
-  pinned      Boolean  @default(false)
-  folderId    String?  @map("folder_id")
-  workspaceId String?  @map("workspace_id")
-  projectId   String?  @map("project_id")
-  taskId      String?  @map("task_id")
-  source      String   @default("manual")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  noteId         String   @map("note_id")
+  title          String
+  content        String?
+  contentBlocks  Json?    @map("content_blocks")
+  contentText    String?  @map("content_text")
+  contentHtml    String?  @map("content_html")
+  contentVersion Int      @default(1) @map("content_version")
+  type           NoteType @default(geral)
+  tags           String[] @default([])
+  pinned         Boolean  @default(false)
+  folderId       String?  @map("folder_id")
+  workspaceId    String?  @map("workspace_id")
+  projectId      String?  @map("project_id")
+  taskId         String?  @map("task_id")
+  source         String   @default("manual")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
 
@@ -506,10 +601,10 @@ model RecurringBlock {
 }
 
 model DayPlan {
-  id          String    @id @default(uuid())
-  clerkUserId String    @map("clerk_user_id")
-  date        DateTime  @db.Date
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  clerkUserId String   @map("clerk_user_id")
+  date        DateTime @db.Date
+  createdAt   DateTime @default(now()) @map("created_at")
 
   items DayPlanItem[]
 
@@ -530,9 +625,9 @@ model DayPlanItem {
   blockType         BlockType         @map("block_type")
   confirmationState ConfirmationState @default(pending) @map("confirmation_state")
 
-  dayPlan   DayPlan    @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
-  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  inboxItem InboxItem? @relation(fields: [inboxItemId], references: [id], onDelete: SetNull)
+  dayPlan   DayPlan            @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  task      Task?              @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  inboxItem InboxItem?         @relation(fields: [inboxItemId], references: [id], onDelete: SetNull)
   sessions  ExecutionSession[]
 
   @@index([dayPlanId, startTime])
@@ -542,45 +637,45 @@ model DayPlanItem {
 }
 
 model InboxItem {
-  id              String          @id @default(uuid())
-  clerkUserId     String          @map("clerk_user_id")
-  content         String
-  source          InboxSource     @default(app)
-  status          InboxItemStatus @default(pendente)
+  id          String          @id @default(uuid())
+  clerkUserId String          @map("clerk_user_id")
+  content     String
+  source      InboxSource     @default(app)
+  status      InboxItemStatus @default(pendente)
 
-  workspaceId     String?         @map("workspace_id")
-  inboxContextId  String?         @map("inbox_context_id")
-  position        Int             @default(0)
+  workspaceId    String? @map("workspace_id")
+  inboxContextId String? @map("inbox_context_id")
+  position       Int     @default(0)
 
-  waitingDate     DateTime?       @map("waiting_date")
-  waitingPerson   String?         @map("waiting_person")
-  waitingNote     String?         @map("waiting_note")
+  waitingDate   DateTime? @map("waiting_date")
+  waitingPerson String?   @map("waiting_person")
+  waitingNote   String?   @map("waiting_note")
 
-  scheduledAt     DateTime?       @map("scheduled_at")
-  convertedTaskId String?         @map("converted_task_id")
+  scheduledAt     DateTime? @map("scheduled_at")
+  convertedTaskId String?   @map("converted_task_id")
 
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt      @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  workspace       Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  inboxContext    InboxContext?   @relation(fields: [inboxContextId], references: [id], onDelete: SetNull)
-  todayItems      InboxTodayItem[]
+  workspace           Workspace?           @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  inboxContext        InboxContext?        @relation(fields: [inboxContextId], references: [id], onDelete: SetNull)
+  todayItems          InboxTodayItem[]
   dailyExecutionItems DailyExecutionItem[]
-  dayPlanItems    DayPlanItem[]
-  executionSessions ExecutionSession[]
+  dayPlanItems        DayPlanItem[]
+  executionSessions   ExecutionSession[]
 
   @@index([clerkUserId, status])
   @@map("inbox_items")
 }
 
 model InboxContext {
-  id          String      @id @default(uuid())
-  clerkUserId String      @map("clerk_user_id")
+  id          String   @id @default(uuid())
+  clerkUserId String   @map("clerk_user_id")
   name        String
-  position    Int         @default(0)
-  createdAt   DateTime    @default(now()) @map("created_at")
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  items       InboxItem[]
+  items InboxItem[]
 
   @@index([clerkUserId])
   @@map("inbox_contexts")
@@ -595,7 +690,7 @@ model InboxTodayItem {
   completedAt DateTime? @map("completed_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  inboxItem   InboxItem @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
+  inboxItem InboxItem @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
 
   @@unique([clerkUserId, inboxItemId, todayDate])
   @@index([clerkUserId, todayDate])
@@ -614,8 +709,8 @@ model DailyExecutionItem {
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
 
-  inboxItem InboxItem? @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
-  task      Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  inboxItem         InboxItem?         @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
+  task              Task?              @relation(fields: [taskId], references: [id], onDelete: Cascade)
   executionSessions ExecutionSession[]
 
   @@unique([clerkUserId, date, inboxItemId])
@@ -664,26 +759,26 @@ model WhatsappEvent {
 }
 
 model WhatsappConversationSession {
-  id               String    @id @default(uuid())
-  phoneNumber      String    @unique @map("phone_number")
-  clerkUserId      String?   @map("clerk_user_id")
-  state            String    @default("idle")
-  payload          Json?
-  expiresAt        DateTime? @map("expires_at")
+  id                String    @id @default(uuid())
+  phoneNumber       String    @unique @map("phone_number")
+  clerkUserId       String?   @map("clerk_user_id")
+  state             String    @default("idle")
+  payload           Json?
+  expiresAt         DateTime? @map("expires_at")
   lastInteractionAt DateTime  @default(now()) @map("last_interaction_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@index([state, expiresAt])
   @@map("whatsapp_conversation_sessions")
 }
 
 model ExecutionEvent {
-  id        String             @id @default(uuid())
-  taskId    String             @map("task_id")
-  eventType ExecutionEventType @map("event_type")
-  failureReason FailureReason? @map("failure_reason")
-  timestamp DateTime           @default(now())
+  id            String             @id @default(uuid())
+  taskId        String             @map("task_id")
+  eventType     ExecutionEventType @map("event_type")
+  failureReason FailureReason?     @map("failure_reason")
+  timestamp     DateTime           @default(now())
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
@@ -718,12 +813,12 @@ model DeepWorkSession {
 }
 
 model WeeklyEnergyPlan {
-  id            String   @id @default(uuid())
-  weekStart     DateTime @db.Date @map("week_start")
-  workspaceId   String   @map("workspace_id")
-  plannedPercent Int     @map("planned_percent")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  weekStart      DateTime @map("week_start") @db.Date
+  workspaceId    String   @map("workspace_id")
+  plannedPercent Int      @map("planned_percent")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -735,7 +830,7 @@ model WeeklyEnergyPlan {
 model StrategicReview {
   id                String           @id @default(uuid())
   periodType        ReviewPeriodType @map("period_type")
-  periodStart       DateTime         @db.Date @map("period_start")
+  periodStart       DateTime         @map("period_start") @db.Date
   workspaceScope    String           @default("__all__") @map("workspace_scope")
   workspaceId       String?          @map("workspace_id")
   nextPriority      String?          @map("next_priority")
@@ -804,7 +899,7 @@ enum RecurrenceDay {
 
 model Commitment {
   id          String           @id @default(uuid())
-  clerkUserId String           @map("clerk_user_id") @default("legacy")
+  clerkUserId String           @default("legacy") @map("clerk_user_id")
   workspaceId String?          @map("workspace_id")
   projectId   String?          @map("project_id")
   title       String
@@ -813,20 +908,20 @@ model Commitment {
   status      CommitmentStatus @default(ativo)
 
   // Horário
-  startTime   String?  @map("start_time")   // HH:mm
-  durationMin Int?     @map("duration_min")  // minutos
+  startTime   String? @map("start_time") // HH:mm
+  durationMin Int?    @map("duration_min") // minutos
 
   // Recorrência — só type=fixo
   recurrenceDays RecurrenceDay[] @map("recurrence_days")
 
   // Data de referência — variável ou início da recorrência
-  date        DateTime?        @db.Date
+  date DateTime? @db.Date
 
   // Prazo de fim da recorrência (opcional)
-  recurrenceEnd DateTime?      @db.Date @map("recurrence_end")
+  recurrenceEnd DateTime? @map("recurrence_end") @db.Date
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   exceptions CommitmentException[]
 
@@ -841,10 +936,10 @@ model Commitment {
 model CommitmentException {
   id           String    @id @default(uuid())
   commitmentId String    @map("commitment_id")
-  date         DateTime  @db.Date   // qual ocorrência foi afetada
-  action       String               // 'cancelled' | 'rescheduled'
-  newDate      DateTime? @db.Date   @map("new_date")
-  newTime      String?              @map("new_time") // HH:mm
+  date         DateTime  @db.Date // qual ocorrência foi afetada
+  action       String // 'cancelled' | 'rescheduled'
+  newDate      DateTime? @map("new_date") @db.Date
+  newTime      String?   @map("new_time") // HH:mm
   note         String?
   createdAt    DateTime  @default(now()) @map("created_at")
 
@@ -896,25 +991,26 @@ enum HabitStatus {
 }
 
 model Habit {
-  id              String         @id @default(uuid())
-  clerkUserId     String         @map("clerk_user_id")
+  id              String          @id @default(uuid())
+  clerkUserId     String          @map("clerk_user_id")
   title           String
   lifeArea        HabitLifeArea
   type            HabitType
   icon            String?
   color           String?
   frequencyType   HabitFrequency
-  frequencyTarget Int            @default(1)
+  frequencyTarget Int             @default(1)
   specificDays    RecurrenceDay[]
   unit            String?
   dailyTarget     Float?
-  xpPerCompletion Int            @default(10)
-  status          HabitStatus    @default(ativo)
-  sortOrder       Int            @default(0)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  xpPerCompletion Int             @default(10)
+  status          HabitStatus     @default(ativo)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   logs            HabitLog[]
   xpEvents        HabitXPEvent[]
+
   @@index([clerkUserId])
   @@map("habits")
 }
@@ -927,6 +1023,7 @@ model HabitLog {
   note      String?
   createdAt DateTime @default(now())
   habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
   @@unique([habitId, date])
   @@index([habitId, date])
   @@map("habit_logs")
@@ -942,6 +1039,7 @@ model HabitXPEvent {
   notified  Boolean       @default(false)
   createdAt DateTime      @default(now())
   habit     Habit         @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
   @@index([habitId])
   @@index([lifeArea])
   @@index([date])
