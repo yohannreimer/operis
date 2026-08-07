@@ -72,7 +72,8 @@ import { workspaceQuery } from '../utils/workspace';
 import { ProjectList, type ProjectListFilters } from '../features/projects/project-list';
 import { ProjectWizard } from '../features/projects/project-wizard';
 import { isFrontsProjectsV2Enabled } from '../features/projects/project-feature-flag';
-import type { ProjectExecutionListItem } from '../features/projects/types';
+import { ProjectShell } from '../features/projects/project-shell';
+import type { ProjectCockpit, ProjectExecutionListItem } from '../features/projects/types';
 
 type CreateEntity = 'project' | 'task';
 type ProjectCreateStep = 1 | 2 | 3;
@@ -9329,8 +9330,10 @@ export function LegacyProjetosPage() {
 }
 
 function ProjectsExecutionPage() {
+  const { projectId } = useParams<{ projectId?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState<ProjectExecutionListItem[]>([]);
+  const [cockpit, setCockpit] = useState<ProjectCockpit | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [filters, setFilters] = useState<ProjectListFilters>({
     search: '',
@@ -9342,12 +9345,25 @@ function ProjectsExecutionPage() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
 
+  const loadCockpit = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setError('');
+      setCockpit(await api.getProjectCockpit(projectId));
+      setReady(true);
+    } catch (requestError) {
+      setError((requestError as Error).message);
+      setReady(true);
+    }
+  }, [projectId]);
+
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedSearch(filters.search), 250);
     return () => window.clearTimeout(timeout);
   }, [filters.search]);
 
   useEffect(() => {
+    if (projectId) return;
     let active = true;
     setError('');
     Promise.all([
@@ -9367,7 +9383,9 @@ function ProjectsExecutionPage() {
       setReady(true);
     });
     return () => { active = false; };
-  }, [debouncedSearch, filters.workspaceId]);
+  }, [debouncedSearch, filters.workspaceId, projectId]);
+
+  useEffect(() => { if (projectId) { setReady(false); void loadCockpit(); } }, [loadCockpit, projectId]);
 
   function changeFilters(next: ProjectListFilters) {
     setFilters(next);
@@ -9376,6 +9394,16 @@ function ProjectsExecutionPage() {
     else params.delete('workspaceId');
     params.delete('new');
     setSearchParams(params, { replace: true });
+  }
+
+  if (projectId) {
+    return !ready
+      ? <div className="projects-list-loading project-detail-loading"><span /><span /><span /></div>
+      : error
+        ? <div className="projects-list-error project-detail-error" role="alert"><p>{error}</p><button type="button" onClick={() => void loadCockpit()}>Tentar novamente</button></div>
+        : cockpit
+          ? <ProjectShell project={cockpit} onReload={() => void loadCockpit()} />
+          : null;
   }
 
   return (
@@ -9391,7 +9419,6 @@ function ProjectsExecutionPage() {
 }
 
 export function ProjetosPage() {
-  const { projectId } = useParams<{ projectId?: string }>();
-  if (!isFrontsProjectsV2Enabled() || projectId) return <LegacyProjetosPage />;
+  if (!isFrontsProjectsV2Enabled()) return <LegacyProjetosPage />;
   return <ProjectsExecutionPage />;
 }
