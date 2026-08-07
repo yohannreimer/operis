@@ -1,8 +1,14 @@
 .notes-library-page {
-  width: min(100%, 940px);
+  width: 100%;
   margin: 0 auto;
   padding: 38px 30px 100px;
   color: var(--text);
+}
+
+.notes-library-header,
+.notes-library-content {
+  width: min(calc(100% - 48px), 920px);
+  margin-inline: auto;
 }
 
 .notes-library-header {
@@ -209,6 +215,19 @@
 }
 .notes-folder-manager-row form,
 .notes-folder-manager-row input { width: 100%; }
+.notes-folder-manager-select {
+  min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .notes-folder-row-actions { display: flex; gap: 2px; }
 
 .notes-library-search:focus-within {
@@ -680,6 +699,14 @@
 .note-related-notes a span,
 .note-related-notes p { margin: 0; color: var(--muted); font-size: 0.7rem; }
 
+.notes-library-page :is(button, a, input, textarea, select, summary):focus-visible,
+.note-workspace-page :is(button, a, input, textarea, select, summary):focus-visible,
+.note-artifact-focus :is(button, a, input, textarea, select):focus-visible,
+.note-artifact-focus:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .note-document-artifact-error,
 .note-workspace-load-error {
   margin: 12px 0;
@@ -968,8 +995,10 @@
   to { background-position: -120% 0; }
 }
 
-@media (max-width: 720px) {
-  .notes-library-page { padding: 24px 18px 110px; }
+@media (max-width: 760px) {
+  .notes-library-page { padding: 24px 16px 110px; }
+  .notes-library-header,
+  .notes-library-content { width: 100%; }
   .notes-library-header { display: grid; gap: 18px; margin-bottom: 20px; }
   .notes-library-header p { font-size: 0.82rem; }
   .notes-library-search { width: 100%; }
@@ -986,7 +1015,14 @@
   .notes-list-row-meta svg { display: none; }
   .note-document-topbar { padding-inline: 10px; }
   .note-document-paper { width: 100%; padding: 42px 16px 120px; }
-  .note-document-insert-trigger { width: 44px; height: 44px; }
+  .note-document-insert {
+    position: fixed;
+    z-index: 24;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    margin: 0;
+  }
+  .note-document-insert-trigger { width: 48px; height: 48px; border-color: rgba(249, 115, 22, 0.42); background: var(--primary); color: #17120f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
   .note-document-insert-menu button { min-height: 44px; }
   .note-related-notes { width: calc(100% - 32px); }
   .note-document-title { font-size: 2.1rem; }
@@ -1002,4 +1038,14 @@
     flex-wrap: wrap;
   }
   .note-artifact-save-error > span { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-library-page *,
+  .note-workspace-page *,
+  .note-artifact-focus * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

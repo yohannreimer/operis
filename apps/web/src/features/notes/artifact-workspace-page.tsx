@@ -132,10 +132,10 @@ export function ArtifactWorkspacePage({
   }, [attemptBack]);
 
   if (loadError) {
-    return <main className="note-artifact-focus" aria-label="Editor visual em foco"><p role="alert">{loadError}</p></main>;
+    return <main ref={rootRef} className="note-artifact-focus" aria-label="Editor visual em foco" tabIndex={-1}><p role="alert">{loadError}</p></main>;
   }
   if (!artifact) {
-    return <main className="note-artifact-focus" aria-label="Editor visual em foco"><p>Carregando editor visual…</p></main>;
+    return <main ref={rootRef} className="note-artifact-focus" aria-label="Editor visual em foco" tabIndex={-1}><p role="status" aria-live="polite">Carregando editor visual…</p></main>;
   }
 
   const canvasProps = {

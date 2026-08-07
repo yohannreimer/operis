@@ -63,13 +63,24 @@ describe('ArtifactWorkspacePage', () => {
       createdAt: '2026-08-07T10:00:00.000Z',
       updatedAt: '2026-08-07T10:00:00.000Z'
     });
-    apiMock.updateNoteArtifact.mockResolvedValue({ editVersion: 2 });
+    apiMock.updateNoteArtifact.mockResolvedValue({
+      id: 'artifact-1',
+      noteId: 'note-1',
+      kind: 'diagram',
+      title: 'Funil',
+      data: { changed: true },
+      editVersion: 2,
+      createdAt: '2026-08-07T10:00:00.000Z',
+      updatedAt: '2026-08-07T10:01:00.000Z'
+    });
   });
 
   it('renders a full-screen visual editor without the app navigation', async () => {
     renderWorkspace();
     const main = await screen.findByRole('main', { name: 'Editor visual em foco' });
     expect(main).toHaveClass('note-artifact-focus');
+    expect(main).toHaveAttribute('tabindex', '-1');
+    await waitFor(() => expect(main).toHaveFocus());
     expect(screen.getByTestId('diagram-canvas')).toBeInTheDocument();
     expect(screen.queryByText('Hoje')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar para a nota' })).toBeInTheDocument();
@@ -93,5 +104,21 @@ describe('ArtifactWorkspacePage', () => {
     expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Voltar com alterações pendentes' })).toBeInTheDocument();
     expect(screen.queryByText('Documento')).not.toBeInTheDocument();
+  });
+
+  it('uses Escape to return only when no dialog is open', async () => {
+    renderWorkspace();
+    await screen.findByTestId('diagram-canvas');
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    document.body.append(dialog);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(apiMock.updateNoteArtifact).not.toHaveBeenCalled();
+    expect(screen.queryByText('Documento')).not.toBeInTheDocument();
+
+    dialog.remove();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(await screen.findByText('Documento')).toBeInTheDocument();
   });
 });

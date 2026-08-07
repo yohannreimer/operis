@@ -34,7 +34,7 @@ export function NotesList({
 }) {
   if (loading && rows.length === 0) {
     return (
-      <div className="notes-list-loading" aria-label="Carregando notas">
+      <div className="notes-list-loading" role="status" aria-live="polite" aria-label="Carregando notas">
         <span />
         <span />
         <span />

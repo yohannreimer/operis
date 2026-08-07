@@ -68,11 +68,12 @@ export function FolderFilterStrip({
     const index = siblings.findIndex((candidate) => candidate.id === folder.id);
     const target = siblings[index + direction];
     if (!target) return;
+    const reordered = [...siblings];
+    [reordered[index], reordered[index + direction]] = [reordered[index + direction], reordered[index]];
     void run(async () => {
-      await Promise.all([
-        api.updateNoteFolder(folder.id, { sortOrder: target.sortOrder }),
-        api.updateNoteFolder(target.id, { sortOrder: folder.sortOrder })
-      ]);
+      await Promise.all(reordered.map((candidate, sortOrder) =>
+        api.updateNoteFolder(candidate.id, { sortOrder })
+      ));
     });
   }
 
@@ -139,7 +140,15 @@ export function FolderFilterStrip({
                     <form onSubmit={(event) => { event.preventDefault(); const value = editingName.trim(); if (value) void run(() => api.updateNoteFolder(folder.id, { name: value })); setEditingId(null); }}>
                       <input aria-label={`Novo nome de ${folder.name}`} autoFocus value={editingName} onChange={(event) => setEditingName(event.currentTarget.value)} />
                     </form>
-                  ) : <span>{folder.name}</span>}
+                  ) : (
+                    <button
+                      type="button"
+                      className="notes-folder-manager-select"
+                      onClick={() => { controller.setSelectedView(folder.id); setManagerOpen(false); }}
+                    >
+                      {folder.name}
+                    </button>
+                  )}
                   <div className="notes-folder-row-actions">
                     <button type="button" aria-label={`Renomear ${folder.name}`} onClick={() => { setEditingId(folder.id); setEditingName(folder.name); }}><Pencil size={14} /></button>
                     <button type="button" aria-label={`Mover ${folder.name} para cima`} disabled={busy} onClick={() => move(folder, -1)}><ArrowUp size={14} /></button>

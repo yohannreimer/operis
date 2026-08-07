@@ -309,7 +309,7 @@ export function NoteWorkspacePage({ noteId }: { noteId: string }) {
 
   const content = useMemo(() => {
     if (error) return <div className="note-workspace-load-error" role="alert">{error}</div>;
-    if (!note) return <div className="note-workspace-loading">Abrindo nota…</div>;
+    if (!note) return <div className="note-workspace-loading" role="status" aria-live="polite">Abrindo nota…</div>;
     return <LoadedNoteWorkspace initialNote={note} />;
   }, [error, note]);
 
