@@ -20,6 +20,8 @@ import {
 
 import type { MethodologyData, ProjectMethodology } from '../../api';
 import type { ProjectCockpit } from './types';
+import { MetricEngine } from './engines/metric-engine';
+import { MilestoneEngine } from './engines/milestone-engine';
 
 export type ProjectWizardValues = {
   methodology: ProjectMethodology | null;
@@ -99,6 +101,10 @@ define('runway', 'Preservar caixa', 'Runway', 'Antecipe eventos e proteja meses 
 define('sistema_receita', 'Construir receita', 'Sistema de receita', 'Defina critérios para repetir o caminho da venda.', BadgeDollarSign, false);
 define('funil', 'Melhorar conversão', 'Funil', 'Encontre e ataque a maior perda entre etapas.', Funnel, false);
 define('processo', 'Manter um processo', 'Processo legado', 'Ciclo recorrente preservado para Projetos existentes.', Repeat2, false);
+
+definitions.fourdx.View = MetricEngine;
+definitions.entrega.View = MilestoneEngine;
+definitions.autoridade.View = MilestoneEngine;
 
 function legacy(methodology: ProjectMethodology, canonical: ProjectMethodology) {
   definitions[methodology] = {
