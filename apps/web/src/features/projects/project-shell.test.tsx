@@ -41,4 +41,13 @@ describe('ProjectShell', () => {
     fireEvent.click(screen.getByRole('button', { name: /reparar dados do motor/i }));
     await waitFor(() => expect(apiMock.updateProject).toHaveBeenCalledWith('p1', { methodologyData: cockpitFixture.engine.data }));
   });
+
+  it.each(['delivery', 'launch', 'discovery', 'growth', 'processo'] as const)('opens legacy methodology %s without blanking the shell', (methodology) => {
+    const data = methodology === 'processo'
+      ? { cycleTemplate: [{ id: 'item-1', text: 'Fechar mês', order: 1 }], cycles: [{ id: 'cycle-1', periodLabel: 'Agosto', startDate: '2026-08-01', items: [{ templateId: 'item-1', done: false }] }] }
+      : cockpitFixture.engine.data;
+    render(<MemoryRouter><ProjectShell project={{ ...cockpitFixture, engine: { ...cockpitFixture.engine, methodology, data, recovered: true } }} onReload={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByRole('heading', { name: cockpitFixture.title })).toBeVisible();
+    expect(screen.queryByText(/erro interno/i)).not.toBeInTheDocument();
+  });
 });

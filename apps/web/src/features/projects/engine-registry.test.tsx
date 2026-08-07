@@ -30,4 +30,11 @@ describe('project engine registry', () => {
     expect(screen.getByText('Entregar algo')).toBeVisible();
     expect(screen.getByText('Validar uma ideia')).toBeVisible();
   });
+
+  it('keeps Processo available for legacy projects but out of the creation picker', () => {
+    render(<ProjectMethodologyPicker value={null} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /ver todos/i }));
+    expect(screen.queryByText('Processo legado')).not.toBeInTheDocument();
+    expect(getEngineDefinition('processo').methodLabel).toBe('Processo legado');
+  });
 });

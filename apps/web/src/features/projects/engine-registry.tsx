@@ -28,6 +28,7 @@ import { FunnelEngine } from './engines/funnel-engine';
 import { CampaignEngine } from './engines/campaign-engine';
 import { DecisionEngine } from './engines/decision-engine';
 import { OkrEngine } from './engines/okr-engine';
+import { RecurringEngine } from './engines/recurring-engine';
 
 export type ProjectWizardValues = {
   methodology: ProjectMethodology | null;
@@ -122,6 +123,7 @@ definitions.runway.View = CampaignEngine;
 definitions.decisao.View = DecisionEngine;
 definitions.cenario.View = DecisionEngine;
 definitions.okr.View = OkrEngine;
+definitions.processo.View = RecurringEngine;
 
 function legacy(methodology: ProjectMethodology, canonical: ProjectMethodology) {
   definitions[methodology] = {
