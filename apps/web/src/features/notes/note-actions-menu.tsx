@@ -1,4 +1,4 @@
-import { Archive, Copy, FileDown, History, Mic, Pin, PinOff, Share2, Sparkles, X } from 'lucide-react';
+import { Archive, Copy, FileDown, GitBranch, History, Mic, Network, Pin, PinOff, Share2, Sparkles, X } from 'lucide-react';
 
 import type { Note } from '../../api';
 
@@ -10,6 +10,7 @@ export type NoteActionsMenuProps = {
   onStartDictation(): void;
   onExport(format: 'copy' | 'txt' | 'pdf' | 'whatsapp'): Promise<void> | void;
   onArchive(): Promise<void>;
+  onGenerateArtifact?(kind: 'diagram' | 'mindmap'): Promise<void>;
   onClose(): void;
 };
 
@@ -21,6 +22,7 @@ export function NoteActionsMenu({
   onStartDictation,
   onExport,
   onArchive,
+  onGenerateArtifact,
   onClose
 }: NoteActionsMenuProps) {
   return (
@@ -40,6 +42,12 @@ export function NoteActionsMenu({
       <button type="button" onClick={onOpenTemplates}><Sparkles size={16} />Templates</button>
       <button type="button" onClick={onOpenHistory}><History size={16} />Histórico e checkpoints</button>
       <button type="button" onClick={onStartDictation}><Mic size={16} />Ditado</button>
+      {onGenerateArtifact ? (
+        <>
+          <button type="button" onClick={() => void onGenerateArtifact('diagram')}><GitBranch size={16} />Gerar diagrama com IA</button>
+          <button type="button" onClick={() => void onGenerateArtifact('mindmap')}><Network size={16} />Gerar mapa mental com IA</button>
+        </>
+      ) : null}
 
       <div className="note-side-panel-divider" />
       <span className="note-actions-label">Exportar</span>

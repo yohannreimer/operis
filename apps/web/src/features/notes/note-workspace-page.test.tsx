@@ -8,7 +8,9 @@ import { NoteWorkspacePage } from './note-workspace-page';
 const apiMock = vi.hoisted(() => ({
   getNote: vi.fn(),
   updateNote: vi.fn(),
-  createNoteRevision: vi.fn()
+  createNoteRevision: vi.fn(),
+  getNotesLibrary: vi.fn(),
+  generateNoteArtifact: vi.fn()
 }));
 const saveState = vi.hoisted(() => ({
   status: 'idle',
@@ -69,6 +71,7 @@ describe('NoteWorkspacePage', () => {
     vi.clearAllMocks();
     saveState.status = 'idle';
     apiMock.getNote.mockResolvedValue(note);
+    apiMock.getNotesLibrary.mockResolvedValue([]);
     const values = new Map<string, string>();
     vi.stubGlobal('sessionStorage', {
       getItem: (key: string) => values.get(key) ?? null,
@@ -89,6 +92,8 @@ describe('NoteWorkspacePage', () => {
     expect(screen.getByTestId('block-count')).toHaveTextContent('2');
     expect(screen.queryByText('Detalhes da nota')).not.toBeInTheDocument();
     expect(screen.queryByText('Ações da nota')).not.toBeInTheDocument();
+    const related = screen.getByText('Notas relacionadas').closest('details');
+    expect(related).not.toHaveAttribute('open');
   });
 
   it.each([

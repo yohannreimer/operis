@@ -7,11 +7,15 @@ export type NotesLibraryController = {
   folders: NoteFolder[];
   selectedView: 'inbox' | 'pinned' | 'recent' | string;
   query: string;
+  longOnly: boolean;
+  updatedAfter: string;
   loading: boolean;
   notesError: string | null;
   foldersError: string | null;
   setSelectedView(value: string): void;
   setQuery(value: string): void;
+  setLongOnly(value: boolean): void;
+  setUpdatedAfter(value: string): void;
   addCaptured(note: Note): void;
   reload(): Promise<void>;
 };
@@ -43,6 +47,8 @@ export function useNotesLibrary(): NotesLibraryController {
   const [folders, setFolders] = useState<NoteFolder[]>([]);
   const [selectedView, setSelectedView] = useState<string>('recent');
   const [query, setQuery] = useState('');
+  const [longOnly, setLongOnly] = useState(false);
+  const [updatedAfter, setUpdatedAfter] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [notesError, setNotesError] = useState<string | null>(null);
@@ -71,7 +77,11 @@ export function useNotesLibrary(): NotesLibraryController {
       ...(syntheticView
         ? { view: selectedView as 'inbox' | 'pinned' | 'recent' }
         : { folderId: selectedView }),
-      ...(debouncedQuery ? { q: debouncedQuery } : {})
+      ...(debouncedQuery ? { q: debouncedQuery } : {}),
+      ...(longOnly ? { long: true } : {}),
+      ...(updatedAfter
+        ? { updatedAfter: new Date(`${updatedAfter}T00:00:00`).toISOString() }
+        : {})
     };
     setLoading(true);
 
@@ -86,7 +96,7 @@ export function useNotesLibrary(): NotesLibraryController {
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [debouncedQuery, selectedView]);
+  }, [debouncedQuery, longOnly, selectedView, updatedAfter]);
 
   useEffect(() => {
     void loadFolders();
@@ -110,11 +120,15 @@ export function useNotesLibrary(): NotesLibraryController {
     folders,
     selectedView,
     query,
+    longOnly,
+    updatedAfter,
     loading,
     notesError,
     foldersError,
     setSelectedView,
     setQuery,
+    setLongOnly,
+    setUpdatedAfter,
     addCaptured,
     reload
   };

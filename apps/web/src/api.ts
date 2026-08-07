@@ -1974,6 +1974,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input)
     }),
+  generateNoteArtifact: (
+    noteId: string,
+    input: { kind: 'diagram' | 'mindmap'; title?: string }
+  ) =>
+    apiRequest<NoteArtifact>(`/notes/${noteId}/artifacts/generate`, {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
   updateNoteArtifact: (
     noteId: string,
     artifactId: string,

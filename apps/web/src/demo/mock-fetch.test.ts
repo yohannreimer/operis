@@ -108,5 +108,12 @@ describe('demo fetch contracts', () => {
     });
     expect(staleResponse.status).toBe(409);
     expect(await staleResponse.json()).toMatchObject({ error: 'note_version_conflict' });
+
+    const generatedResponse = await window.fetch(`/api/notes/${meeting!.id}/artifacts/generate`, {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'diagram' })
+    });
+    expect(generatedResponse.status).toBe(201);
+    expect(await generatedResponse.json()).toMatchObject({ kind: 'diagram', noteId: meeting!.id });
   });
 });

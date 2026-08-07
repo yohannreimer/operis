@@ -2,7 +2,7 @@ import { ArrowLeft, Info, MoreHorizontal, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { api, type Note, type NoteContentBlock } from '../../api';
+import { api, type Note, type NoteContentBlock, type NoteSummary } from '../../api';
 import { mergeArtifactBlocks } from './artifact-blocks';
 import type { OperisBlockEditorValue, OperisEditorCommand } from './editor';
 import { NoteActionsMenu } from './note-actions-menu';
@@ -49,6 +49,38 @@ function returnAnchor(noteId: string) {
   } catch {
     return null;
   }
+}
+
+function RelatedNotes({ note }: { note: Note }) {
+  const [rows, setRows] = useState<NoteSummary[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const query = note.tags[0] ?? note.title.split(/\s+/).find((word) => word.length >= 4) ?? '';
+    if (!query) {
+      setLoaded(true);
+      return () => { active = false; };
+    }
+    void api.getNotesLibrary({ q: query })
+      .then((result) => {
+        if (active) setRows(result.filter((candidate) => candidate.id !== note.id).slice(0, 4));
+      })
+      .catch(() => undefined)
+      .finally(() => { if (active) setLoaded(true); });
+    return () => { active = false; };
+  }, [note.id, note.tags, note.title]);
+
+  return (
+    <details className="note-related-notes">
+      <summary>Notas relacionadas{rows.length ? ` · ${rows.length}` : ''}</summary>
+      <div>
+        {rows.map((row) => <Link key={row.id} to={`/notas/${row.id}`}><strong>{row.title || 'Sem título'}</strong><span>{row.excerpt || 'Sem prévia'}</span></Link>)}
+        {loaded && rows.length === 0 ? <p>Nenhuma relação forte encontrada ainda.</p> : null}
+        {!loaded ? <p>Buscando relações…</p> : null}
+      </div>
+    </details>
+  );
 }
 
 function LoadedNoteWorkspace({ initialNote }: { initialNote: Note }) {
@@ -192,12 +224,14 @@ function LoadedNoteWorkspace({ initialNote }: { initialNote: Note }) {
         note={note}
         onChange={handleDocumentChange}
         onCommand={handleEditorCommand}
+        onStartDictation={() => setSecondarySurface('dictation')}
         onOpenArtifact={(artifactId, blockId) =>
           navigate(`/notas/${note.id}/artifacts/${artifactId}`, {
             state: { openerBlockId: blockId }
           })
         }
       />
+      <RelatedNotes note={note} />
 
       {detailsOpen ? (
         <NoteDetailsPanel note={note} onChange={markPatch} onClose={() => setDetailsOpen(false)} />
@@ -210,6 +244,11 @@ function LoadedNoteWorkspace({ initialNote }: { initialNote: Note }) {
           onOpenTemplates={() => setSecondarySurface('templates')}
           onOpenHistory={() => setSecondarySurface('history')}
           onStartDictation={() => setSecondarySurface('dictation')}
+          onGenerateArtifact={async (kind) => {
+            const artifact = await api.generateNoteArtifact(note.id, { kind });
+            setActionsOpen(false);
+            navigate(`/notas/${note.id}/artifacts/${artifact.id}`);
+          }}
           onExport={exportNote}
           onArchive={async () => {
             await api.updateNote(note.id, {

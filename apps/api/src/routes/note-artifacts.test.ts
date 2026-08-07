@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getUserId } from '../middleware/auth.js';
 import {
@@ -8,7 +8,13 @@ import {
 } from '../services/note-artifact-service.js';
 import { registerNoteArtifactRoutes } from './note-artifacts.js';
 
+const canvasAIMock = vi.hoisted(() => ({
+  generateDiagram: vi.fn(),
+  generateMindMap: vi.fn()
+}));
+
 vi.mock('../middleware/auth.js', () => ({ getUserId: vi.fn(() => 'user_1') }));
+vi.mock('../services/canvas-ai-service.js', () => canvasAIMock);
 
 const noteId = '00000000-0000-4000-8000-000000000001';
 const artifactId = '00000000-0000-4000-8000-000000000002';
@@ -30,6 +36,15 @@ function artifact(id: string, title: string, editVersion = 1) {
 
 describe('note artifact routes', () => {
   const apps: ReturnType<typeof Fastify>[] = [];
+
+  beforeEach(() => {
+    canvasAIMock.generateDiagram.mockResolvedValue({
+      nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 }
+    });
+    canvasAIMock.generateMindMap.mockResolvedValue({
+      nodeData: { id: 'root', topic: 'Resumo', children: [] }
+    });
+  });
 
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -101,5 +116,57 @@ describe('note artifact routes', () => {
 
     expect(response.statusCode).toBe(400);
     expect(list).not.toHaveBeenCalled();
+  });
+
+  it('generates a new artifact without overwriting an existing one', async () => {
+    const create = vi
+      .spyOn(NoteArtifactService.prototype, 'create')
+      .mockResolvedValue(artifact('00000000-0000-4000-8000-000000000009', 'Mapa gerado'));
+    const prisma = {
+      note: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: noteId,
+          contentText: 'Uma descrição suficientemente longa do processo comercial, decisões e próximos passos.',
+          content: null
+        })
+      }
+    };
+    const app = Fastify();
+    registerNoteArtifactRoutes(app, prisma as never);
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/notes/${noteId}/artifacts/generate`,
+      payload: { kind: 'diagram', title: 'Mapa gerado' }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(canvasAIMock.generateDiagram).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledWith(
+      'user_1',
+      noteId,
+      expect.objectContaining({ kind: 'diagram', title: 'Mapa gerado' })
+    );
+  });
+
+  it('rejects generation when the note has less than 50 characters', async () => {
+    const prisma = {
+      note: {
+        findFirst: vi.fn().mockResolvedValue({ id: noteId, contentText: 'Curta', content: null })
+      }
+    };
+    const app = Fastify();
+    registerNoteArtifactRoutes(app, prisma as never);
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/notes/${noteId}/artifacts/generate`,
+      payload: { kind: 'mindmap' }
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(canvasAIMock.generateMindMap).not.toHaveBeenCalled();
   });
 });

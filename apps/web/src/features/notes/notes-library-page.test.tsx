@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -76,5 +76,20 @@ describe('NotesLibraryPage', () => {
 
     expect(screen.getByText('Pastas indisponíveis')).toBeInTheDocument();
     expect(screen.getByText('Notas indisponíveis')).toBeInTheDocument();
+  });
+
+  it('keeps templates behind Nova nota and long/date filters inside advanced search', () => {
+    render(
+      <MemoryRouter>
+        <NotesLibraryPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('button', { name: 'Longas' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Busca avançada' }));
+    expect(screen.getByLabelText('Somente notas longas')).toBeInTheDocument();
+    expect(screen.getByLabelText('Atualizadas depois de')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Nova nota' }));
+    expect(screen.getByRole('dialog', { name: 'Escolher template' })).toBeInTheDocument();
   });
 });

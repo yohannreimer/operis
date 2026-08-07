@@ -1030,6 +1030,33 @@ export function installMockFetch() {
         );
       }
 
+      if (method === 'POST' && /^\/notes\/[^/]+\/artifacts\/generate$/.test(path)) {
+        const noteId = path.split('/')[2];
+        const note = DEMO_NOTES.find((item) => item.id === noteId);
+        if (!note) return jsonResponse({ error: 'note_not_found' }, 404);
+        const source = (note.contentText ?? note.content ?? '').trim();
+        if (source.length < 50) return jsonResponse({ error: 'note_content_too_short' }, 422);
+        const payload = JSON.parse(String(init?.body ?? '{}')) as {
+          kind: 'diagram' | 'mindmap';
+          title?: string;
+        };
+        const timestamp = new Date().toISOString();
+        const artifact: NoteArtifact = {
+          id: `artifact-demo-${Date.now()}`,
+          noteId,
+          kind: payload.kind,
+          title: payload.title ?? (payload.kind === 'diagram' ? 'Diagrama gerado' : 'Mapa mental gerado'),
+          data: payload.kind === 'diagram'
+            ? { nodes: [{ id: 'source', label: note.title }], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }
+            : { nodeData: { id: 'root', topic: note.title, children: [] } },
+          editVersion: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        DEMO_NOTE_ARTIFACTS = [...DEMO_NOTE_ARTIFACTS, artifact];
+        return jsonResponse(artifact, 201);
+      }
+
       if (method === 'POST' && /^\/notes\/[^/]+\/artifacts$/.test(path)) {
         const noteId = path.split('/')[2];
         if (!DEMO_NOTES.some((note) => note.id === noteId)) {

@@ -1,5 +1,6 @@
 import type { BlockNoteEditor, PartialBlock } from '@blocknote/core';
 import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core/extensions';
+import { GitBranch, Mic, Network, PencilRuler, Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 
 import { api, type Note, type NoteArtifactKind } from '../../api';
@@ -36,15 +37,18 @@ export function NoteDocumentEditor({
   note,
   onChange,
   onOpenArtifact,
-  onCommand
+  onCommand,
+  onStartDictation
 }: {
   note: Note;
   onChange(value: OperisBlockEditorValue & { title: string }): void;
   onOpenArtifact(artifactId: string, blockId?: string): void;
   onCommand?(command: OperisEditorCommand): void;
+  onStartDictation?(): void;
 }) {
   const [title, setTitle] = useState(note.title);
   const [artifactError, setArtifactError] = useState<string | null>(null);
+  const [insertMenuOpen, setInsertMenuOpen] = useState(false);
   const editorRef = useRef<Editor | null>(null);
   const latestValue = useRef<OperisBlockEditorValue>({
     blocks: (note.contentBlocks ?? []) as OperisBlock[],
@@ -139,6 +143,25 @@ export function NoteDocumentEditor({
           }}
         />
       </ArtifactBlockProvider>
+      <div className="note-document-insert">
+        <button
+          type="button"
+          className="note-document-insert-trigger"
+          aria-label="Inserir no documento"
+          aria-expanded={insertMenuOpen}
+          onClick={() => setInsertMenuOpen((open) => !open)}
+        >
+          <Plus size={17} />
+        </button>
+        {insertMenuOpen ? (
+          <div className="note-document-insert-menu" role="menu" aria-label="Inserir no documento">
+            <button type="button" role="menuitem" onClick={() => { const editor = editorRef.current; if (editor) void insertArtifact('insertDiagram', editor); setInsertMenuOpen(false); }}><GitBranch size={15} />Diagrama</button>
+            <button type="button" role="menuitem" onClick={() => { const editor = editorRef.current; if (editor) void insertArtifact('insertMindmap', editor); setInsertMenuOpen(false); }}><Network size={15} />Mapa mental</button>
+            <button type="button" role="menuitem" onClick={() => { const editor = editorRef.current; if (editor) void insertArtifact('insertWhiteboard', editor); setInsertMenuOpen(false); }}><PencilRuler size={15} />Quadro livre</button>
+            <button type="button" role="menuitem" onClick={() => { onStartDictation?.(); setInsertMenuOpen(false); }}><Mic size={15} />Ditado</button>
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
