@@ -45,6 +45,8 @@ import { ProjectNextMoveService } from './services/project-next-move-service.js'
 import { registerProjectNextMoveRoutes } from './routes/project-execution.js';
 import { ResponsibilityService } from './services/responsibility-service.js';
 import { registerResponsibilityRoutes } from './routes/responsibilities.js';
+import { FrontOverviewService } from './services/front-overview-service.js';
+import { registerFrontOverviewRoutes } from './routes/front-overview.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -90,6 +92,7 @@ export async function buildApp() {
   const executionSessionService = new ExecutionSessionService(prisma);
   const projectNextMoveService = new ProjectNextMoveService(prisma);
   const responsibilityService = new ResponsibilityService(prisma);
+  const frontOverviewService = new FrontOverviewService(prisma);
   const deepWorkService = new DeepWorkService(prisma);
   const executionInsightsService = new ExecutionInsightsService(prisma);
   const strategyService = new StrategyService(prisma);
@@ -124,6 +127,7 @@ export async function buildApp() {
   registerExecutionSessionRoutes(app, executionSessionService);
   registerProjectNextMoveRoutes(app, projectNextMoveService);
   registerResponsibilityRoutes(app, responsibilityService);
+  registerFrontOverviewRoutes(app, frontOverviewService);
   registerDeepWorkRoutes(app, deepWorkService);
   registerExecutionRoutes(app, executionInsightsService);
   registerStrategyRoutes(app, strategyService);
