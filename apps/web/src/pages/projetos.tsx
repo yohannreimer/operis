@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   PICKER_TYPES,
   computeAuthorityScore,
@@ -69,6 +69,10 @@ import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock } fr
 import { useShellContext } from '../components/shell-context';
 import { formatIsoDate, formatIsoDateDayMonth } from '../utils/date';
 import { workspaceQuery } from '../utils/workspace';
+import { ProjectList, type ProjectListFilters } from '../features/projects/project-list';
+import { ProjectWizard } from '../features/projects/project-wizard';
+import { isFrontsProjectsV2Enabled } from '../features/projects/project-feature-flag';
+import type { ProjectExecutionListItem } from '../features/projects/types';
 
 type CreateEntity = 'project' | 'task';
 type ProjectCreateStep = 1 | 2 | 3;
@@ -911,7 +915,7 @@ function methodologyCardSummary(input: {
   };
 }
 
-export function ProjetosPage() {
+export function LegacyProjetosPage() {
   const navigate = useNavigate();
   const { projectId: projectRouteId } = useParams<{ projectId?: string }>();
   const isProjectRoute = Boolean(projectRouteId);
@@ -9322,4 +9326,72 @@ export function ProjetosPage() {
       />
     </PremiumPage>
   );
+}
+
+function ProjectsExecutionPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [projects, setProjects] = useState<ProjectExecutionListItem[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [filters, setFilters] = useState<ProjectListFilters>({
+    search: '',
+    workspaceId: searchParams.get('workspaceId') ?? '',
+    state: 'active'
+  });
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [wizardOpen, setWizardOpen] = useState(searchParams.get('new') === 'true');
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(filters.search), 250);
+    return () => window.clearTimeout(timeout);
+  }, [filters.search]);
+
+  useEffect(() => {
+    let active = true;
+    setError('');
+    Promise.all([
+      api.getProjectExecutionList({
+        workspaceId: filters.workspaceId || undefined,
+        search: debouncedSearch || undefined
+      }),
+      api.getWorkspaces()
+    ]).then(([projectRows, workspaceRows]) => {
+      if (!active) return;
+      setProjects(projectRows);
+      setWorkspaces(workspaceRows.filter((workspace) => workspace.type !== 'geral'));
+      setReady(true);
+    }).catch((requestError) => {
+      if (!active) return;
+      setError((requestError as Error).message);
+      setReady(true);
+    });
+    return () => { active = false; };
+  }, [debouncedSearch, filters.workspaceId]);
+
+  function changeFilters(next: ProjectListFilters) {
+    setFilters(next);
+    const params = new URLSearchParams(searchParams);
+    if (next.workspaceId) params.set('workspaceId', next.workspaceId);
+    else params.delete('workspaceId');
+    params.delete('new');
+    setSearchParams(params, { replace: true });
+  }
+
+  return (
+    <section className="projects-execution-page">
+      <header className="projects-execution-page__header">
+        <div><span>EXECUÇÃO ADAPTATIVA</span><h1>Projetos</h1><p>Direção, movimento e método — numa única leitura.</p></div>
+        <button type="button" onClick={() => setWizardOpen(true)}>Novo Projeto</button>
+      </header>
+      {!ready ? <div className="projects-list-loading"><span /><span /><span /></div> : error ? <div className="projects-list-error" role="alert"><p>{error}</p><button type="button" onClick={() => setDebouncedSearch((value) => `${value} `)}>Tentar novamente</button></div> : <ProjectList projects={projects} filters={filters} onFiltersChange={changeFilters} onNewProject={() => setWizardOpen(true)} />}
+      <ProjectWizard open={wizardOpen} workspaces={workspaces} onClose={() => setWizardOpen(false)} />
+    </section>
+  );
+}
+
+export function ProjetosPage() {
+  const { projectId } = useParams<{ projectId?: string }>();
+  if (!isFrontsProjectsV2Enabled() || projectId) return <LegacyProjetosPage />;
+  return <ProjectsExecutionPage />;
 }
