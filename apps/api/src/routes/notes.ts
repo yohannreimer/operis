@@ -369,6 +369,18 @@ async function createNoteRevisionSnapshot(
   },
   source: string
 ) {
+  const artifacts = await db.noteArtifact.findMany({
+    where: { noteId: note.id },
+    select: {
+      id: true,
+      kind: true,
+      title: true,
+      data: true,
+      editVersion: true
+    },
+    orderBy: { createdAt: 'asc' }
+  });
+
   await db.noteRevision.create({
     data: {
       noteId: note.id,
@@ -385,7 +397,16 @@ async function createNoteRevisionSnapshot(
       workspaceId: note.workspaceId,
       projectId: note.projectId,
       taskId: note.taskId,
-      source
+      source,
+      artifactSnapshots: {
+        create: artifacts.map((artifact: any) => ({
+          artifactId: artifact.id,
+          kind: artifact.kind,
+          title: artifact.title,
+          data: artifact.data,
+          editVersion: artifact.editVersion
+        }))
+      }
     }
   });
 }
@@ -1490,6 +1511,9 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
       orderBy: {
         createdAt: 'desc'
       },
+      include: {
+        artifactSnapshots: true
+      },
       take: query.limit ?? 30
     });
   });
@@ -1534,6 +1558,9 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
         where: {
           id: params.revisionId,
           noteId: params.noteId
+        },
+        include: {
+          artifactSnapshots: true
         }
       })
     ]);
@@ -1583,16 +1610,51 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
           folderId: revision.folderId,
           workspaceId: revision.workspaceId,
           projectId: revision.projectId,
-          taskId: revision.taskId
+          taskId: revision.taskId,
+          editVersion: { increment: 1 }
         },
         include: {
           ...NOTE_RELATION_INCLUDE
         }
       });
 
+      await tx.noteArtifact.deleteMany({ where: { noteId: params.noteId } });
+
+      const artifactSnapshots = revision.artifactSnapshots ?? [];
+      if (artifactSnapshots.length > 0) {
+        await tx.noteArtifact.createMany({
+          data: artifactSnapshots.map((artifact: any) => ({
+            id: artifact.artifactId,
+            noteId: params.noteId,
+            kind: artifact.kind,
+            title: artifact.title,
+            data: artifact.data,
+            editVersion: artifact.editVersion
+          }))
+        });
+      }
+
       await createNoteRevisionSnapshot(tx, updated, 'restore_apply');
 
-      return updated;
+      return (
+        (await tx.note.findUnique({
+          where: { id: params.noteId },
+          include: {
+            ...NOTE_RELATION_INCLUDE,
+            artifacts: {
+              select: {
+                id: true,
+                noteId: true,
+                kind: true,
+                title: true,
+                editVersion: true,
+                updatedAt: true
+              },
+              orderBy: { createdAt: 'asc' }
+            }
+          }
+        })) ?? updated
+      );
     });
 
     return restored;
