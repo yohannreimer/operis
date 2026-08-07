@@ -21,6 +21,8 @@ import { TaskCompletionModal } from '../components/task-completion-modal';
 import { EmptyState, PremiumCard, PremiumHeader, PremiumPage, SkeletonBlock, TabSwitch } from '../components/premium-ui';
 import { useShellContext } from '../components/shell-context';
 import { TaskIntelligenceTable } from '../components/task-intelligence-table';
+import { FrontsExecutionPage } from '../features/fronts/front-overview';
+import { isFrontsProjectsV2Enabled } from '../features/projects/project-feature-flag';
 
 type ReviewDraft = {
   nextPriority: string;
@@ -133,7 +135,7 @@ function parseActionItems(text: string) {
     .slice(0, 12);
 }
 
-export function WorkspacesPage() {
+export function LegacyWorkspacesPage() {
   const navigate = useNavigate();
   const { workspaceId: workspaceRouteId } = useParams<{ workspaceId?: string }>();
   const isWorkspaceRoute = Boolean(workspaceRouteId);
@@ -1231,4 +1233,8 @@ export function WorkspacesPage() {
       />
     </PremiumPage>
   );
+}
+
+export function WorkspacesPage() {
+  return isFrontsProjectsV2Enabled() ? <FrontsExecutionPage /> : <LegacyWorkspacesPage />;
 }
