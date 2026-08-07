@@ -22,11 +22,15 @@ describe('Operis BlockNote commands', () => {
 
   it('groups slash commands and delegates page-level actions to callbacks', () => {
     const onCommand = vi.fn();
-    const items = buildOperisSlashMenuItems({ onCommand });
+    const editor = {} as never;
+    const items = buildOperisSlashMenuItems({ onCommand, editor });
 
     expect(items.map((item) => [item.title, item.group])).toEqual(
       expect.arrayContaining([
         ['Decisão executiva', 'Operis'],
+        ['Diagrama', 'Operis'],
+        ['Mapa mental', 'Operis'],
+        ['Quadro livre', 'Operis'],
         ['Checklist comum', 'Estrutura'],
         ['Templates', 'Exportar'],
         ['Detalhes', 'Exportar'],
@@ -37,10 +41,12 @@ describe('Operis BlockNote commands', () => {
     items.find((item) => item.title === 'Templates')?.onItemClick();
     items.find((item) => item.title === 'Detalhes')?.onItemClick();
     items.find((item) => item.title === 'Salvar')?.onItemClick();
+    items.find((item) => item.title === 'Diagrama')?.onItemClick();
 
-    expect(onCommand).toHaveBeenCalledTimes(3);
-    expect(onCommand).toHaveBeenNthCalledWith(1, 'templates');
-    expect(onCommand).toHaveBeenNthCalledWith(2, 'details');
-    expect(onCommand).toHaveBeenNthCalledWith(3, 'save');
+    expect(onCommand).toHaveBeenCalledTimes(4);
+    expect(onCommand).toHaveBeenNthCalledWith(1, 'templates', editor);
+    expect(onCommand).toHaveBeenNthCalledWith(2, 'details', editor);
+    expect(onCommand).toHaveBeenNthCalledWith(3, 'save', editor);
+    expect(onCommand).toHaveBeenNthCalledWith(4, 'insertDiagram', editor);
   });
 });

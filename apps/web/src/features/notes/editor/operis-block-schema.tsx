@@ -10,6 +10,7 @@ import {
   Users
 } from 'lucide-react';
 import type React from 'react';
+import { ArtifactBlock } from '../artifact-block';
 
 type PropEditorProps = {
   block: { props: Record<string, string> };
@@ -330,6 +331,30 @@ const OperisLinkedTask = createReactBlockSpec(
   }
 );
 
+const OperisArtifact = createReactBlockSpec(
+  {
+    type: 'operisArtifact',
+    propSchema: {
+      artifactId: { default: '' },
+      artifactKind: {
+        default: 'diagram',
+        values: ['diagram', 'mindmap', 'whiteboard']
+      },
+      title: { default: '' }
+    },
+    content: 'none'
+  },
+  {
+    render: ({ block }) => (
+      <ArtifactBlock
+        artifactId={block.props.artifactId}
+        artifactKind={block.props.artifactKind}
+        title={block.props.title}
+      />
+    )
+  }
+);
+
 export const operisBlockSchema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
@@ -339,7 +364,8 @@ export const operisBlockSchema = BlockNoteSchema.create({
     operisInsight: OperisInsight(),
     operisMeeting: OperisMeeting(),
     operisExecutiveChecklist: OperisExecutiveChecklist(),
-    operisLinkedTask: OperisLinkedTask()
+    operisLinkedTask: OperisLinkedTask(),
+    operisArtifact: OperisArtifact()
   }
 });
 

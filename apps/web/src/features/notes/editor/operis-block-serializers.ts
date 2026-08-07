@@ -1,4 +1,6 @@
 import type { OperisBlock, SerializedNoteBlocks } from './operis-block-types';
+import { artifactLabel } from '../artifact-blocks';
+import type { NoteArtifactKind } from '../types';
 
 type SerializedBlock = SerializedNoteBlocks;
 type RenderContext = {
@@ -394,6 +396,25 @@ function serializeBlock(block: OperisBlock, context: RenderContext): SerializedB
         markdown: `- Tarefa vinculada: ${title}`,
         whatsapp: `Tarefa vinculada: ${title}`
       }, children);
+    }
+
+    case 'operisArtifact': {
+      const kind = ['diagram', 'mindmap', 'whiteboard'].includes(String(p.artifactKind))
+        ? (p.artifactKind as NoteArtifactKind)
+        : 'diagram';
+      const label = artifactLabel(kind);
+      const title = propText(p.title, `Novo ${label.toLocaleLowerCase('pt-BR')}`);
+      const fallback = `[${label}: ${title}]`;
+
+      return mergeParentAndChildren(
+        {
+          text: fallback,
+          html: `<section data-operis-block="artifact" data-artifact-kind="${kind}">${escapeHtml(fallback)}</section>`,
+          markdown: fallback,
+          whatsapp: fallback
+        },
+        children
+      );
     }
 
     default:

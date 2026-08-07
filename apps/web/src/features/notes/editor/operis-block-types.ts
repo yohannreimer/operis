@@ -7,7 +7,8 @@ export type OperisBlockType =
   | 'operisInsight'
   | 'operisMeeting'
   | 'operisExecutiveChecklist'
-  | 'operisLinkedTask';
+  | 'operisLinkedTask'
+  | 'operisArtifact';
 
 export type OperisBlock = {
   id?: string;

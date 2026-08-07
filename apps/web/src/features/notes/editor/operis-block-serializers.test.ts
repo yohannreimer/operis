@@ -149,4 +149,19 @@ describe('serializeNoteBlocks', () => {
     expect(result.text).toBe('<img src=x onerror=alert(1)>');
     expect(result.html).toBe('<p>&lt;img src=x onerror=alert(1)&gt;</p>');
   });
+
+  it('exports artifact references without leaking their data payload', () => {
+    const result = serializeNoteBlocks([
+      {
+        type: 'operisArtifact',
+        props: { artifactId: 'artifact-1', artifactKind: 'diagram', title: 'Funil' },
+        content: []
+      }
+    ]);
+
+    expect(result.text).toContain('[Diagrama: Funil]');
+    expect(result.markdown).toContain('[Diagrama: Funil]');
+    expect(result.html).toContain('data-operis-block="artifact"');
+    expect(result.text).not.toContain('artifact-1');
+  });
 });

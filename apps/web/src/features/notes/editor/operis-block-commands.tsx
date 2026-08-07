@@ -12,15 +12,24 @@ import {
   Link2,
   ListChecks,
   PanelTopOpen,
+  Network,
+  PencilRuler,
   RotateCcw,
   Save,
   Table2,
-  Users
+  Users,
+  Workflow
 } from 'lucide-react';
 import type { OperisBlock } from './operis-block-types';
 import { OPERIS_BLOCK_SNIPPETS } from './operis-block-templates';
 
-export type OperisEditorCommand = 'templates' | 'details' | 'save';
+export type OperisEditorCommand =
+  | 'templates'
+  | 'details'
+  | 'save'
+  | 'insertDiagram'
+  | 'insertMindmap'
+  | 'insertWhiteboard';
 
 export type OperisBlockCommandGroup = 'Operis' | 'Estrutura' | 'Exportar';
 
@@ -29,7 +38,7 @@ export type OperisSlashMenuItem = DefaultReactSuggestionItem & {
 };
 
 export type OperisBlockCommandCallbacks = {
-  onCommand?: (command: OperisEditorCommand) => void;
+  onCommand?: (command: OperisEditorCommand, editor: BlockNoteEditor<any, any, any>) => void;
 };
 
 type BuildOperisSlashMenuItemsOptions = OperisBlockCommandCallbacks & {
@@ -58,8 +67,14 @@ function insertBlock(editor: BlockNoteEditor<any, any, any> | undefined, block: 
   insertOrUpdateBlockForSlashMenu(editor, block as PartialBlock<any, any, any>);
 }
 
-function callbackCommand(onCommand: OperisBlockCommandCallbacks['onCommand'], command: OperisEditorCommand) {
-  return () => onCommand?.(command);
+function callbackCommand(
+  onCommand: OperisBlockCommandCallbacks['onCommand'],
+  command: OperisEditorCommand,
+  editor: BlockNoteEditor<any, any, any> | undefined
+) {
+  return () => {
+    if (editor) onCommand?.(command, editor);
+  };
 }
 
 function icon(element: React.ReactNode) {
@@ -71,6 +86,30 @@ export function buildOperisSlashMenuItems({
   onCommand
 }: BuildOperisSlashMenuItemsOptions = {}): OperisSlashMenuItem[] {
   return [
+    {
+      title: 'Diagrama',
+      subtext: 'Insere um fluxo visual editável dentro da nota.',
+      aliases: ['diagrama', 'fluxo', 'flow'],
+      group: 'Operis',
+      icon: icon(<Workflow size={18} />),
+      onItemClick: callbackCommand(onCommand, 'insertDiagram', editor)
+    },
+    {
+      title: 'Mapa mental',
+      subtext: 'Organiza ideias e ramificações no mesmo documento.',
+      aliases: ['mapa', 'mental', 'mindmap'],
+      group: 'Operis',
+      icon: icon(<Network size={18} />),
+      onItemClick: callbackCommand(onCommand, 'insertMindmap', editor)
+    },
+    {
+      title: 'Quadro livre',
+      subtext: 'Abre um canvas livre para desenhar e pensar.',
+      aliases: ['quadro', 'desenho', 'canvas', 'excalidraw'],
+      group: 'Operis',
+      icon: icon(<PencilRuler size={18} />),
+      onItemClick: callbackCommand(onCommand, 'insertWhiteboard', editor)
+    },
     {
       title: 'Decisão executiva',
       subtext: 'Registra uma decisão com motivo e próximo passo.',
@@ -181,7 +220,7 @@ export function buildOperisSlashMenuItems({
       aliases: ['modelo', 'modelos'],
       group: 'Exportar',
       icon: icon(<PanelTopOpen size={18} />),
-      onItemClick: callbackCommand(onCommand, 'templates')
+      onItemClick: callbackCommand(onCommand, 'templates', editor)
     },
     {
       title: 'Detalhes',
@@ -189,7 +228,7 @@ export function buildOperisSlashMenuItems({
       aliases: ['detalhes', 'meta', 'metadata'],
       group: 'Exportar',
       icon: icon(<FileText size={18} />),
-      onItemClick: callbackCommand(onCommand, 'details')
+      onItemClick: callbackCommand(onCommand, 'details', editor)
     },
     {
       title: 'Salvar',
@@ -197,7 +236,7 @@ export function buildOperisSlashMenuItems({
       aliases: ['save', 'gravar'],
       group: 'Exportar',
       icon: icon(<Save size={18} />),
-      onItemClick: callbackCommand(onCommand, 'save')
+      onItemClick: callbackCommand(onCommand, 'save', editor)
     }
   ];
 }

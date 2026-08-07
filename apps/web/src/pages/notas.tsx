@@ -66,6 +66,7 @@ import {
   OperisBlock,
   OperisBlockEditor,
   OperisBlockEditorValue,
+  OperisEditorCommand,
   serializeNoteBlocks
 } from '../features/notes/editor';
 import '../features/notes/editor/operis-block-editor-styles';
@@ -4271,13 +4272,16 @@ export function NotasPage() {
     setContent(value.html);
   }
 
-  function handleOperisEditorCommand(command: 'templates' | 'details' | 'save') {
+  function handleOperisEditorCommand(command: OperisEditorCommand) {
     if (command === 'templates') {
       setTemplatesOpen(true);
       return;
     }
     if (command === 'details') {
       setWriterMetaOpen((current) => !current);
+      return;
+    }
+    if (command !== 'save') {
       return;
     }
     if (selectedNoteId && !busy) {
