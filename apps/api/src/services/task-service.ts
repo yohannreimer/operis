@@ -20,6 +20,28 @@ import {
   signalFromImpact
 } from './strategic-decision-service.js';
 
+type TaskCompletionPrisma = {
+  $transaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T>;
+};
+
+export function persistTaskCompletion(
+  prisma: TaskCompletionPrisma,
+  taskId: string,
+  completedAt: Date
+) {
+  return prisma.$transaction(async (tx) => {
+    const task = await tx.task.update({
+      where: { id: taskId },
+      data: { status: 'feito', completedAt }
+    });
+    await tx.projectNextMove.updateMany({
+      where: { taskId, status: 'active' },
+      data: { status: 'resolved', resolvedAt: completedAt }
+    });
+    return task;
+  });
+}
+
 type CreateTaskInput = {
   clerkUserId?: string;
   workspaceId: string;
@@ -1212,13 +1234,7 @@ export class TaskService {
 
     const completedAt = new Date();
 
-    const task = await this.prisma.task.update({
-      where: { id: taskId },
-      data: {
-        status: 'feito',
-        completedAt
-      }
-    });
+    const task = await persistTaskCompletion(this.prisma, taskId, completedAt);
 
     const activePlannedItem = await this.prisma.dayPlanItem.findFirst({
       where: {
