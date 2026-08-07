@@ -22,6 +22,9 @@ import type { MethodologyData, ProjectMethodology } from '../../api';
 import type { ProjectCockpit } from './types';
 import { MetricEngine } from './engines/metric-engine';
 import { MilestoneEngine } from './engines/milestone-engine';
+import { PipelineEngine } from './engines/pipeline-engine';
+import { ExplorationEngine } from './engines/exploration-engine';
+import { FunnelEngine } from './engines/funnel-engine';
 
 export type ProjectWizardValues = {
   methodology: ProjectMethodology | null;
@@ -105,6 +108,12 @@ define('processo', 'Manter um processo', 'Processo legado', 'Ciclo recorrente pr
 definitions.fourdx.View = MetricEngine;
 definitions.entrega.View = MilestoneEngine;
 definitions.autoridade.View = MilestoneEngine;
+definitions.pipeline.View = PipelineEngine;
+definitions.captacao.View = PipelineEngine;
+definitions.sistema_receita.View = PipelineEngine;
+definitions.exploracao.View = ExplorationEngine;
+definitions.mentoria.View = ExplorationEngine;
+definitions.funil.View = FunnelEngine;
 
 function legacy(methodology: ProjectMethodology, canonical: ProjectMethodology) {
   definitions[methodology] = {
