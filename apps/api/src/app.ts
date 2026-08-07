@@ -41,6 +41,8 @@ import { AgendaWeekService } from './services/agenda-week-service.js';
 import { registerAgendaWeekRoutes } from './routes/agenda-week.js';
 import { ExecutionSessionService } from './services/execution-session-service.js';
 import { registerExecutionSessionRoutes } from './routes/execution-sessions.js';
+import { ProjectNextMoveService } from './services/project-next-move-service.js';
+import { registerProjectNextMoveRoutes } from './routes/project-execution.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -84,6 +86,7 @@ export async function buildApp() {
   const commitmentOccurrenceService = new CommitmentOccurrenceService(prisma);
   const agendaWeekService = new AgendaWeekService(prisma, commitmentOccurrenceService);
   const executionSessionService = new ExecutionSessionService(prisma);
+  const projectNextMoveService = new ProjectNextMoveService(prisma);
   const deepWorkService = new DeepWorkService(prisma);
   const executionInsightsService = new ExecutionInsightsService(prisma);
   const strategyService = new StrategyService(prisma);
@@ -116,6 +119,7 @@ export async function buildApp() {
   registerDayPlanRoutes(app, dayPlanService);
   registerAgendaWeekRoutes(app, agendaWeekService);
   registerExecutionSessionRoutes(app, executionSessionService);
+  registerProjectNextMoveRoutes(app, projectNextMoveService);
   registerDeepWorkRoutes(app, deepWorkService);
   registerExecutionRoutes(app, executionInsightsService);
   registerStrategyRoutes(app, strategyService);
