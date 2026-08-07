@@ -7,6 +7,10 @@ import { env } from '../config.js';
 import { getUserId } from '../middleware/auth.js';
 import { accessibleNoteWhere } from '../services/note-access-service.js';
 import {
+  mergeArtifactReferences,
+  type NoteContentBlock
+} from '../services/note-artifact-hydration.js';
+import {
   hasNativeNoteSnapshotChanged,
   normalizeNativeNoteContent,
   normalizeStringArray
@@ -89,6 +93,7 @@ const noteUpdateSchema = z
     projectId: z.string().uuid().optional().nullable(),
     taskId: z.string().uuid().optional().nullable(),
     archived: z.boolean().optional(),
+    baseVersion: z.number().int().positive().optional(),
     saveSource: z.enum(['manual', 'autosave', 'restore', 'system']).optional()
   })
   .refine(
@@ -179,6 +184,30 @@ const NOTE_RELATION_INCLUDE = {
   }
 } as const;
 
+const NOTE_LIBRARY_SELECT = {
+  id: true,
+  title: true,
+  content: true,
+  contentText: true,
+  editVersion: true,
+  type: true,
+  tags: true,
+  pinned: true,
+  folderId: true,
+  workspaceId: true,
+  projectId: true,
+  taskId: true,
+  createdAt: true,
+  updatedAt: true,
+  folder: {
+    select: {
+      id: true,
+      name: true,
+      parentId: true
+    }
+  }
+} as const;
+
 const NOTE_REVISION_CORE_SELECT = {
   id: true,
   title: true,
@@ -187,6 +216,7 @@ const NOTE_REVISION_CORE_SELECT = {
   contentText: true,
   contentHtml: true,
   contentVersion: true,
+  editVersion: true,
   type: true,
   tags: true,
   pinned: true,
@@ -1074,6 +1104,58 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     return { ok: true };
   });
 
+  app.get('/notes/library', async (request) => {
+    const clerkUserId = getUserId(request);
+    const query = z
+      .object({
+        view: z.enum(['inbox', 'pinned', 'recent']).optional(),
+        folderId: z.string().uuid().optional(),
+        q: z.string().trim().max(160).optional(),
+        type: z.nativeEnum(NoteType).optional(),
+        updatedAfter: z.coerce.date().optional(),
+        long: z.coerce.boolean().optional(),
+        workspaceId: z.string().uuid().optional(),
+        projectId: z.string().uuid().optional(),
+        taskId: z.string().uuid().optional()
+      })
+      .parse(request.query);
+
+    const folderId = query.folderId ?? (query.view === 'inbox' ? null : undefined);
+    const pinned = query.folderId === undefined && query.view === 'pinned' ? true : undefined;
+    const rows = await prisma.note.findMany({
+      where: accessibleNoteWhere(clerkUserId, {
+        archivedAt: null,
+        type: query.type,
+        folderId,
+        pinned,
+        workspaceId: query.workspaceId,
+        projectId: query.projectId,
+        taskId: query.taskId,
+        updatedAt: query.updatedAfter ? { gte: query.updatedAfter } : undefined,
+        ...(query.q
+          ? {
+              OR: [
+                { title: { contains: query.q, mode: 'insensitive' as const } },
+                { contentText: { contains: query.q, mode: 'insensitive' as const } },
+                { content: { contains: query.q, mode: 'insensitive' as const } },
+                { tags: { has: query.q.toLowerCase() } }
+              ]
+            }
+          : {})
+      }),
+      select: NOTE_LIBRARY_SELECT,
+      orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
+      take: 500
+    });
+
+    return rows
+      .filter((note) => !query.long || (note.contentText ?? note.content ?? '').length >= 2_000)
+      .map(({ content, contentText, ...note }) => ({
+        ...note,
+        excerpt: (contentText ?? content ?? '').replace(/\s+/g, ' ').trim().slice(0, 180)
+      }));
+  });
+
   app.get('/notes', async (request) => {
     const clerkUserId = getUserId(request);
     const query = z
@@ -1188,6 +1270,41 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     return reply.code(201).send(note);
   });
 
+  app.get('/notes/:noteId', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
+    const note = await prisma.note.findFirst({
+      where: accessibleNoteWhere(clerkUserId, { id: params.noteId, archivedAt: null }),
+      include: {
+        ...NOTE_RELATION_INCLUDE,
+        artifacts: {
+          select: {
+            id: true,
+            noteId: true,
+            kind: true,
+            title: true,
+            editVersion: true,
+            updatedAt: true
+          },
+          orderBy: { createdAt: 'asc' }
+        }
+      }
+    });
+
+    if (!note) {
+      return reply.code(404).send({ message: 'Nota não encontrada.' });
+    }
+
+    const blocks = Array.isArray(note.contentBlocks)
+      ? (note.contentBlocks as NoteContentBlock[])
+      : [];
+
+    return {
+      ...note,
+      contentBlocks: mergeArtifactReferences(blocks, note.artifacts)
+    };
+  });
+
   app.patch('/notes/:noteId', async (request, reply) => {
     const clerkUserId = getUserId(request);
     const params = z.object({ noteId: z.string().uuid() }).parse(request.params);
@@ -1278,11 +1395,14 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
     const changed = hasNativeNoteSnapshotChanged(current, nextSnapshot);
     const saveSource = payload.saveSource ?? 'manual';
 
-    const updated = await prisma.note.update({
-      where: {
-        id: params.noteId
-      },
-      data: {
+    if (payload.baseVersion === undefined && saveSource !== 'system') {
+      return reply.code(400).send({
+        error: 'base_version_required',
+        message: 'Informe a versão atual da nota.'
+      });
+    }
+
+    const updateData = {
         title: payload.title?.trim(),
         content:
           payload.content === undefined && payload.contentBlocks === undefined
@@ -1309,12 +1429,34 @@ export function registerNoteRoutes(app: FastifyInstance, prisma: PrismaClient) {
         projectId: payload.projectId,
         taskId: payload.taskId,
         archivedAt:
-          payload.archived === undefined ? undefined : payload.archived ? new Date() : null
+          payload.archived === undefined ? undefined : payload.archived ? new Date() : null,
+        editVersion: { increment: 1 }
+    };
+    const updateResult = await prisma.note.updateMany({
+      where: {
+        id: params.noteId,
+        editVersion: payload.baseVersion
       },
+      data: updateData
+    });
+
+    if (updateResult.count === 0) {
+      return reply.code(409).send({
+        error: 'note_version_conflict',
+        message: 'A nota foi alterada em outra sessão.'
+      });
+    }
+
+    const updated = await prisma.note.findFirst({
+      where: accessibleNoteWhere(clerkUserId, { id: params.noteId }),
       include: {
         ...NOTE_RELATION_INCLUDE
       }
     });
+
+    if (!updated) {
+      return reply.code(404).send({ message: 'Nota não encontrada.' });
+    }
 
     if (changed && saveSource !== 'autosave') {
       await createNoteRevisionSnapshot(prisma, updated, saveSource);
