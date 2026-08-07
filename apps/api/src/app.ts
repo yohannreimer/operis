@@ -42,7 +42,8 @@ import { registerAgendaWeekRoutes } from './routes/agenda-week.js';
 import { ExecutionSessionService } from './services/execution-session-service.js';
 import { registerExecutionSessionRoutes } from './routes/execution-sessions.js';
 import { ProjectNextMoveService } from './services/project-next-move-service.js';
-import { registerProjectNextMoveRoutes } from './routes/project-execution.js';
+import { ProjectCockpitService } from './services/project-cockpit-service.js';
+import { registerProjectCockpitRoutes, registerProjectNextMoveRoutes } from './routes/project-execution.js';
 import { ResponsibilityService } from './services/responsibility-service.js';
 import { registerResponsibilityRoutes } from './routes/responsibilities.js';
 import { FrontOverviewService } from './services/front-overview-service.js';
@@ -91,6 +92,7 @@ export async function buildApp() {
   const agendaWeekService = new AgendaWeekService(prisma, commitmentOccurrenceService);
   const executionSessionService = new ExecutionSessionService(prisma);
   const projectNextMoveService = new ProjectNextMoveService(prisma);
+  const projectCockpitService = new ProjectCockpitService(prisma);
   const responsibilityService = new ResponsibilityService(prisma);
   const frontOverviewService = new FrontOverviewService(prisma);
   const deepWorkService = new DeepWorkService(prisma);
@@ -126,6 +128,7 @@ export async function buildApp() {
   registerAgendaWeekRoutes(app, agendaWeekService);
   registerExecutionSessionRoutes(app, executionSessionService);
   registerProjectNextMoveRoutes(app, projectNextMoveService);
+  registerProjectCockpitRoutes(app, projectCockpitService);
   registerResponsibilityRoutes(app, responsibilityService);
   registerFrontOverviewRoutes(app, frontOverviewService);
   registerDeepWorkRoutes(app, deepWorkService);
