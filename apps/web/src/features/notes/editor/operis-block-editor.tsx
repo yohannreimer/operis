@@ -1,6 +1,7 @@
 import { SuggestionMenuController, useCreateBlockNote } from '@blocknote/react';
 import { BlockNoteView } from '@blocknote/mantine';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import type { BlockNoteEditor } from '@blocknote/core';
 import { legacyContentToBlocks } from './legacy-content-migration';
 import type { OperisBlock, OperisBlockEditorValue } from './operis-block-types';
 import { getOperisSlashMenuItems, type OperisEditorCommand } from './operis-block-commands';
@@ -13,7 +14,8 @@ export type OperisBlockEditorProps = {
   legacyContent?: string | null;
   documentKey?: string | number;
   onChange?: (value: OperisBlockEditorValue) => void;
-  onCommand?: (command: OperisEditorCommand) => void;
+  onCommand?: (command: OperisEditorCommand, editor: BlockNoteEditor<any, any, any>) => void;
+  onReady?: (editor: BlockNoteEditor<any, any, any>) => void;
 };
 
 function initialDocument(initialBlocks?: OperisBlock[] | null, legacyContent?: string | null) {
@@ -38,7 +40,8 @@ export function OperisBlockEditor({
   legacyContent,
   documentKey,
   onChange,
-  onCommand
+  onCommand,
+  onReady
 }: OperisBlockEditorProps) {
   const documentKeyOrSignature = useMemo(
     () => documentKey ?? contentSignature(initialBlocks, legacyContent),
@@ -55,6 +58,10 @@ export function OperisBlockEditor({
     },
     [noteId, documentKeyOrSignature]
   );
+
+  useEffect(() => {
+    onReady?.(editor);
+  }, [editor, onReady]);
 
   const getItems = useMemo(() => getOperisSlashMenuItems(editor, { onCommand }), [editor, onCommand]);
 

@@ -326,6 +326,314 @@
   font-size: 0.82rem;
 }
 
+.note-workspace-page {
+  min-height: 100%;
+  padding-bottom: 100px;
+  color: var(--text);
+}
+
+.note-document-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 22px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.note-document-topbar > a,
+.note-document-topbar-actions > button {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+.note-document-topbar > a:hover,
+.note-document-topbar-actions > button:hover {
+  transform: none;
+  border-color: var(--border);
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.note-document-breadcrumb { min-width: 0; }
+.note-document-breadcrumb > span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.note-document-breadcrumb h1 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.note-document-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.note-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.note-save-status::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.note-save-status-saved { color: var(--success); }
+.note-save-status-failed,
+.note-save-status-conflict { color: var(--danger); }
+.note-save-status-saving::before { animation: note-saving-pulse 900ms ease infinite; }
+
+@keyframes note-saving-pulse { 50% { opacity: 0.3; } }
+
+.note-document-paper {
+  width: min(calc(100% - 48px), 760px);
+  min-height: calc(100dvh - 160px);
+  margin: 0 auto;
+  padding: 62px 20px 120px;
+}
+
+.note-document-title {
+  width: 100%;
+  margin: 0 0 26px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: 760 clamp(2rem, 4.6vw, 3.15rem)/1.08 'Plus Jakarta Sans', sans-serif;
+  letter-spacing: -0.055em;
+}
+
+.note-document-paper .bn-container,
+.note-document-paper .bn-editor {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: var(--text);
+  background: transparent;
+}
+
+.note-document-paper .bn-editor { padding-inline: 0; }
+
+.note-document-artifact-error,
+.note-workspace-load-error {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(212, 100, 100, 0.25);
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.note-document-artifact-error button {
+  float: right;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.note-artifact-block {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  margin: 12px 0;
+  border: 1px solid var(--border-hover);
+  border-radius: 11px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+}
+
+.note-artifact-block-open {
+  min-width: 0;
+  min-height: 78px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  padding: 13px 46px 13px 13px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  text-align: left;
+}
+
+.note-artifact-block-open:hover { transform: none; background: rgba(255, 255, 255, 0.025); }
+
+.note-artifact-block-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.note-artifact-block-copy { min-width: 0; display: grid; gap: 4px; }
+.note-artifact-block-kind {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.note-artifact-block-title {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.note-artifact-block-action { color: var(--text-secondary); font-size: 0.7rem; }
+.note-artifact-block-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  opacity: 0;
+}
+.note-artifact-block:hover .note-artifact-block-delete,
+.note-artifact-block-delete:focus-visible { opacity: 1; }
+.note-artifact-block-delete:hover { transform: none; background: var(--danger-soft); color: var(--danger); }
+
+.note-side-panel {
+  position: fixed;
+  top: 70px;
+  right: 18px;
+  z-index: 30;
+  width: min(330px, calc(100vw - 36px));
+  max-height: calc(100dvh - 90px);
+  display: grid;
+  gap: 13px;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--border-hover);
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.note-side-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 3px;
+}
+.note-side-panel header span,
+.note-actions-label { color: var(--muted); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.note-side-panel header h2 { margin: 3px 0 0; font-size: 1rem; letter-spacing: -0.02em; }
+.note-side-panel header button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.note-side-panel label { display: grid; gap: 6px; color: var(--text-secondary); font-size: 0.7rem; font-weight: 650; }
+.note-side-panel label small { color: var(--muted); font-weight: 500; }
+.note-side-panel input,
+.note-side-panel select {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.note-side-panel-divider { height: 1px; background: var(--border); }
+.note-actions-panel > button,
+.note-export-grid button {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  justify-content: flex-start;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+  font-size: 0.76rem;
+}
+.note-actions-panel > button:hover,
+.note-export-grid button:hover { transform: none; background: var(--surface-soft); color: var(--text); }
+.note-actions-panel > button.danger { color: var(--danger); }
+.note-export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+
+.note-secondary-surface {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  z-index: 40;
+  width: min(520px, calc(100vw - 32px));
+  min-height: 180px;
+  padding: 22px;
+  border: 1px solid var(--border-hover);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  transform: translate(-50%, -50%);
+}
+
+.note-workspace-loading,
+.note-workspace-load-error { width: min(calc(100% - 48px), 760px); margin: 70px auto; color: var(--muted); }
+
 @keyframes notes-loading {
   from { background-position: 120% 0; }
   to { background-position: -120% 0; }
@@ -342,4 +650,10 @@
   .notes-list-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding-block: 14px; }
   .notes-list-row-meta { justify-content: flex-start; }
   .notes-list-row-meta svg { display: none; }
+  .note-document-topbar { padding-inline: 10px; }
+  .note-document-paper { width: 100%; padding: 42px 16px 120px; }
+  .note-document-title { font-size: 2.1rem; }
+  .note-save-status { margin-right: 1px; }
+  .note-save-status-dirty { display: none; }
+  .note-side-panel { inset: auto 10px calc(76px + env(safe-area-inset-bottom)) 10px; width: auto; max-height: 70dvh; }
 }
