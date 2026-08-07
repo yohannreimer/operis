@@ -7,6 +7,23 @@ import { serializeNoteBlocks } from './editor/operis-block-serializers';
 
 type CaptureStatus = 'idle' | 'saving' | 'captured' | 'error';
 
+function readDraft() {
+  try {
+    return window.localStorage.getItem(QUICK_CAPTURE_DRAFT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeDraft(value: string) {
+  try {
+    if (value) window.localStorage.setItem(QUICK_CAPTURE_DRAFT_KEY, value);
+    else window.localStorage.removeItem(QUICK_CAPTURE_DRAFT_KEY);
+  } catch {
+    // Capture remains usable when storage is blocked by the browser.
+  }
+}
+
 export function QuickCapture({
   onCaptured,
   onOpen
@@ -14,11 +31,7 @@ export function QuickCapture({
   onCaptured(note: Note): void;
   onOpen?(note: Note): void;
 }) {
-  const [value, setValue] = useState(() =>
-    typeof window === 'undefined'
-      ? ''
-      : window.localStorage.getItem(QUICK_CAPTURE_DRAFT_KEY) ?? ''
-  );
+  const [value, setValue] = useState(() => (typeof window === 'undefined' ? '' : readDraft()));
   const [status, setStatus] = useState<CaptureStatus>('idle');
   const [lastCaptured, setLastCaptured] = useState<Note | null>(null);
 
@@ -50,11 +63,11 @@ export function QuickCapture({
       setValue('');
       setLastCaptured(note);
       setStatus('captured');
-      window.localStorage.removeItem(QUICK_CAPTURE_DRAFT_KEY);
+      writeDraft('');
       onCaptured(note);
     } catch {
       setStatus('error');
-      window.localStorage.setItem(QUICK_CAPTURE_DRAFT_KEY, value);
+      writeDraft(value);
     }
   }
 
@@ -75,8 +88,7 @@ export function QuickCapture({
           setValue(nextValue);
           setStatus('idle');
           setLastCaptured(null);
-          if (nextValue) window.localStorage.setItem(QUICK_CAPTURE_DRAFT_KEY, nextValue);
-          else window.localStorage.removeItem(QUICK_CAPTURE_DRAFT_KEY);
+          writeDraft(nextValue);
         }}
         onKeyDown={handleKeyDown}
       />

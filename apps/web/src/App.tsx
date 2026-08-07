@@ -32,7 +32,6 @@ function ProtectedRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/landing" element={<LandingPage />} />
-        <Route path="/notas/*" element={<NotasPage />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/hoje" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
@@ -46,6 +45,8 @@ function ProtectedRoutes() {
           <Route path="projetos" element={<ProjetosPage />} />
           <Route path="projetos/:projectId" element={<ProjetosPage />} />
           <Route path="tarefas" element={<TarefasPage />} />
+          <Route path="notas" element={<NotasPage />} />
+          <Route path="notas/:noteId" element={<NotasPage />} />
           <Route path="agenda" element={<AgendaPage />} />
           <Route path="habitos" element={<HabitosPage />} />
           <Route path="habitos/evolucao" element={<HabitEvolutionPage />} />
