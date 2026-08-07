@@ -12,6 +12,7 @@ const ProjetosPage = lazy(() => import('./pages/projetos').then((module) => ({ d
 const WorkspacesPage = lazy(() => import('./pages/workspaces').then((module) => ({ default: module.WorkspacesPage })));
 const TarefasPage = lazy(() => import('./pages/tarefas').then((module) => ({ default: module.TarefasPage })));
 const NotasPage = lazy(() => import('./pages/notas').then((module) => ({ default: module.NotasPage })));
+const NoteArtifactPage = lazy(() => import('./pages/note-artifact').then((module) => ({ default: module.NoteArtifactPage })));
 const AgendaPage = lazy(() => import('./pages/agenda').then((module) => ({ default: module.AgendaPage })));
 const HabitosPage = lazy(() => import('./pages/habitos').then((module) => ({ default: module.HabitosPage })));
 const HabitEvolutionPage = lazy(() => import('./pages/habit-evolution').then((module) => ({ default: module.HabitEvolutionPage })));
@@ -32,6 +33,7 @@ function ProtectedRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/landing" element={<LandingPage />} />
+        <Route path="/notas/:noteId/artifacts/:artifactId" element={<NoteArtifactPage />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/hoje" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />

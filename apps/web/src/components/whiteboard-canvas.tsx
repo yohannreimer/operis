@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import { WhiteboardData } from '../api';
+import type { CanvasSaveStateProps } from './canvas-save-state';
 
 // Carrega assets (fontes, locales) do CDN para não precisar copiar arquivos ao deploy.
 if (typeof window !== 'undefined') {
@@ -9,17 +10,37 @@ if (typeof window !== 'undefined') {
     'https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/prod/';
 }
 
-type WhiteboardCanvasProps = {
+type WhiteboardCanvasProps = CanvasSaveStateProps<WhiteboardData> & {
   initialData?: WhiteboardData | null;
-  onSave: (data: WhiteboardData) => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 };
 
-export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCanvasProps) {
+export function WhiteboardCanvas({
+  initialData,
+  onSave,
+  onDelete,
+  onDirtyChange,
+  registerFlush,
+  readOnly = false
+}: WhiteboardCanvasProps) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
+  const latestData = useRef<WhiteboardData>(initialData ?? { elements: [], files: {} });
 
   useEffect(() => { onSaveRef.current = onSave; });
+
+  const flush = useCallback(async () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    await onSaveRef.current(latestData.current);
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
+  useEffect(() => {
+    registerFlush?.(flush);
+  }, [flush, registerFlush]);
 
   // Limpa o timer ao desmontar para não disparar save com dados obsoletos
   useEffect(() => {
@@ -30,31 +51,24 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleChange = useCallback((elements: readonly any[], _appState: any, files: any) => {
+    if (readOnly) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    latestData.current = {
+      elements: Array.from(elements),
+      files: files ?? {}
+    } as unknown as WhiteboardData;
+    onDirtyChange?.(true);
     saveTimer.current = setTimeout(() => {
-      try {
-        // Salva apenas os elementos (sem appState — passá-lo de volta ao init
-        // causa restauração quebrada) e os files (imagens coladas).
-        // Elementos deletados são preservados pois o Excalidraw precisa deles
-        // para o histórico de undo, mas são ignorados na renderização.
-        onSaveRef.current({
-          elements: Array.from(elements),
-          files: files ?? {},
-        } as unknown as WhiteboardData);
-      } catch (e) {
-        console.error('[Whiteboard] save error:', e);
-      }
+      void flush().catch(() => onDirtyChange?.(true));
     }, 1500);
-  }, []);
+  }, [flush, onDirtyChange, readOnly]);
 
   const handleDelete = () => {
-    if (window.confirm('Deletar a lousa desta nota? Esta ação não pode ser desfeita.')) {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-      onDelete();
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
     }
+    onDelete?.();
   };
 
   // Só passa elements e files para o init — o appState é reinicializado pelo
@@ -71,11 +85,11 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
 
   return (
     <div className="whiteboard-wrap">
-      <div className="whiteboard-toolbar">
+      {!readOnly ? <div className="whiteboard-toolbar">
         <button type="button" className="ghost-button danger-ghost" onClick={handleDelete}>
           Deletar lousa
         </button>
-      </div>
+      </div> : null}
       <div className="whiteboard-container">
         <Excalidraw
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,6 +97,7 @@ export function WhiteboardCanvas({ initialData, onSave, onDelete }: WhiteboardCa
           onChange={handleChange}
           theme="light"
           langCode="pt-BR"
+          viewModeEnabled={readOnly}
         />
       </div>
     </div>

@@ -3,6 +3,7 @@ import MindElixir from 'mind-elixir';
 import type { MindElixirInstance, Options } from 'mind-elixir';
 import { toPng } from 'html-to-image';
 import { MindMapData } from '../api';
+import type { CanvasSaveStateProps } from './canvas-save-state';
 
 const operisTheme = {
   name: 'operis-dark',
@@ -69,13 +70,12 @@ const TEMPLATES: Record<string, MindMapData> = {
   },
 };
 
-type MindMapCanvasProps = {
+type MindMapCanvasProps = CanvasSaveStateProps<MindMapData> & {
   initialData?: MindMapData;
-  onSave: (data: MindMapData) => void;
-  onGenerate: () => void;
-  onDelete: () => void;
-  isGenerating: boolean;
-  noteTextLength: number;
+  onGenerate?: () => void;
+  onDelete?: () => void;
+  isGenerating?: boolean;
+  noteTextLength?: number;
 };
 
 export function MindMapCanvas({
@@ -83,8 +83,11 @@ export function MindMapCanvas({
   onSave,
   onGenerate,
   onDelete,
-  isGenerating,
-  noteTextLength,
+  isGenerating = false,
+  noteTextLength = 0,
+  onDirtyChange,
+  registerFlush,
+  readOnly = false,
 }: MindMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const meRef = useRef<MindElixirInstance | null>(null);
@@ -97,14 +100,29 @@ export function MindMapCanvas({
   const [linkSource, setLinkSource] = useState<HTMLElement | null>(null);
   const currentScale = useRef(1);
 
+  const flush = useCallback(async () => {
+    if (saveTimer.current.id) {
+      clearTimeout(saveTimer.current.id);
+      saveTimer.current.id = null;
+    }
+    if (!meRef.current) return;
+    const data = meRef.current.getData();
+    await onSave({ nodeData: data.nodeData } as MindMapData);
+    onDirtyChange?.(false);
+  }, [onDirtyChange, onSave]);
+
+  useEffect(() => {
+    registerFlush?.(flush);
+  }, [flush, registerFlush]);
+
   const triggerSave = useCallback(() => {
+    if (readOnly) return;
+    onDirtyChange?.(true);
     if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
     saveTimer.current.id = setTimeout(() => {
-      if (!meRef.current) return;
-      const data = meRef.current.getData();
-      onSave({ nodeData: data.nodeData } as MindMapData);
+      void flush().catch(() => onDirtyChange?.(true));
     }, 1500);
-  }, [onSave]);
+  }, [flush, onDirtyChange, readOnly]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -112,11 +130,11 @@ export function MindMapCanvas({
     const options: Options = {
       el: containerRef.current,
       direction: direction === 'side' ? MindElixir.SIDE : MindElixir.RIGHT,
-      draggable: true,
-      editable: true,
+      draggable: !readOnly,
+      editable: !readOnly,
       toolBar: false,
       contextMenu: false,
-      keypress: true,
+      keypress: !readOnly,
       allowUndo: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       markdown: ((text: string) =>
@@ -209,6 +227,7 @@ export function MindMapCanvas({
     document.addEventListener('keydown', handleKeydown, true);
 
     return () => {
+      if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
       me.bus.removeListener('operation', onOperation);
       me.bus.removeListener('selectNodes', onSelectNodes);
       observer.disconnect();
@@ -234,7 +253,7 @@ export function MindMapCanvas({
 
   return (
     <div className="mindmap-canvas-wrapper">
-      <div className="diagram-toolbar">
+      {!readOnly ? <div className="diagram-toolbar">
         <button
           className="diagram-toolbar-btn"
           title="Templates"
@@ -339,7 +358,7 @@ export function MindMapCanvas({
             setShowStyleMenu((v) => !v);
           }}
         >···</button>
-      </div>
+      </div> : null}
 
       {showTemplates && (
         <div className="diagram-templates-menu">
@@ -511,7 +530,7 @@ export function MindMapCanvas({
           <button
             className="diagram-node-menu-item diagram-node-menu-item--danger"
             onClick={() => {
-              if (window.confirm('Limpar o mapa mental?')) { onDelete(); }
+              onDelete?.();
               setShowStyleMenu(false);
             }}
           >Limpar mapa</button>

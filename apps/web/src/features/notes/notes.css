@@ -634,6 +634,104 @@
 .note-workspace-loading,
 .note-workspace-load-error { width: min(calc(100% - 48px), 760px); margin: 70px auto; color: var(--muted); }
 
+.note-artifact-focus {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: 58px minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.note-artifact-focus-header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.note-artifact-focus-header > button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+.note-artifact-focus-header > button:hover { transform: none; border-color: var(--border); background: var(--surface-soft); }
+.note-artifact-focus-header > div { min-width: 0; }
+.note-artifact-focus-header > div span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--primary);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.note-artifact-focus-header h1 {
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.note-artifact-save-status {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+.note-artifact-save-status.status-saved { color: var(--success); }
+.note-artifact-save-status.status-failed { color: var(--danger); }
+.note-artifact-focus-canvas { position: relative; min-height: 0; overflow: hidden; }
+.note-artifact-focus-canvas > *,
+.note-artifact-focus-canvas .diagram-canvas-wrapper,
+.note-artifact-focus-canvas .mindmap-canvas-wrapper,
+.note-artifact-focus-canvas .whiteboard-wrap { width: 100%; height: 100%; }
+
+.note-artifact-save-error {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1010;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(212, 100, 100, 0.28);
+  border-radius: 10px;
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-lg);
+  color: var(--danger);
+  font-size: 0.72rem;
+}
+.note-artifact-save-error button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-hover);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+  font-size: 0.68rem;
+}
+
 @keyframes notes-loading {
   from { background-position: 120% 0; }
   to { background-position: -120% 0; }
@@ -656,4 +754,13 @@
   .note-save-status { margin-right: 1px; }
   .note-save-status-dirty { display: none; }
   .note-side-panel { inset: auto 10px calc(76px + env(safe-area-inset-bottom)) 10px; width: auto; max-height: 70dvh; }
+  .note-artifact-focus { grid-template-rows: 54px minmax(0, 1fr); }
+  .note-artifact-focus-header { padding-inline: 8px; }
+  .note-artifact-save-error {
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: 10px;
+    flex-wrap: wrap;
+  }
+  .note-artifact-save-error > span { width: 100%; }
 }

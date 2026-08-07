@@ -19,6 +19,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DiagramData } from '../api';
+import type { CanvasSaveStateProps } from './canvas-save-state';
 
 type RFNode = { id: string; type: string; position: { x: number; y: number }; data: { label: string; [key: string]: unknown } };
 type RFEdge = { id: string; source: string; target: string; label?: string };
@@ -385,13 +386,12 @@ const NODE_GROUPS = [
 
 // ── Props ─────────────────────────────────────────────────────────────────
 
-type DiagramCanvasProps = {
+type DiagramCanvasProps = CanvasSaveStateProps<DiagramData> & {
   initialData?: DiagramData;
-  onSave: (data: DiagramData) => void;
-  onGenerate: () => void;
-  onDelete: () => void;
-  isGenerating: boolean;
-  noteTextLength: number;
+  onGenerate?: () => void;
+  onDelete?: () => void;
+  isGenerating?: boolean;
+  noteTextLength?: number;
 };
 
 // ── Main Component ────────────────────────────────────────────────────────
@@ -401,8 +401,11 @@ export function DiagramCanvas({
   onSave,
   onGenerate,
   onDelete,
-  isGenerating,
-  noteTextLength,
+  isGenerating = false,
+  noteTextLength = 0,
+  onDirtyChange,
+  registerFlush,
+  readOnly = false,
 }: DiagramCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialData?.nodes ?? []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialData?.edges ?? []);
@@ -422,6 +425,29 @@ export function DiagramCanvas({
     history.current = history.current.slice(0, historyIndex.current + 1);
     history.current.push({ nodes: JSON.parse(JSON.stringify(ns)), edges: JSON.parse(JSON.stringify(es)) });
     historyIndex.current = history.current.length - 1;
+  }, []);
+
+  const flush = useCallback(async () => {
+    if (saveTimer.current.id) {
+      clearTimeout(saveTimer.current.id);
+      saveTimer.current.id = null;
+    }
+    const flow = rfInstance.current?.toObject() ?? {
+      nodes,
+      edges,
+      viewport: initialData?.viewport ?? { x: 0, y: 0, zoom: 1 }
+    };
+    pushHistory(flow.nodes as RFNode[], flow.edges as RFEdge[]);
+    await onSave(flow as DiagramData);
+    onDirtyChange?.(false);
+  }, [edges, initialData?.viewport, nodes, onDirtyChange, onSave, pushHistory]);
+
+  useEffect(() => {
+    registerFlush?.(flush);
+  }, [flush, registerFlush]);
+
+  useEffect(() => () => {
+    if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
   }, []);
 
   useEffect(() => {
@@ -451,14 +477,13 @@ export function DiagramCanvas({
   }, [setNodes, setEdges]);
 
   const triggerSave = useCallback(() => {
+    if (readOnly) return;
+    onDirtyChange?.(true);
     if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
     saveTimer.current.id = setTimeout(() => {
-      if (!rfInstance.current) return;
-      const flow = rfInstance.current.toObject();
-      pushHistory(flow.nodes as RFNode[], flow.edges as RFEdge[]);
-      onSave(flow as DiagramData);
+      void flush().catch(() => onDirtyChange?.(true));
     }, 1500);
-  }, [onSave, pushHistory]);
+  }, [flush, onDirtyChange, readOnly]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -494,7 +519,7 @@ export function DiagramCanvas({
   return (
     <div className="diagram-canvas-wrapper">
       {/* Toolbar lateral */}
-      <div className="diagram-toolbar">
+      {!readOnly ? <div className="diagram-toolbar">
         <button
           className="diagram-toolbar-btn"
           title="Adicionar nó"
@@ -521,7 +546,7 @@ export function DiagramCanvas({
           title="Mais opções"
           onClick={() => setShowMenu((v) => !v)}
         >···</button>
-      </div>
+      </div> : null}
 
       {/* Menu de tipos de nó */}
       {showNodeMenu && (
@@ -581,7 +606,7 @@ export function DiagramCanvas({
           <p>Tem certeza? Essa ação não pode ser desfeita.</p>
           <div className="diagram-delete-confirm-actions">
             <button className="ghost-button" onClick={() => setShowDeleteConfirm(false)}>Cancelar</button>
-            <button className="diagram-delete-btn" onClick={() => { onDelete(); setShowDeleteConfirm(false); }}>Limpar</button>
+            <button className="diagram-delete-btn" onClick={() => { onDelete?.(); setShowDeleteConfirm(false); }}>Limpar</button>
           </div>
         </div>
       )}
@@ -610,6 +635,9 @@ export function DiagramCanvas({
         snapGrid={[16, 16]}
         deleteKeyCode="Delete"
         multiSelectionKeyCode="Shift"
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        elementsSelectable={!readOnly}
       >
         <Controls />
         <MiniMap
