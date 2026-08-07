@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleGauge,
+  HeartPulse,
   MoreHorizontal,
   Pause,
   Pencil,
@@ -105,7 +106,7 @@ export function FrontOverview({
               <div><strong>{responsibility.title}</strong><small>{responsibility.expectedStandard}</small><p>{`Próximo cuidado · ${responsibility.nextCare}`}</p></div>
               <time dateTime={responsibility.nextReviewAt}>{new Date(responsibility.nextReviewAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</time>
               <button type="button" className="front-care-button" onClick={() => onReview(responsibility)}>Cuidar agora</button>
-              <details className="front-row-menu"><summary aria-label={`Opções de ${responsibility.title}`}><MoreHorizontal size={16} /></summary><div role="menu"><button type="button" onClick={() => onEditResponsibility(responsibility)}><Pencil size={14} /> Editar</button><button type="button" onClick={() => onPauseResponsibility(responsibility)}>{responsibility.status === 'paused' ? <RotateCcw size={14} /> : <Pause size={14} />}{responsibility.status === 'paused' ? 'Retomar' : 'Pausar'}</button><button type="button" onClick={() => onArchiveResponsibility(responsibility)}><Trash2 size={14} /> Arquivar</button></div></details>
+              <details className="front-row-menu"><summary aria-label={`Opções de ${responsibility.title}`}><MoreHorizontal size={16} /></summary><div role="menu"><button type="button" onClick={() => onReview(responsibility)}><HeartPulse size={14} /> Cuidar</button><button type="button" onClick={() => onEditResponsibility(responsibility)}><Pencil size={14} /> Editar</button><button type="button" onClick={() => onPauseResponsibility(responsibility)}>{responsibility.status === 'paused' ? <RotateCcw size={14} /> : <Pause size={14} />}{responsibility.status === 'paused' ? 'Retomar' : 'Pausar'}</button><button type="button" onClick={() => onArchiveResponsibility(responsibility)}><Trash2 size={14} /> Arquivar</button></div></details>
             </article>
           ))}
           {!front.responsibilities.length && <div className="front-empty-line"><p>Use Responsabilidades para áreas contínuas, sem linha de chegada.</p><button type="button" onClick={onNewResponsibility}>Criar a primeira</button></div>}

@@ -93,6 +93,15 @@ describe('Frentes execution page', () => {
     ));
   });
 
+  it('keeps the care action available in the compact responsibility menu', async () => {
+    renderPage('/frentes/w1');
+    const menu = await screen.findByLabelText('Opções de Saúde dos clientes');
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByRole('button', { name: /^cuidar$/i }));
+
+    expect(screen.getByRole('dialog', { name: /cuidar de saúde dos clientes/i })).toBeVisible();
+  });
+
   it('creates a responsibility with a valid cadence', async () => {
     apiMock.createResponsibility.mockResolvedValue({ ...responsibility, id: 'r2' });
     renderPage('/frentes/w1');
