@@ -227,6 +227,12 @@ enum NoteType {
   referencia
 }
 
+enum NoteArtifactKind {
+  diagram
+  mindmap
+  whiteboard
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -519,6 +525,7 @@ model Note {
   contentText    String?   @map("content_text")
   contentHtml    String?   @map("content_html")
   contentVersion Int       @default(1) @map("content_version")
+  editVersion    Int       @default(1) @map("edit_version")
   type           NoteType  @default(geral)
   tags           String[]  @default([])
   pinned         Boolean   @default(false)
@@ -535,6 +542,7 @@ model Note {
   project    Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   task       Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
   revisions  NoteRevision[]
+  artifacts  NoteArtifact[]
   diagram    Diagram?
   mindMap    MindMap?
   whiteboard Whiteboard?
@@ -567,10 +575,46 @@ model NoteRevision {
   source         String   @default("manual")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  note              Note                   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  artifactSnapshots NoteArtifactRevision[]
 
   @@index([noteId, createdAt(sort: Desc)])
   @@map("note_revisions")
+}
+
+model NoteArtifact {
+  id           String           @id @default(uuid())
+  noteId       String           @map("note_id")
+  kind         NoteArtifactKind
+  title        String?
+  data         Json
+  editVersion  Int              @default(1) @map("edit_version")
+  legacySource String?          @map("legacy_source")
+  legacyId     String?          @map("legacy_id")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@unique([legacySource, legacyId])
+  @@index([noteId, updatedAt])
+  @@map("note_artifacts")
+}
+
+model NoteArtifactRevision {
+  id             String           @id @default(uuid())
+  noteRevisionId String           @map("note_revision_id")
+  artifactId     String           @map("artifact_id")
+  kind           NoteArtifactKind
+  title          String?
+  data           Json
+  editVersion    Int              @map("edit_version")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  noteRevision NoteRevision @relation(fields: [noteRevisionId], references: [id], onDelete: Cascade)
+
+  @@index([noteRevisionId])
+  @@map("note_artifact_revisions")
 }
 
 model TaskDependency {
