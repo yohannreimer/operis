@@ -7,6 +7,9 @@ import { MilestoneEngine } from './milestone-engine';
 import { PipelineEngine } from './pipeline-engine';
 import { ExplorationEngine } from './exploration-engine';
 import { FunnelEngine } from './funnel-engine';
+import { CampaignEngine } from './campaign-engine';
+import { DecisionEngine } from './decision-engine';
+import { OkrEngine } from './okr-engine';
 
 const apiMock = vi.hoisted(() => ({
   getProjectScorecard: vi.fn(), createProjectMetricCheckin: vi.fn(), createProjectFrameworkCheckin: vi.fn(),
@@ -87,5 +90,32 @@ describe('project engine views', () => {
     fireEvent.change(screen.getByLabelText(/valor de vendas/i), { target: { value: '12' } });
     fireEvent.blur(screen.getByLabelText(/valor de vendas/i));
     await waitFor(() => expect(apiMock.updateMethodologyItem).toHaveBeenCalledWith('p1', 'sales', { arrayKey: 'funilStages', item: { value: 12 } }));
+  });
+
+  it('shows campaign countdown and toggles a critical daily item', async () => {
+    apiMock.updateMethodologyItem.mockResolvedValue({});
+    const launch = new Date();
+    launch.setDate(launch.getDate() + 12);
+    const data = { launchDate: launch.toISOString(), dailyTasks: [{ id: 'day-1', date: new Date().toISOString().slice(0, 10), text: 'Revisar checkout', done: false }] };
+    const project = { ...cockpit('campanha', data), timeHorizonEnd: launch.toISOString(), engine: { key: 'campaign', methodology: 'campanha' as const, data, recovered: false } };
+    render(<CampaignEngine project={project} data={data} onReload={vi.fn()} />);
+    expect(screen.getByText(/12 dias para o lançamento/i)).toBeVisible();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Revisar checkout' }));
+    await waitFor(() => expect(apiMock.updateMethodologyItem).toHaveBeenCalledWith('p1', 'day-1', { arrayKey: 'dailyTasks', item: { done: true } }));
+  });
+
+  it('edits decision scores and KR confidence', async () => {
+    apiMock.updateMethodologyItem.mockResolvedValue({});
+    const decisionData = { criteria: [{ id: 'speed', label: 'Velocidade', weight: 2 }], options: [{ id: 'agency', label: 'Agência', scores: { speed: 3 } }] };
+    const decisionProject = { ...cockpit('decisao', decisionData), engine: { key: 'decision', methodology: 'decisao' as const, data: decisionData, recovered: false } };
+    const view = render(<DecisionEngine project={decisionProject} data={decisionData} onReload={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/pontuação agência em velocidade/i), { target: { value: '4' } });
+    await waitFor(() => expect(apiMock.updateMethodologyItem).toHaveBeenCalledTimes(1));
+
+    const okrData = { krs: [{ id: 'kr1', description: 'Seguidores', currentValue: 400, targetValue: 1000, confidence: 'media' as const, order: 1 }] };
+    const okrProject = { ...cockpit('okr', okrData), engine: { key: 'okr', methodology: 'okr' as const, data: okrData, recovered: false } };
+    view.rerender(<OkrEngine project={okrProject} data={okrData} onReload={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/confiança seguidores/i), { target: { value: 'baixa' } });
+    await waitFor(() => expect(apiMock.updateMethodologyItem).toHaveBeenCalledTimes(2));
   });
 });

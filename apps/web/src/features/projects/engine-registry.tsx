@@ -25,6 +25,9 @@ import { MilestoneEngine } from './engines/milestone-engine';
 import { PipelineEngine } from './engines/pipeline-engine';
 import { ExplorationEngine } from './engines/exploration-engine';
 import { FunnelEngine } from './engines/funnel-engine';
+import { CampaignEngine } from './engines/campaign-engine';
+import { DecisionEngine } from './engines/decision-engine';
+import { OkrEngine } from './engines/okr-engine';
 
 export type ProjectWizardValues = {
   methodology: ProjectMethodology | null;
@@ -114,6 +117,11 @@ definitions.sistema_receita.View = PipelineEngine;
 definitions.exploracao.View = ExplorationEngine;
 definitions.mentoria.View = ExplorationEngine;
 definitions.funil.View = FunnelEngine;
+definitions.campanha.View = CampaignEngine;
+definitions.runway.View = CampaignEngine;
+definitions.decisao.View = DecisionEngine;
+definitions.cenario.View = DecisionEngine;
+definitions.okr.View = OkrEngine;
 
 function legacy(methodology: ProjectMethodology, canonical: ProjectMethodology) {
   definitions[methodology] = {
