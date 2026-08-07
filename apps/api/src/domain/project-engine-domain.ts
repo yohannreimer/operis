@@ -64,6 +64,14 @@ export type EngineKeyResult = {
 export type NormalizedEngineData = Record<string, unknown> & {
   blockers: EngineBlocker[];
   milestones?: EngineMilestone[];
+  proofs?: Array<{
+    id: string;
+    type: 'artigo' | 'palestra' | 'case' | 'mencao' | 'podcast' | 'outro';
+    title: string;
+    link?: string | null;
+    points: number;
+    createdAt: string;
+  }>;
   stages?: EngineStage[];
   deals?: EngineDeal[];
   currency?: string;
