@@ -12,11 +12,15 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173
     },
-    resolve: isDemo ? {
+    resolve: {
       alias: {
-        '@clerk/react': path.resolve(__dirname, 'src/demo/mock-clerk.tsx'),
+        '@excalidraw/excalidraw': path.resolve(
+          __dirname,
+          'node_modules/@excalidraw/excalidraw/dist/excalidraw.production.min.js'
+        ),
+        ...(isDemo ? { '@clerk/react': path.resolve(__dirname, 'src/demo/mock-clerk.tsx') } : {})
       }
-    } : {},
+    },
     optimizeDeps: {
       include: ['@excalidraw/excalidraw']
     },

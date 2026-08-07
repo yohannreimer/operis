@@ -15,6 +15,13 @@ type WhiteboardCanvasProps = CanvasSaveStateProps<WhiteboardData> & {
   onDelete?: () => void;
 };
 
+function whiteboardSignature(data: WhiteboardData) {
+  return JSON.stringify({
+    elements: data.elements ?? [],
+    files: data.files ?? {},
+  });
+}
+
 export function WhiteboardCanvas({
   initialData,
   onSave,
@@ -26,6 +33,7 @@ export function WhiteboardCanvas({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
   const latestData = useRef<WhiteboardData>(initialData ?? { elements: [], files: {} });
+  const savedSignature = useRef(whiteboardSignature(latestData.current));
 
   useEffect(() => { onSaveRef.current = onSave; });
 
@@ -35,6 +43,7 @@ export function WhiteboardCanvas({
       saveTimer.current = null;
     }
     await onSaveRef.current(latestData.current);
+    savedSignature.current = whiteboardSignature(latestData.current);
     onDirtyChange?.(false);
   }, [onDirtyChange]);
 
@@ -57,6 +66,12 @@ export function WhiteboardCanvas({
       elements: Array.from(elements),
       files: files ?? {}
     } as unknown as WhiteboardData;
+    // Excalidraw may emit more than once while hydrating initialData. Compare
+    // actual board content so opening a board never creates a fake edit.
+    if (whiteboardSignature(latestData.current) === savedSignature.current) {
+      onDirtyChange?.(false);
+      return;
+    }
     onDirtyChange?.(true);
     saveTimer.current = setTimeout(() => {
       void flush().catch(() => onDirtyChange?.(true));
@@ -95,7 +110,7 @@ export function WhiteboardCanvas({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           initialData={excalidrawInitialData as any}
           onChange={handleChange}
-          theme="light"
+          theme="dark"
           langCode="pt-BR"
           viewModeEnabled={readOnly}
         />

@@ -105,7 +105,7 @@ export function QuickCapture({
           </button>
         ) : null}
         {status === 'captured' && lastCaptured && onOpen ? (
-          <button type="button" onClick={() => onOpen(lastCaptured)}>
+          <button type="button" aria-label="Abrir nota capturada" onClick={() => onOpen(lastCaptured)}>
             Abrir nota
           </button>
         ) : null}

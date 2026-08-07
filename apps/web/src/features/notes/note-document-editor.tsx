@@ -1,7 +1,7 @@
 import type { BlockNoteEditor, PartialBlock } from '@blocknote/core';
 import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core/extensions';
 import { GitBranch, Mic, Network, PencilRuler, Plus } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { api, type Note, type NoteArtifactKind } from '../../api';
 import { ArtifactBlockProvider } from './artifact-block';
@@ -50,6 +50,7 @@ export function NoteDocumentEditor({
   const [artifactError, setArtifactError] = useState<string | null>(null);
   const [insertMenuOpen, setInsertMenuOpen] = useState(false);
   const editorRef = useRef<Editor | null>(null);
+  const titleRef = useRef<HTMLTextAreaElement | null>(null);
   const latestValue = useRef<OperisBlockEditorValue>({
     blocks: (note.contentBlocks ?? []) as OperisBlock[],
     ...serializeNoteBlocks((note.contentBlocks ?? []) as OperisBlock[])
@@ -61,6 +62,13 @@ export function NoteDocumentEditor({
     latestValue.current = value;
     onChange({ ...value, title: nextTitle });
   }, [onChange, title]);
+
+  useLayoutEffect(() => {
+    const titleElement = titleRef.current;
+    if (!titleElement) return;
+    titleElement.style.height = '0px';
+    titleElement.style.height = `${titleElement.scrollHeight}px`;
+  }, [title]);
 
   async function insertArtifact(command: OperisEditorCommand, editor: Editor) {
     const kind = commandKinds[command];
@@ -103,10 +111,18 @@ export function NoteDocumentEditor({
 
   return (
     <section className="note-document-paper">
-      <input
+      <textarea
+        ref={titleRef}
+        rows={1}
         className="note-document-title"
         aria-label="Título da nota"
         value={title}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
         onChange={(event) => {
           const nextTitle = event.currentTarget.value;
           setTitle(nextTitle);

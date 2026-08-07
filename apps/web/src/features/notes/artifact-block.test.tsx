@@ -14,7 +14,7 @@ describe('ArtifactBlock', () => {
 
     expect(screen.getByText('Diagrama')).toBeInTheDocument();
     expect(screen.getByText('Funil')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir diagrama Funil' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir diagrama Funil em foco' }));
     expect(onOpen).toHaveBeenCalledWith('artifact-1');
   });
 });

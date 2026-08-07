@@ -610,10 +610,13 @@
 
 .note-document-title {
   width: 100%;
+  display: block;
   margin: 0 0 26px;
   padding: 0;
   border: 0;
   outline: 0;
+  overflow: hidden;
+  resize: none;
   background: transparent;
   color: var(--text);
   font: 760 clamp(2rem, 4.6vw, 3.15rem)/1.08 'Plus Jakarta Sans', sans-serif;
@@ -1031,6 +1034,7 @@
   .note-side-panel { inset: auto 10px calc(76px + env(safe-area-inset-bottom)) 10px; width: auto; max-height: 70dvh; }
   .note-artifact-focus { grid-template-rows: 54px minmax(0, 1fr); }
   .note-artifact-focus-header { padding-inline: 8px; }
+  .note-artifact-focus .react-flow__minimap { display: none; }
   .note-artifact-save-error {
     right: 10px;
     bottom: calc(10px + env(safe-area-inset-bottom));

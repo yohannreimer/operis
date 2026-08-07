@@ -51,7 +51,7 @@ export function ArtifactBlock({
       <button
         type="button"
         className="note-artifact-block-open"
-        aria-label={`Abrir ${label.toLocaleLowerCase('pt-BR')} ${displayTitle}`}
+        aria-label={`Abrir ${label.toLocaleLowerCase('pt-BR')} ${displayTitle} em foco`}
         onClick={(event) => {
           event.stopPropagation();
           context?.onOpen(artifactId);

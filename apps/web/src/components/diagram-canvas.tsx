@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   addEdge,
@@ -16,13 +16,24 @@ import {
   useReactFlow,
   ConnectionMode,
   MarkerType,
+  type EdgeChange,
+  type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DiagramData } from '../api';
 import type { CanvasSaveStateProps } from './canvas-save-state';
+import { normalizeDiagramData } from './diagram-data';
 
 type RFNode = { id: string; type: string; position: { x: number; y: number }; data: { label: string; [key: string]: unknown } };
 type RFEdge = { id: string; source: string; target: string; label?: string };
+
+function changesPersistedNodeData(changes: NodeChange[]) {
+  return changes.some((change) => change.type !== 'dimensions' && change.type !== 'select');
+}
+
+function changesPersistedEdgeData(changes: EdgeChange[]) {
+  return changes.some((change) => change.type !== 'select');
+}
 
 // ── Shared handles ────────────────────────────────────────────────────────
 
@@ -407,8 +418,9 @@ export function DiagramCanvas({
   registerFlush,
   readOnly = false,
 }: DiagramCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialData?.nodes ?? []);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialData?.edges ?? []);
+  const normalizedInitialData = useMemo(() => normalizeDiagramData(initialData), [initialData]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(normalizedInitialData.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(normalizedInitialData.edges);
   const [showNodeMenu, setShowNodeMenu] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -435,12 +447,12 @@ export function DiagramCanvas({
     const flow = rfInstance.current?.toObject() ?? {
       nodes,
       edges,
-      viewport: initialData?.viewport ?? { x: 0, y: 0, zoom: 1 }
+      viewport: normalizedInitialData.viewport
     };
     pushHistory(flow.nodes as RFNode[], flow.edges as RFEdge[]);
     await onSave(flow as DiagramData);
     onDirtyChange?.(false);
-  }, [edges, initialData?.viewport, nodes, onDirtyChange, onSave, pushHistory]);
+  }, [edges, nodes, normalizedInitialData.viewport, onDirtyChange, onSave, pushHistory]);
 
   useEffect(() => {
     registerFlush?.(flush);
@@ -615,8 +627,14 @@ export function DiagramCanvas({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={(changes) => { onNodesChange(changes); triggerSave(); }}
-        onEdgesChange={(changes) => { onEdgesChange(changes); triggerSave(); }}
+        onNodesChange={(changes) => {
+          onNodesChange(changes);
+          if (changesPersistedNodeData(changes)) triggerSave();
+        }}
+        onEdgesChange={(changes) => {
+          onEdgesChange(changes);
+          if (changesPersistedEdgeData(changes)) triggerSave();
+        }}
         onConnect={onConnect}
         onReconnect={(oldEdge, newConn) => {
           setEdges((eds) => eds.map((e) => e.id === oldEdge.id ? { ...oldEdge, ...newConn } : e));
@@ -625,9 +643,9 @@ export function DiagramCanvas({
         nodeTypes={nodeTypes}
         onInit={(inst) => {
           rfInstance.current = inst as unknown;
-          if (initialData) setTimeout(() => (inst as any).fitView({ padding: 0.1 }), 50);
+          if (initialData) setTimeout(() => (inst as any).fitView({ padding: 0.2 }), 150);
         }}
-        defaultViewport={initialData?.viewport ?? { x: 0, y: 0, zoom: 1 }}
+        defaultViewport={normalizedInitialData.viewport}
         fitView={!initialData}
         colorMode="dark"
         connectionMode={ConnectionMode.Loose}

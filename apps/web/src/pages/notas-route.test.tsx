@@ -17,4 +17,9 @@ describe('notes route placement', () => {
     expect(artifactRoute).toBeGreaterThan(-1);
     expect(artifactRoute).toBeLessThan(layoutStart);
   });
+
+  it('uses the browser-safe Excalidraw production entry in dev and production builds', () => {
+    const source = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8');
+    expect(source).toContain('excalidraw.production.min.js');
+  });
 });
