@@ -105,4 +105,15 @@ describe('Frentes execution page', () => {
       'w1', expect.objectContaining({ cadence: 'weekly', title: 'Saúde financeira' })
     ));
   });
+
+  it('recovers the front rail after an initial request error', async () => {
+    apiMock.getFrontsOverview.mockRejectedValueOnce(new Error('offline'));
+    renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('offline');
+    fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Prymeira Digital' })).toBeVisible();
+    expect(apiMock.getFrontsOverview.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
 });

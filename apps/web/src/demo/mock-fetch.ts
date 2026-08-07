@@ -3,6 +3,7 @@
 // Installed before React mounts when VITE_DEMO_MODE=true.
 
 import type { TodayEntry } from '../features/today/types';
+import type { ProjectCockpit, Responsibility } from '../features/projects/types';
 
 const localNow = new Date();
 const today = [localNow.getFullYear(), String(localNow.getMonth() + 1).padStart(2, '0'), String(localNow.getDate()).padStart(2, '0')].join('-');
@@ -11,8 +12,9 @@ const yesterday = [localYesterday.getFullYear(), String(localYesterday.getMonth(
 
 // ─── Shared entities ──────────────────────────────────────────────────────────
 
-const WS_NEGOCIOS = { id: 'ws-1', name: 'Negócios', type: 'empresa', color: '#f97316', mode: 'expansao' };
-const WS_VIDA = { id: 'ws-2', name: 'Vida', type: 'vida', color: '#818cf8', mode: 'manutencao' };
+const WS_NEGOCIOS = { id: 'ws-1', name: 'Negócios', type: 'empresa', color: '#f97316', mode: 'expansao' } as const;
+const WS_VIDA = { id: 'ws-2', name: 'Vida', type: 'vida', color: '#818cf8', mode: 'manutencao' } as const;
+const WS_CRIACAO = { id: 'ws-3', name: 'Criação', type: 'autoridade', color: '#38bdf8', mode: 'manutencao' } as const;
 
 const PROJECT_LANCAMENTO = {
   id: 'proj-1', title: 'Lançamento Produto Q3', description: 'Lançamento do novo módulo de relatórios',
@@ -74,6 +76,89 @@ const TASKS = [
   { id: 't-7', title: 'Agendar consulta médica de rotina', status: 'backlog', taskType: 'b', energyLevel: 'baixa', priority: 7, estimatedMinutes: 15, workspaceId: 'ws-2', workspace: WS_VIDA },
   { id: 't-8', title: 'Revisar pipeline de vendas com time', status: 'backlog', taskType: 'a', energyLevel: 'alta', priority: 8, estimatedMinutes: 60, workspaceId: 'ws-1', projectId: 'proj-1', workspace: WS_NEGOCIOS, project: PROJECT_LANCAMENTO },
 ];
+
+let DEMO_RESPONSIBILITIES: Responsibility[] = [
+  {
+    id: 'resp-1', workspaceId: 'ws-1', title: 'Saúde do caixa',
+    expectedStandard: 'Fluxo de caixa revisado e 90 dias de runway preservados.',
+    cadence: 'weekly', health: 'attention', nextCare: 'Reconciliar recebimentos em atraso',
+    nextReviewAt: new Date(`${today}T12:00:00`).toISOString(), lastReviewedAt: new Date(`${yesterday}T12:00:00`).toISOString(),
+    status: 'active', createdAt: new Date(`${yesterday}T09:00:00`).toISOString(), updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'resp-2', workspaceId: 'ws-1', title: 'Relacionamento com clientes',
+    expectedStandard: 'Clientes críticos recebem retorno em até um dia útil.',
+    cadence: 'weekly', health: 'healthy', nextCare: 'Revisar sinais de risco nas contas ativas',
+    nextReviewAt: new Date(`${today}T15:00:00`).toISOString(), lastReviewedAt: new Date(`${yesterday}T15:00:00`).toISOString(),
+    status: 'active', createdAt: new Date(`${yesterday}T09:00:00`).toISOString(), updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'resp-3', workspaceId: 'ws-2', title: 'Recuperação física',
+    expectedStandard: 'Sono estável e pelo menos quatro treinos por semana.',
+    cadence: 'weekly', health: 'healthy', nextCare: 'Planejar os treinos da próxima semana',
+    nextReviewAt: new Date(`${today}T18:00:00`).toISOString(), lastReviewedAt: new Date(`${yesterday}T18:00:00`).toISOString(),
+    status: 'active', createdAt: new Date(`${yesterday}T09:00:00`).toISOString(), updatedAt: new Date().toISOString()
+  }
+];
+
+let DEMO_PROJECT_COCKPITS: ProjectCockpit[] = [
+  {
+    id: 'proj-1', title: PROJECT_LANCAMENTO.title, description: PROJECT_LANCAMENTO.description,
+    objective: PROJECT_LANCAMENTO.objective, workspace: WS_NEGOCIOS, intentLabel: 'Gerar receita', methodLabel: 'Pipeline',
+    persistedStatus: 'ativo', operationalState: 'moving', timeHorizonEnd: '2026-09-30',
+    primaryMetric: 'MRR', resultStartValue: 0, resultCurrentValue: 32000, resultTargetValue: 50000,
+    progress: { kind: 'percent', value: 64, label: 'R$ 32k de R$ 50k' }, primaryBlocker: null,
+    activeMove: { id: 'move-1', projectId: 'proj-1', text: 'Fechar proposta Empresa Alfa', source: 'manual', status: 'active', createdAt: new Date().toISOString() },
+    recommendation: null,
+    engine: { key: 'pipeline', methodology: 'pipeline', data: PROJECT_LANCAMENTO.methodologyData, recovered: false },
+    tasks: TASKS.filter((task) => task.projectId === 'proj-1') as ProjectCockpit['tasks']
+  },
+  {
+    id: 'proj-2', title: PROJECT_CONTEUDO.title, description: PROJECT_CONTEUDO.description,
+    objective: PROJECT_CONTEUDO.objective, workspace: WS_NEGOCIOS, intentLabel: 'Atingir uma meta', methodLabel: 'OKR',
+    persistedStatus: 'ativo', operationalState: 'at_risk', timeHorizonEnd: '2026-10-01',
+    progress: { kind: 'percent', value: 43, label: '43% dos resultados-chave' }, primaryBlocker: 'Cadência editorial abaixo do necessário', activeMove: null,
+    recommendation: { ruleKey: 'okr-confidence', text: 'Replanejar o KR de artigos', reason: 'A confiança caiu e o ciclo está entrando na segunda metade.', severity: 'attention' },
+    engine: { key: 'okr', methodology: 'okr', data: PROJECT_CONTEUDO.methodologyData as ProjectCockpit['engine']['data'], recovered: false },
+    tasks: TASKS.filter((task) => task.projectId === 'proj-2') as ProjectCockpit['tasks']
+  },
+  {
+    id: 'proj-3', title: PROJECT_SAUDE.title, description: PROJECT_SAUDE.description,
+    objective: PROJECT_SAUDE.objective, workspace: WS_VIDA, intentLabel: 'Entregar algo', methodLabel: 'Marcos',
+    persistedStatus: 'ativo', operationalState: 'stalled', timeHorizonEnd: null,
+    progress: { kind: 'percent', value: 50, label: '2 de 4 marcos' }, primaryBlocker: null, activeMove: null,
+    recommendation: { ruleKey: 'stalled', text: 'Escolher o próximo marco', reason: 'Este Projeto está sem movimento ativo.', severity: 'critical' },
+    engine: { key: 'milestone', methodology: 'entrega', data: PROJECT_SAUDE.methodologyData, recovered: false },
+    tasks: []
+  }
+];
+
+function frontOverview(workspaceId: string) {
+  const workspace = [WS_NEGOCIOS, WS_VIDA, WS_CRIACAO].find((item) => item.id === workspaceId);
+  if (!workspace) return null;
+  const projects = DEMO_PROJECT_COCKPITS.filter((project) => project.workspace.id === workspaceId);
+  const responsibilities = DEMO_RESPONSIBILITIES.filter((item) => item.workspaceId === workspaceId);
+  const projectAttention = projects.find((project) => project.recommendation);
+  const responsibilityAttention = responsibilities.find((item) => item.health !== 'healthy');
+  const attention = projectAttention
+    ? { kind: 'project' as const, sourceId: projectAttention.id, severity: projectAttention.recommendation?.severity === 'critical' ? 'critical' as const : 'attention' as const, title: projectAttention.title, reason: projectAttention.recommendation?.reason ?? 'Este Projeto pede atenção.' }
+    : responsibilityAttention
+      ? { kind: 'responsibility' as const, sourceId: responsibilityAttention.id, severity: responsibilityAttention.health === 'critical' ? 'critical' as const : 'attention' as const, title: responsibilityAttention.title, reason: responsibilityAttention.nextCare }
+      : null;
+  return {
+    ...workspace,
+    health: attention?.severity ?? 'normal',
+    attention,
+    activeProjects: projects.filter((project) => project.persistedStatus === 'ativo').length,
+    projects: projects.filter((project) => project.persistedStatus === 'ativo'),
+    pausedProjects: projects.filter((project) => project.persistedStatus === 'pausado'),
+    responsibilities,
+    capacity: {
+      activeProjects: projects.filter((project) => project.persistedStatus === 'ativo').length,
+      todayTasks: TASKS.filter((task) => task.workspaceId === workspaceId && task.status === 'hoje').length
+    }
+  };
+}
 
 function makeIso(date: string, h: number, m = 0) {
   return new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).toISOString();
@@ -416,9 +501,37 @@ type MockResponse = { status: number; body: unknown };
 
 function matchRoute(url: string): MockResponse | null {
   // strip base URL and query string
-  const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+  const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0].replace(/^\/api(?=\/|$)/, '');
 
-  if (path === '/workspaces') return { status: 200, body: [WS_NEGOCIOS, WS_VIDA] };
+  if (path === '/workspaces/overview') {
+    return {
+      status: 200,
+      body: [WS_NEGOCIOS, WS_VIDA, WS_CRIACAO].map((workspace) => {
+        const overview = frontOverview(workspace.id)!;
+        return {
+          id: overview.id, name: overview.name, type: overview.type, mode: overview.mode,
+          color: overview.color, health: overview.health, attention: overview.attention,
+          activeProjects: overview.activeProjects
+        };
+      })
+    };
+  }
+  if (path.match(/^\/workspaces\/[^/]+\/overview$/)) {
+    const overview = frontOverview(path.split('/')[2]);
+    return overview ? { status: 200, body: overview } : { status: 404, body: { message: 'Frente não encontrada.' } };
+  }
+  if (path.match(/^\/workspaces\/[^/]+\/responsibilities$/)) {
+    const workspaceId = path.split('/')[2];
+    return { status: 200, body: DEMO_RESPONSIBILITIES.filter((item) => item.workspaceId === workspaceId) };
+  }
+  if (path.match(/^\/responsibilities\/[^/]+\/reviews$/)) return { status: 200, body: [] };
+  if (path === '/project-execution') return { status: 200, body: DEMO_PROJECT_COCKPITS };
+  if (path.match(/^\/project-execution\/[^/]+$/)) {
+    const cockpit = DEMO_PROJECT_COCKPITS.find((project) => project.id === path.split('/')[2]);
+    return cockpit ? { status: 200, body: cockpit } : { status: 404, body: { message: 'Projeto não encontrado.' } };
+  }
+
+  if (path === '/workspaces') return { status: 200, body: [WS_NEGOCIOS, WS_VIDA, WS_CRIACAO] };
   if (path === '/projects') return { status: 200, body: [PROJECT_LANCAMENTO, PROJECT_CONTEUDO, PROJECT_SAUDE] };
   if (path.match(/^\/projects\/[^/]+\/scorecard/)) return { status: 200, body: { metrics: [], checkins: [] } };
   if (path.match(/^\/projects\/[^/]+/)) return { status: 200, body: PROJECT_LANCAMENTO };
@@ -636,11 +749,104 @@ export function installMockFetch() {
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+    const rawPath = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+    const isDemoApi = url.includes('localhost:3000') || url.includes('localhost:3001') || rawPath.startsWith('/api/');
 
-    // Only mock calls to our local API (port 3000 or VITE_API_URL)
-    if (url.includes('localhost:3000') || url.includes('localhost:3001')) {
+    // Mock the local API and relative /api URLs used by hosted demo previews.
+    if (isDemoApi) {
       const method = (init?.method ?? 'GET').toUpperCase();
-      const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+      const path = rawPath.replace(/^\/api(?=\/|$)/, '');
+
+      if (method === 'POST' && path === '/project-execution') {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as {
+          workspaceId: string; methodology: ProjectCockpit['engine']['methodology']; title: string;
+          objective: string; timeHorizonEnd?: string | null; methodologyData?: ProjectCockpit['engine']['data'];
+          nextMove: string; nextMoveDestination: 'project' | 'backlog' | 'today';
+        };
+        const workspace = [WS_NEGOCIOS, WS_VIDA, WS_CRIACAO].find((item) => item.id === payload.workspaceId) ?? WS_NEGOCIOS;
+        const id = `proj-demo-${Date.now()}`;
+        const move = { id: `move-demo-${Date.now()}`, projectId: id, text: payload.nextMove, source: 'manual' as const, status: 'active' as const, createdAt: new Date().toISOString() };
+        const cockpit: ProjectCockpit = {
+          id, title: payload.title, objective: payload.objective, workspace,
+          intentLabel: 'Avançar uma direção', methodLabel: payload.methodology,
+          persistedStatus: 'ativo', operationalState: 'moving', timeHorizonEnd: payload.timeHorizonEnd ?? null,
+          progress: { kind: 'percent', value: 0, label: 'Começando' }, primaryBlocker: null,
+          activeMove: move, recommendation: null,
+          engine: { key: payload.methodology, methodology: payload.methodology, data: payload.methodologyData ?? {}, recovered: false },
+          tasks: []
+        };
+        DEMO_PROJECT_COCKPITS = [...DEMO_PROJECT_COCKPITS, cockpit];
+        return new Response(JSON.stringify({
+          project: { id, title: payload.title, objective: payload.objective, workspaceId: workspace.id, workspace, status: 'ativo', methodology: payload.methodology, methodologyData: cockpit.engine.data },
+          activeMove: move,
+          task: null
+        }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (method === 'POST' && path.match(/^\/projects\/[^/]+\/next-moves$/)) {
+        const projectId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { text: string; source: 'manual' | 'recommendation'; reason?: string; ruleKey?: string };
+        const move = { id: `move-demo-${Date.now()}`, projectId, ...payload, status: 'active' as const, createdAt: new Date().toISOString() };
+        DEMO_PROJECT_COCKPITS = DEMO_PROJECT_COCKPITS.map((project) => project.id === projectId ? { ...project, activeMove: move, recommendation: null, operationalState: 'moving' } : project);
+        return new Response(JSON.stringify(move), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (method === 'POST' && path.match(/^\/projects\/[^/]+\/next-moves\/[^/]+\/to-today$/)) {
+        const [, , projectId, , moveId] = path.split('/');
+        const project = DEMO_PROJECT_COCKPITS.find((item) => item.id === projectId);
+        const move = project?.activeMove?.id === moveId ? project.activeMove : null;
+        if (!project || !move) return new Response(JSON.stringify({ message: 'Movimento não encontrado.' }), { status: 404 });
+        const task: ProjectCockpit['tasks'][number] = { id: `task-demo-${Date.now()}`, title: move.text, status: 'hoje', priority: 3, workspaceId: project.workspace.id, projectId: project.id };
+        project.tasks = [...project.tasks, task];
+        return new Response(JSON.stringify({ move: { ...move, taskId: task.id }, task }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (method === 'POST' && path.match(/^\/projects\/[^/]+\/next-moves\/[^/]+\/resolve$/)) {
+        const [, , projectId, , moveId] = path.split('/');
+        const project = DEMO_PROJECT_COCKPITS.find((item) => item.id === projectId);
+        const move = project?.activeMove?.id === moveId ? { ...project.activeMove, status: 'resolved' as const, resolvedAt: new Date().toISOString() } : null;
+        if (!project || !move) return new Response(JSON.stringify({ message: 'Movimento não encontrado.' }), { status: 404 });
+        project.activeMove = null;
+        return new Response(JSON.stringify(move), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (method === 'POST' && path.match(/^\/workspaces\/[^/]+\/responsibilities$/)) {
+        const workspaceId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Omit<Responsibility, 'id' | 'workspaceId' | 'status' | 'createdAt' | 'updatedAt'>;
+        const responsibility: Responsibility = { ...payload, id: `resp-demo-${Date.now()}`, workspaceId, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        DEMO_RESPONSIBILITIES = [...DEMO_RESPONSIBILITIES, responsibility];
+        return new Response(JSON.stringify(responsibility), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (method === 'PATCH' && path.match(/^\/responsibilities\/[^/]+$/)) {
+        const id = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<Responsibility>;
+        let updated: Responsibility | undefined;
+        DEMO_RESPONSIBILITIES = DEMO_RESPONSIBILITIES.map((item) => item.id === id ? (updated = { ...item, ...payload, id, updatedAt: new Date().toISOString() }) : item);
+        return new Response(JSON.stringify(updated ?? { message: 'Responsabilidade não encontrada.' }), { status: updated ? 200 : 404, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (method === 'POST' && path.match(/^\/responsibilities\/[^/]+\/reviews$/)) {
+        const id = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { health: Responsibility['health']; note?: string; nextCare: string; nextReviewAt?: string };
+        const responsibility = DEMO_RESPONSIBILITIES.find((item) => item.id === id);
+        if (!responsibility) return new Response(JSON.stringify({ message: 'Responsabilidade não encontrada.' }), { status: 404 });
+        Object.assign(responsibility, { health: payload.health, nextCare: payload.nextCare, nextReviewAt: payload.nextReviewAt ?? responsibility.nextReviewAt, lastReviewedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        return new Response(JSON.stringify({ responsibility, review: { id: `review-demo-${Date.now()}`, responsibilityId: id, ...payload, nextReviewAt: responsibility.nextReviewAt, reviewedAt: responsibility.lastReviewedAt }, task: null }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      if (method === 'POST' && path.match(/^\/responsibilities\/[^/]+\/(pause|archive)$/)) {
+        const id = path.split('/')[2];
+        const responsibility = DEMO_RESPONSIBILITIES.find((item) => item.id === id);
+        if (!responsibility) return new Response(JSON.stringify({ message: 'Responsabilidade não encontrada.' }), { status: 404 });
+        if (path.endsWith('/archive')) responsibility.status = 'archived';
+        else {
+          const payload = JSON.parse(String(init?.body ?? '{}')) as { paused?: boolean };
+          responsibility.status = payload.paused === false ? 'active' : 'paused';
+        }
+        responsibility.updatedAt = new Date().toISOString();
+        return new Response(JSON.stringify(responsibility), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
 
       if (method === 'POST' && path.match(/^\/day-plans\/\d{4}-\d{2}-\d{2}\/items$/)) {
         const payload = JSON.parse(String(init?.body ?? '{}')) as {
