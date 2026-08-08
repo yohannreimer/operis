@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Inbox, MoveRight } from 'lucide-react';
 
+import { Button } from '../../components/ui';
 import type { RolloverAction, TodayEntry } from './types';
 
 type Props = {
@@ -84,29 +85,32 @@ export function RolloverReview({ items, targetDate, onResolve }: Props) {
                 <div className="rollover-review__item" key={item.id}>
                   <span>{item.title}</span>
                   <div className="rollover-review__actions">
-                    <button
-                      type="button"
+                    <Button
+                      variant="tertiary"
+                      size="sm"
                       aria-label={`Manter em Hoje: ${item.title}`}
                       onClick={() => onResolve(item, 'keep_today')}
                     >
                       <MoveRight aria-hidden="true" size={14} /> Manter em Hoje
-                    </button>
+                    </Button>
                     {item.kind === 'inbox' ? (
-                      <button
-                        type="button"
+                      <Button
+                        variant="tertiary"
+                        size="sm"
                         aria-label={`Voltar ao Inbox: ${item.title}`}
                         onClick={() => onResolve(item, 'return_inbox')}
                       >
                         <Inbox aria-hidden="true" size={14} /> Voltar ao Inbox
-                      </button>
+                      </Button>
                     ) : null}
-                    <button
-                      type="button"
+                    <Button
+                      variant="tertiary"
+                      size="sm"
                       aria-label={`Concluir ${item.title}`}
                       onClick={() => onResolve(item, 'complete')}
                     >
                       <Check aria-hidden="true" size={14} /> Concluir
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { CalendarRange, Inbox, Plus, Square, X } from 'lucide-react';
 
 import type { AgendaBlock, AgendaWeek, ExecutionSession } from '../../api';
+import { Button } from '../../components/ui';
 import { MobileDayTimeline } from '../agenda/mobile-day-timeline';
 import type { AgendaWeekController } from '../agenda/types';
 import { InboxTray } from './inbox-tray';
@@ -174,7 +175,15 @@ export function TodayWorkspace({ date, initialInboxOpen = false }: Props) {
               onReorder={(orderedIds) => void state.reorder(orderedIds)}
               onStart={(item) => void state.startSession(item)}
             />
-            <button type="button" className="today-workspace__add" onClick={() => setInboxOpen(true)}><Plus aria-hidden="true" size={16} />Adicionar item</button>
+            <Button
+              variant="tertiary"
+              size="sm"
+              className="today-workspace__add"
+              leadingIcon={<Plus aria-hidden="true" size={16} />}
+              onClick={() => setInboxOpen(true)}
+            >
+              Adicionar item
+            </Button>
           </section>
 
           <section className="today-zone today-zone--timeline" aria-labelledby="today-timeline-title">

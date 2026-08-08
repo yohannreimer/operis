@@ -172,6 +172,37 @@ describe('useTodayWorkspace', () => {
     expect(result.current.rollover).toEqual([]);
   });
 
+  it.each([
+    ['keep_today' as const, 'resolveDailyRollover'],
+    ['complete' as const, 'setDailyExecutionCompleted'],
+    ['return_inbox' as const, 'assignDailyExecution']
+  ])('offers a server-backed undo after resolving rollover with %s', async (action, inverseMutation) => {
+    const oldEntry = { ...dailyEntry, id: 'daily_old', date: '2026-08-04' };
+    const resolved = { ...oldEntry, date: '2026-08-05' };
+    apiMock.getDailyExecution.mockResolvedValue({ entries: [], rollover: [oldEntry] });
+    apiMock.resolveDailyRollover.mockResolvedValueOnce(action === 'keep_today' ? resolved : undefined);
+    apiMock.resolveDailyRollover.mockResolvedValueOnce(oldEntry);
+    apiMock.setDailyExecutionCompleted.mockResolvedValue(oldEntry);
+    apiMock.assignDailyExecution.mockResolvedValue(oldEntry);
+    const { result } = renderHook(() => useTodayWorkspace('2026-08-05'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(() => result.current.resolveRollover(oldEntry, action));
+    const options = vi.mocked(toast).mock.calls.at(-1)?.[1] as {
+      action?: { label: string; onClick(): void };
+    };
+    expect(options.action?.label).toBe('Desfazer');
+    act(() => options.action?.onClick());
+
+    if (inverseMutation === 'resolveDailyRollover') {
+      await waitFor(() => expect(apiMock.resolveDailyRollover).toHaveBeenLastCalledWith('daily_old', 'keep_today', '2026-08-04'));
+    } else if (inverseMutation === 'setDailyExecutionCompleted') {
+      await waitFor(() => expect(apiMock.setDailyExecutionCompleted).toHaveBeenLastCalledWith('daily_old', false));
+    } else {
+      await waitFor(() => expect(apiMock.assignDailyExecution).toHaveBeenLastCalledWith('2026-08-04', { sourceType: 'inbox', sourceId: 'inbox_1' }));
+    }
+  });
+
   it('starts observed execution with the matching daily and planned ids', async () => {
     apiMock.getDayPlan.mockResolvedValue({
       id: 'plan_1',

@@ -35,6 +35,10 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function sortRollover(items: TodayEntry[]) {
+  return [...items].sort((left, right) => left.date.localeCompare(right.date) || left.position - right.position);
+}
+
 export function useTodayWorkspace(date: string): TodayWorkspaceState {
   const [entries, setEntries] = useState<TodayEntry[]>([]);
   const [rollover, setRollover] = useState<TodayEntry[]>([]);
@@ -227,6 +231,36 @@ export function useTodayWorkspace(date: string): TodayWorkspaceState {
     }
   }, [date, entries]);
 
+  const undoRollover = useCallback(async (
+    item: TodayEntry,
+    action: RolloverAction,
+    resolved?: TodayEntry | void
+  ) => {
+    try {
+      if (action === 'keep_today' && resolved) {
+        const restored = await api.resolveDailyRollover(resolved.id, 'keep_today', item.date);
+        setEntries((current) => current.filter((entry) => entry.id !== resolved.id));
+        if (restored) setRollover((current) => sortRollover([...current, restored]));
+        return;
+      }
+
+      if (action === 'complete') {
+        const restored = await api.setDailyExecutionCompleted(item.id, false);
+        setRollover((current) => sortRollover([...current, restored]));
+        return;
+      }
+
+      const restored = await api.assignDailyExecution(item.date, {
+        sourceType: item.kind,
+        sourceId: item.sourceId
+      });
+      setRollover((current) => sortRollover([...current, restored]));
+    } catch {
+      await reload();
+      toast.error('Não foi possível desfazer a revisão.');
+    }
+  }, [reload]);
+
   const resolveRollover = useCallback(async (item: TodayEntry, action: RolloverAction) => {
     try {
       const resolved = await api.resolveDailyRollover(item.id, action, date);
@@ -234,10 +268,17 @@ export function useTodayWorkspace(date: string): TodayWorkspaceState {
       if (action === 'keep_today' && resolved) {
         setEntries((current) => [...current, resolved]);
       }
+      toast('Pendência revisada.', {
+        duration: 5000,
+        action: {
+          label: 'Desfazer',
+          onClick: () => void undoRollover(item, action, resolved)
+        }
+      });
     } catch (cause) {
       toast.error(errorMessage(cause, 'Não foi possível revisar a pendência.'));
     }
-  }, [date]);
+  }, [date, undoRollover]);
 
   const startSession = useCallback(async (item: TodayEntry) => {
     const plannedItem = dayPlan.items.find((candidate) =>

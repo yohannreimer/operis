@@ -1,6 +1,7 @@
 import type { CSSProperties, HTMLAttributes } from 'react';
-import { Check, GripVertical, MoreHorizontal, Play } from 'lucide-react';
+import { GripVertical, MoreHorizontal, Play } from 'lucide-react';
 
+import { CompletionControl } from '../../components/ui';
 import type { TodayEntry } from './types';
 
 type Props = {
@@ -57,15 +58,12 @@ export function TodayExecutionRow({
       style={style}
       data-kind={entry.kind}
     >
-      <button
-        type="button"
+      <CompletionControl
         className="today-execution-row__check"
-        aria-label={`${completed ? 'Reabrir' : 'Concluir'} ${entry.title}`}
-        aria-pressed={completed}
-        onClick={() => onToggle(entry)}
-      >
-        {completed ? <Check aria-hidden="true" size={15} strokeWidth={2.4} /> : null}
-      </button>
+        checked={completed}
+        label={`${completed ? 'Reabrir' : 'Concluir'} ${entry.title}`}
+        onCheckedChange={() => onToggle(entry)}
+      />
 
       <div className="today-execution-row__content">
         <span className="today-execution-row__title">{entry.title}</span>
