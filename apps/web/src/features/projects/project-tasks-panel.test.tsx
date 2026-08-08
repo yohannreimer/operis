@@ -30,6 +30,7 @@ describe('ProjectTasksPanel', () => {
     apiMock.completeTask.mockResolvedValue({});
     const onReload = vi.fn();
     render(<MemoryRouter><ProjectTasksPanel project={cockpitFixture} open onClose={vi.fn()} onReload={onReload} /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: /concluir tarefa 1/i })).toHaveClass('ui-completion-control');
     fireEvent.click(screen.getByRole('button', { name: /mandar tarefa 1 para hoje/i }));
     fireEvent.click(screen.getByRole('button', { name: /concluir tarefa 2/i }));
     await waitFor(() => expect(apiMock.updateTask).toHaveBeenCalledWith('t1', { status: 'hoje' }));

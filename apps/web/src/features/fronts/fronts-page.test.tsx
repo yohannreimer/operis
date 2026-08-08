@@ -76,7 +76,8 @@ describe('Frentes execution page', () => {
 
   it('selects the highest-attention front and exposes its operational detail', async () => {
     renderPage();
-    expect(await screen.findByRole('heading', { name: 'Prymeira Digital' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: 'Nova Frente' })).toHaveTextContent('Nova Frente');
+    expect(screen.getByRole('heading', { name: 'Prymeira Digital' })).toBeVisible();
     expect(screen.getByText('Revisar dois clientes em risco')).toBeVisible();
     expect(localStorage.getItem('operis:last-front-id')).toBe('w1');
   });

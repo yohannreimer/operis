@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
-import { CalendarPlus, Check, ExternalLink, Plus, X } from 'lucide-react';
+import { CalendarPlus, ExternalLink, Plus, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../../api';
+import { Button, CompletionControl, IconButton } from '../../components/ui';
 import type { ProjectCockpit } from './types';
 
 export function ProjectTasksPanel({
@@ -96,20 +97,20 @@ export function ProjectTasksPanel({
       <aside ref={panelRef} className="project-tasks-panel" role="dialog" aria-modal="true" aria-label={`Tarefas de ${project.title}`}>
         <header>
           <div><span>TAREFAS DO PROJETO</span><h2>{project.title}</h2><p>{project.tasks.filter((task) => task.status !== 'feito').length} abertas · {project.tasks.filter((task) => task.status === 'feito').length} concluídas</p></div>
-          <button ref={closeRef} type="button" aria-label="Fechar tarefas" onClick={onClose}><X size={18} /></button>
+          <IconButton ref={closeRef} type="button" label="Fechar tarefas" icon={<X />} onClick={onClose} />
         </header>
         <div className="project-tasks-panel__toolbar">
-          <button type="button" onClick={() => setCreating((value) => !value)}><Plus size={15} /> Nova tarefa</button>
+          <Button type="button" variant="secondary" size="sm" leadingIcon={<Plus />} onClick={() => setCreating((value) => !value)}>Nova tarefa</Button>
           <Link to={`/tarefas?projectId=${project.id}`}>Abrir em Tarefas <ExternalLink size={14} /></Link>
         </div>
-        {creating && <form className="project-task-create" onSubmit={createTask}><label><span>Título da tarefa</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="O que precisa ser feito?" /></label><div><button type="button" onClick={() => setCreating(false)}>Cancelar</button><button type="submit" disabled={busyId === 'new'}>Adicionar tarefa</button></div></form>}
+        {creating && <form className="project-task-create" onSubmit={createTask}><label><span>Título da tarefa</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="O que precisa ser feito?" /></label><div><Button type="button" variant="secondary" onClick={() => setCreating(false)}>Cancelar</Button><Button type="submit" loading={busyId === 'new'}>Adicionar tarefa</Button></div></form>}
         {error && <p className="project-task-error" role="alert">{error}</p>}
         <div className="project-task-list">
           {project.tasks.map((task) => (
             <article key={task.id} data-complete={task.status === 'feito' || undefined}>
-              <button type="button" className="project-task-check" aria-label={`Concluir ${task.title}`} disabled={task.status === 'feito' || busyId === task.id} onClick={() => void complete(task.id)}>{task.status === 'feito' && <Check size={13} />}</button>
+              <CompletionControl checked={task.status === 'feito'} label={`${task.status === 'feito' ? 'Reabrir' : 'Concluir'} ${task.title}`} disabled={task.status === 'feito' || busyId === task.id} onCheckedChange={() => void complete(task.id)} />
               <div><strong>{task.title}</strong><small>{task.status === 'hoje' ? 'Em Hoje' : task.status === 'feito' ? 'Concluída' : task.dueDate ? `Prazo ${new Date(task.dueDate).toLocaleDateString('pt-BR')}` : 'Sem prazo'}</small></div>
-              {task.status !== 'feito' && <button type="button" className="project-task-today" aria-label={`Mandar ${task.title} para Hoje`} disabled={task.status === 'hoje' || busyId === task.id} onClick={() => void moveToToday(task.id)}><CalendarPlus size={15} /><span>{task.status === 'hoje' ? 'Em Hoje' : 'Hoje'}</span></button>}
+              {task.status !== 'feito' && <Button type="button" variant="tertiary" size="sm" className="project-task-today" aria-label={`Mandar ${task.title} para Hoje`} disabled={task.status === 'hoje' || busyId === task.id} leadingIcon={<CalendarPlus />} onClick={() => void moveToToday(task.id)}>{task.status === 'hoje' ? 'Em Hoje' : 'Hoje'}</Button>}
             </article>
           ))}
           {!project.tasks.length && <div className="project-task-empty"><p>Nenhuma tarefa vinculada. O motor e o movimento continuam funcionando sem uma lista extensa.</p></div>}

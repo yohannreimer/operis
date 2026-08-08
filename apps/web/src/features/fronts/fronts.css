@@ -34,21 +34,12 @@
   letter-spacing: -0.025em;
 }
 
-.front-rail__header button,
+.front-rail__header .front-new-button,
 .front-icon-button {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
   box-shadow: none;
 }
 
-.front-rail__header button:hover,
+.front-rail__header .front-new-button:hover,
 .front-icon-button:hover { transform: none; border-color: var(--border-hover); color: var(--text); }
 .front-rail nav { display: grid; gap: 3px; }
 .front-rail nav a {

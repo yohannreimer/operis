@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { api, type MethodologyData, type ProjectMethodology, type Workspace } from '../../api';
+import { Button, IconButton } from '../../components/ui';
 import {
   getEngineDefinition,
   ProjectMethodologyPicker,
@@ -177,9 +178,7 @@ export function ProjectWizard({
       <form className="project-wizard" role="dialog" aria-modal="true" aria-label="Criar Projeto" onSubmit={submit}>
         <header className="project-wizard__header">
           <div className="project-wizard__eyebrow">NOVO PROJETO · {step}/3</div>
-          <button type="button" className="project-wizard__close" aria-label="Fechar" onClick={onClose} disabled={submitting}>
-            <X size={18} />
-          </button>
+          <IconButton type="button" className="project-wizard__close" label="Fechar" icon={<X />} onClick={onClose} disabled={submitting} />
         </header>
 
         <div className="project-wizard__progress" aria-hidden="true">
@@ -261,18 +260,12 @@ export function ProjectWizard({
 
         <footer className="project-wizard__footer">
           {step > 1 ? (
-            <button type="button" className="project-wizard__back" onClick={() => setStep((step - 1) as 1 | 2)} disabled={submitting}>
-              <ArrowLeft size={16} /> Voltar
-            </button>
+            <Button type="button" variant="secondary" className="project-wizard__back" leadingIcon={<ArrowLeft />} onClick={() => setStep((step - 1) as 1 | 2)} disabled={submitting}>Voltar</Button>
           ) : <span />}
           {step < 3 ? (
-            <button type="button" className="project-wizard__next" onClick={continueWizard}>
-              Continuar <ArrowRight size={16} />
-            </button>
+            <Button type="button" className="project-wizard__next" onClick={continueWizard}>Continuar <ArrowRight size={16} /></Button>
           ) : (
-            <button type="submit" className="project-wizard__next" disabled={submitting}>
-              {submitting ? 'Criando…' : 'Criar Projeto'} <ArrowRight size={16} />
-            </button>
+            <Button type="submit" className="project-wizard__next" loading={submitting}>Criar Projeto <ArrowRight size={16} /></Button>
           )}
         </footer>
       </form>

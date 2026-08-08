@@ -6,6 +6,7 @@ import { ProjectList, type ProjectListFilters } from '../features/projects/proje
 import { ProjectShell } from '../features/projects/project-shell';
 import type { ProjectCockpit, ProjectExecutionListItem } from '../features/projects/types';
 import { ProjectWizard } from '../features/projects/project-wizard';
+import { Button } from '../components/ui';
 
 function ProjectsExecutionPage() {
   const { projectId } = useParams<{ projectId?: string }>();
@@ -113,7 +114,7 @@ function ProjectsExecutionPage() {
     <section className="projects-execution-page">
       <header className="projects-execution-page__header">
         <div><span>EXECUÇÃO ADAPTATIVA</span><h1>Projetos</h1><p>Direção, movimento e método — numa única leitura.</p></div>
-        <button type="button" onClick={openWizard}>Novo Projeto</button>
+        <Button type="button" variant="secondary" onClick={openWizard}>Novo Projeto</Button>
       </header>
 
       {!ready ? (

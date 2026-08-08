@@ -31,7 +31,9 @@ describe('ProjectList', () => {
   it('shows a useful empty state for the selected front', () => {
     const onNewProject = vi.fn();
     render(<MemoryRouter><ProjectList projects={[]} filters={{ search: '', workspaceId: 'w1', state: 'active' }} onFiltersChange={vi.fn()} onNewProject={onNewProject} /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: /novo projeto/i }));
+    const create = screen.getByRole('button', { name: 'Novo Projeto' });
+    expect(create).toHaveTextContent('Novo Projeto');
+    fireEvent.click(create);
     expect(onNewProject).toHaveBeenCalled();
     expect(screen.getByText(/nenhum projeto corresponde/i)).toBeVisible();
   });

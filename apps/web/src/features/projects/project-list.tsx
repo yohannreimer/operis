@@ -2,6 +2,7 @@ import { AlertTriangle, ChevronRight, Plus, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { getEngineDefinition } from './engine-registry';
+import { Button } from '../../components/ui';
 import type { ProjectExecutionListItem, ProjectOperationalState } from './types';
 
 export type ProjectListFilters = {
@@ -93,7 +94,7 @@ export function ProjectList({
           <span>SEM PROJETOS NESTA VISÃO</span>
           <h2>Nenhum Projeto corresponde aos filtros.</h2>
           <p>Um Projeto nasce com uma direção e um primeiro movimento — nada além disso é obrigatório.</p>
-          <button type="button" onClick={onNewProject}><Plus size={16} /> Novo Projeto</button>
+          <Button type="button" variant="secondary" leadingIcon={<Plus />} onClick={onNewProject}>Novo Projeto</Button>
         </div>
       )}
     </section>

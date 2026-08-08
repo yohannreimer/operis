@@ -2,6 +2,7 @@ import { AlertCircle, ChevronRight, Layers3, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import type { FrontOverviewListItem } from '../projects/types';
+import { Button } from '../../components/ui';
 
 export function FrontRail({
   fronts,
@@ -21,7 +22,7 @@ export function FrontRail({
           <span>EXECUÇÃO</span>
           <h2>Frentes</h2>
         </div>
-        <button type="button" aria-label="Nova Frente" onClick={onCreate}><Plus size={17} /></button>
+        <Button type="button" variant="secondary" size="sm" className="front-new-button" leadingIcon={<Plus />} onClick={onCreate}>Nova Frente</Button>
       </header>
       <nav>
         {fronts.map((front) => {
