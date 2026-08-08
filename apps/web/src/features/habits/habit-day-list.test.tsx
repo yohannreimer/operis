@@ -22,11 +22,17 @@ describe('HabitDayList', () => {
     const onToggle = vi.fn(); const onIncrement = vi.fn(); const onRelapse = vi.fn();
     render(<HabitDayList stats={fixtures} busyIds={new Set()} onToggle={onToggle} onIncrement={onIncrement} onSetTotal={vi.fn()} onRelapse={onRelapse} onUndoRelapse={vi.fn()} onClear={vi.fn()} onEdit={vi.fn()} onArchive={vi.fn()} onDelete={vi.fn()} />);
     expect(screen.queryByText('Revisar finanças')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /marcar dormir/i }));
+    const binaryAction = screen.getByRole('button', { name: /marcar dormir/i });
+    expect(binaryAction).toHaveClass('ui-completion-control');
+    fireEvent.click(binaryAction);
     expect(onToggle).toHaveBeenCalledWith('binary-1', false);
-    fireEvent.click(screen.getByRole('button', { name: /adicionar 10 páginas/i }));
+    const quantityAction = screen.getByRole('button', { name: /adicionar 10 páginas/i });
+    expect(quantityAction).toHaveClass('ui-button--secondary');
+    fireEvent.click(quantityAction);
     expect(onIncrement).toHaveBeenCalledWith('quant-1', 10);
-    fireEvent.click(screen.getByRole('button', { name: /registrar recaída/i }));
+    const viceAction = screen.getByRole('button', { name: /registrar recaída/i });
+    expect(viceAction).toHaveClass('ui-button--secondary');
+    fireEvent.click(viceAction);
     expect(onRelapse).toHaveBeenCalledWith('vice-1');
     expect(screen.queryByText(/tem certeza/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /outros hábitos/i }));
@@ -41,5 +47,6 @@ describe('HabitDayList', () => {
     expect(menu).toHaveTextContent('Arquivar');
     expect(menu).toHaveTextContent('Excluir');
     expect(menu).not.toHaveTextContent('Marcar');
+    expect(screen.getByRole('menuitem', { name: 'Excluir' })).toHaveClass('ui-button--danger');
   });
 });

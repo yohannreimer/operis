@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Habit, HabitEvolution } from '../../api';
+import { Button } from '../../components/ui';
 import { AREA_MAP } from './habit-ui';
 
 export type HabitHeatmapCell = {
@@ -39,7 +40,7 @@ export function HabitEvolutionView({ evolution, habits, heatmap, period, selecte
     <div className="habit-evolution-view">
       <header className="habit-evolution-header">
         <div><Link to="/habitos" className="habit-back-link"><ArrowLeft size={14} /> Hábitos</Link><h1>Evolução</h1><p>Leia o ritmo. Ajuste o sistema, não a culpa.</p></div>
-        <div className="habit-period-switch" aria-label="Período analisado">{([30, 90, 365] as const).map((days) => <button type="button" key={days} className={period === days ? 'active' : ''} aria-label={`${days} dias`} onClick={() => onPeriodChange(days)}>{days === 365 ? '1 ano' : `${days}d`}</button>)}</div>
+        <div className="habit-period-switch" aria-label="Período analisado">{([30, 90, 365] as const).map((days) => <Button type="button" variant="tertiary" size="sm" key={days} aria-pressed={period === days} aria-label={`${days} dias`} onClick={() => onPeriodChange(days)}>{days === 365 ? '1 ano' : `${days}d`}</Button>)}</div>
       </header>
 
       <div className="habit-evolution-tabs" role="tablist" aria-label="Visão de evolução"><button type="button" role="tab" aria-selected={tab === 'overview'} onClick={() => setTab('overview')}>Visão geral</button><button type="button" role="tab" aria-selected={tab === 'habit'} onClick={() => setTab('habit')}>Consistência por hábito</button></div>

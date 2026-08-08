@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -15,6 +14,8 @@ import {
 import { HabitDayList } from '../features/habits/habit-day-list';
 import { ALL_DAYS, AREA_MAP, DAY_LABELS, LIFE_AREAS } from '../features/habits/habit-ui';
 import '../features/habits/habits.css';
+import { Modal } from '../components/modal';
+import { Button, IconButton } from '../components/ui';
 import { localDateKey } from '../utils/date';
 
 function addDays(value: string, amount: number) {
@@ -84,28 +85,25 @@ function HabitFormDialog({ open, habit, onOpenChange, onSaved }: {
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="radix-overlay" />
-        <Dialog.Content className="habit-form-dialog">
-          <div className="habit-form-head">
-            <div><Dialog.Title>{habit ? 'Editar hábito' : 'Novo hábito'}</Dialog.Title><Dialog.Description>Defina o comportamento que você quer tornar recorrente.</Dialog.Description></div>
-            <Dialog.Close asChild><button type="button" className="habit-icon-button" aria-label="Fechar formulário"><X size={16} /></button></Dialog.Close>
-          </div>
-          <div className="habit-form-grid">
-            <label className="habit-form-title">Nome<input autoFocus value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Leitura" /></label>
-            <label>Emoji<input value={form.icon} onChange={(event) => setForm({ ...form, icon: event.target.value })} placeholder="Opcional" maxLength={4} /></label>
-            <label>Área<select value={form.lifeArea} onChange={(event) => setForm({ ...form, lifeArea: event.target.value as HabitLifeArea })}>{LIFE_AREAS.map((area) => <option key={area.key} value={area.key}>{area.label}</option>)}</select></label>
-            <label>Tipo<select value={form.type} disabled={Boolean(habit)} onChange={(event) => setForm({ ...form, type: event.target.value as HabitType })}><option value="binary">Feito ou não feito</option><option value="quantitative">Quantidade</option><option value="vice">Evitar recaída</option></select></label>
-            <label>Frequência<select value={form.frequencyType} onChange={(event) => setForm({ ...form, frequencyType: event.target.value as HabitFrequency })}><option value="daily">Todos os dias</option><option value="specific_days">Dias específicos</option><option value="weekly">Meta semanal</option><option value="monthly">Meta mensal</option></select></label>
-            {(form.frequencyType === 'weekly' || form.frequencyType === 'monthly') && <label>Meta por período<input type="number" min="1" value={form.frequencyTarget} onChange={(event) => setForm({ ...form, frequencyTarget: Number(event.target.value) })} /></label>}
-            {form.type === 'quantitative' && <><label>Unidade<input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} placeholder="páginas, min, km" /></label><label>Meta diária<input type="number" min="1" value={form.dailyTarget} onChange={(event) => setForm({ ...form, dailyTarget: Number(event.target.value) })} /></label></>}
-          </div>
-          {form.frequencyType === 'specific_days' && <fieldset className="habit-weekdays"><legend>Dias da semana</legend>{ALL_DAYS.map((day) => <button type="button" key={day} className={form.specificDays.includes(day) ? 'active' : ''} onClick={() => toggleDay(day)}>{DAY_LABELS[day]}</button>)}</fieldset>}
-          <div className="habit-form-actions"><Dialog.Close asChild><button type="button" className="ghost-button">Cancelar</button></Dialog.Close><button type="button" onClick={() => void save()} disabled={saving || !form.title.trim()}>{saving ? 'Salvando…' : 'Salvar hábito'}</button></div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Modal
+      open={open}
+      onClose={() => onOpenChange(false)}
+      title={habit ? 'Editar hábito' : 'Novo hábito'}
+      subtitle="Defina o comportamento que você quer tornar recorrente."
+      size="lg"
+      footer={<div className="habit-form-actions"><Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancelar</Button><Button type="button" loading={saving} disabled={!form.title.trim()} onClick={() => void save()}>Salvar hábito</Button></div>}
+    >
+      <div className="habit-form-grid">
+        <label className="habit-form-title">Nome<input autoFocus value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Leitura" /></label>
+        <label>Emoji<input value={form.icon} onChange={(event) => setForm({ ...form, icon: event.target.value })} placeholder="Opcional" maxLength={4} /></label>
+        <label>Área<select value={form.lifeArea} onChange={(event) => setForm({ ...form, lifeArea: event.target.value as HabitLifeArea })}>{LIFE_AREAS.map((area) => <option key={area.key} value={area.key}>{area.label}</option>)}</select></label>
+        <label>Tipo<select value={form.type} disabled={Boolean(habit)} onChange={(event) => setForm({ ...form, type: event.target.value as HabitType })}><option value="binary">Feito ou não feito</option><option value="quantitative">Quantidade</option><option value="vice">Evitar recaída</option></select></label>
+        <label>Frequência<select value={form.frequencyType} onChange={(event) => setForm({ ...form, frequencyType: event.target.value as HabitFrequency })}><option value="daily">Todos os dias</option><option value="specific_days">Dias específicos</option><option value="weekly">Meta semanal</option><option value="monthly">Meta mensal</option></select></label>
+        {(form.frequencyType === 'weekly' || form.frequencyType === 'monthly') && <label>Meta por período<input type="number" min="1" value={form.frequencyTarget} onChange={(event) => setForm({ ...form, frequencyTarget: Number(event.target.value) })} /></label>}
+        {form.type === 'quantitative' && <><label>Unidade<input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} placeholder="páginas, min, km" /></label><label>Meta diária<input type="number" min="1" value={form.dailyTarget} onChange={(event) => setForm({ ...form, dailyTarget: Number(event.target.value) })} /></label></>}
+      </div>
+      {form.frequencyType === 'specific_days' && <fieldset className="habit-weekdays"><legend>Dias da semana</legend>{ALL_DAYS.map((day) => <Button type="button" variant="secondary" size="sm" key={day} aria-pressed={form.specificDays.includes(day)} onClick={() => toggleDay(day)}>{DAY_LABELS[day]}</Button>)}</fieldset>}
+    </Modal>
   );
 }
 
@@ -162,8 +160,8 @@ export function HabitosPage() {
       <header className="habits-page-header">
         <div><p className="habits-page-overline">{copy.overline}</p><h1>{copy.title}</h1><p>Registre o dia em poucos segundos. Consistência antes de perfeição.</p></div>
         <div className="habits-header-actions">
-          <div className="habits-date-nav"><button type="button" className="habit-icon-button" aria-label="Dia anterior" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={17} /></button><button type="button" className="habit-icon-button" aria-label="Próximo dia" disabled={date >= today} onClick={() => setDate(addDays(date, 1))}><ChevronRight size={17} /></button></div>
-          <button type="button" className="habits-new-button" onClick={() => { setEditingHabit(null); setFormOpen(true); }}><Plus size={16} /><span>Novo hábito</span></button>
+          <div className="habits-date-nav"><IconButton type="button" label="Dia anterior" icon={<ChevronLeft />} onClick={() => setDate(addDays(date, -1))} /><IconButton type="button" label="Próximo dia" icon={<ChevronRight />} disabled={date >= today} onClick={() => setDate(addDays(date, 1))} /></div>
+          <Button type="button" variant="secondary" className="habits-new-button" leadingIcon={<Plus />} onClick={() => { setEditingHabit(null); setFormOpen(true); }}>Novo hábito</Button>
         </div>
       </header>
 

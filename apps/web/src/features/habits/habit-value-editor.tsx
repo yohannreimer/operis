@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { PencilLine, X } from 'lucide-react';
+import { PencilLine } from 'lucide-react';
+
 import type { HabitTodayStat } from '../../api';
+import { Modal } from '../../components/modal';
+import { Button, Field } from '../../components/ui';
 
 export function HabitValueEditor({ habit, currentValue, disabled, onSave, onClear }: {
   habit: HabitTodayStat;
@@ -12,46 +14,66 @@ export function HabitValueEditor({ habit, currentValue, disabled, onSave, onClea
 }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(String(currentValue));
-  const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (open) setValue(String(currentValue));
   }, [currentValue, open]);
+
+  function close() {
+    setOpen(false);
+    queueMicrotask(() => triggerRef.current?.focus());
+  }
 
   async function save() {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed < 0) return;
     if (parsed === 0) await onClear();
     else await onSave(parsed);
-    setOpen(false);
+    close();
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>
-        <button type="button" className="habit-exact-button" disabled={disabled} aria-label={`Informar valor exato de ${habit.title}`}>
-          <PencilLine size={14} />
-          <span>{currentValue}/{habit.dailyTarget ?? habit.frequencyTarget}</span>
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="radix-overlay" />
-        <Dialog.Content className="habit-value-dialog" aria-describedby={undefined} onOpenAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus(); }}>
-          <div className="habit-value-dialog-head">
-            <Dialog.Title>Valor de {habit.title}</Dialog.Title>
-            <Dialog.Close asChild><button type="button" className="habit-icon-button" aria-label="Fechar editor"><X size={16} /></button></Dialog.Close>
-          </div>
-          <Dialog.Description>Informe o total realizado nesta data. Este valor substitui o total atual.</Dialog.Description>
-          <label>
-            Total {habit.unit ? `em ${habit.unit}` : ''}
-            <input ref={inputRef} type="number" min="0" step="any" value={value} onChange={(event) => setValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void save(); }} />
-          </label>
+    <>
+      <Button
+        ref={triggerRef}
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="habit-exact-button"
+        disabled={disabled}
+        aria-label={`Informar valor exato de ${habit.title}`}
+        leadingIcon={<PencilLine />}
+        onClick={() => setOpen(true)}
+      >
+        {currentValue}/{habit.dailyTarget ?? habit.frequencyTarget}
+      </Button>
+      <Modal
+        open={open}
+        onClose={close}
+        title={`Valor de ${habit.title}`}
+        subtitle="Informe o total realizado nesta data. Este valor substitui o total atual."
+        footer={(
           <div className="habit-value-actions">
-            <Dialog.Close asChild><button type="button" className="ghost-button">Cancelar</button></Dialog.Close>
-            <button type="button" onClick={() => void save()} disabled={!value || Number(value) < 0}>Salvar total</button>
+            <Button type="button" variant="secondary" onClick={close}>Cancelar</Button>
+            <Button type="button" onClick={() => void save()} disabled={!value || Number(value) < 0}>Salvar total</Button>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        )}
+      >
+        <Field label={`Total ${habit.unit ? `em ${habit.unit}` : ''}`} htmlFor={`habit-value-${habit.id}`}>
+          <input
+            id={`habit-value-${habit.id}`}
+            className="habit-value-input"
+            autoFocus
+            type="number"
+            min="0"
+            step="any"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') void save(); }}
+          />
+        </Field>
+      </Modal>
+    </>
   );
 }

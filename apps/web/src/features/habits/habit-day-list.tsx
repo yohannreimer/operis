@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Check, ChevronDown, Flame, MoreHorizontal, Plus, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Flame, MoreHorizontal, Plus, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react';
 import type { HabitTodayStat } from '../../api';
+import { Button, CompletionControl, IconButton, Popover } from '../../components/ui';
 import { AREA_MAP, habitIncrement } from './habit-ui';
 import { HabitValueEditor } from './habit-value-editor';
 
@@ -19,17 +20,15 @@ export type HabitDayListProps = {
 };
 
 function HabitMenu({ habit, onEdit, onArchive, onDelete, onUndoRelapse }: Pick<HabitDayListProps, 'onEdit' | 'onArchive' | 'onDelete' | 'onUndoRelapse'> & { habit: HabitTodayStat }) {
-  const [open, setOpen] = useState(false);
   const relapse = habit.type === 'vice' && habit.currentLog?.value === -1;
   return (
     <div className="habit-row-menu">
-      <button type="button" className="habit-icon-button" aria-label={`Opções de ${habit.title}`} aria-expanded={open} onClick={() => setOpen(!open)}><MoreHorizontal size={16} /></button>
-      {open && <div className="habit-row-menu-popover" role="menu">
-        {relapse && <button type="button" role="menuitem" onClick={() => { setOpen(false); void onUndoRelapse(habit.id); }}><RotateCcw size={13} /> Desfazer recaída</button>}
-        <button type="button" role="menuitem" onClick={() => { setOpen(false); onEdit(habit); }}>Editar</button>
-        <button type="button" role="menuitem" onClick={() => { setOpen(false); onArchive(habit.id); }}>Arquivar</button>
-        <button type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); onDelete(habit.id); }}>Excluir</button>
-      </div>}
+      <Popover label={`Opções de ${habit.title}`} trigger={<IconButton type="button" label={`Opções de ${habit.title}`} icon={<MoreHorizontal size={16} />} />}>
+        {relapse ? <Button type="button" variant="tertiary" size="sm" role="menuitem" leadingIcon={<RotateCcw />} onClick={() => void onUndoRelapse(habit.id)}>Desfazer recaída</Button> : null}
+        <Button type="button" variant="tertiary" size="sm" role="menuitem" onClick={() => onEdit(habit)}>Editar</Button>
+        <Button type="button" variant="tertiary" size="sm" role="menuitem" onClick={() => onArchive(habit.id)}>Arquivar</Button>
+        <Button type="button" variant="danger" size="sm" role="menuitem" onClick={() => onDelete(habit.id)}>Excluir</Button>
+      </Popover>
     </div>
   );
 }
@@ -47,13 +46,13 @@ function HabitRow({ habit, props }: { habit: HabitTodayStat; props: HabitDayList
       <span className="habit-area-mark" aria-hidden="true" />
       <div className="habit-row-copy">{title}</div>
       <div className="habit-row-primary">
-        {habit.type === 'binary' && <button type="button" className={`habit-action-button${habit.isCompletedToday ? ' active' : ''}`} disabled={busy} aria-label={`${habit.isCompletedToday ? 'Desmarcar' : 'Marcar'} ${habit.title}`} onClick={() => void props.onToggle(habit.id, habit.isCompletedToday)}><Check size={15} />{habit.isCompletedToday ? 'Feito' : 'Marcar'}</button>}
+        {habit.type === 'binary' && <><CompletionControl checked={habit.isCompletedToday} disabled={busy} label={`${habit.isCompletedToday ? 'Desmarcar' : 'Marcar'} ${habit.title}`} onCheckedChange={() => void props.onToggle(habit.id, habit.isCompletedToday)} /><span className="habit-binary-status">{habit.isCompletedToday ? 'Feito' : 'Pendente'}</span></>}
         {habit.type === 'quantitative' && <>
           <HabitValueEditor habit={habit} currentValue={current} disabled={busy} onSave={(value) => props.onSetTotal(habit.id, value)} onClear={() => props.onClear(habit.id)} />
-          <button type="button" className="habit-action-button" disabled={busy} aria-label={`Adicionar ${habitIncrement(habit.unit)} ${habit.unit ?? ''} a ${habit.title}`} onClick={() => void props.onIncrement(habit.id, habitIncrement(habit.unit))}><Plus size={15} />{habitIncrement(habit.unit)} {habit.unit ?? ''}</button>
+          <Button type="button" variant="secondary" size="sm" className="habit-action-button" disabled={busy} aria-label={`Adicionar ${habitIncrement(habit.unit)} ${habit.unit ?? ''} a ${habit.title}`} leadingIcon={<Plus />} onClick={() => void props.onIncrement(habit.id, habitIncrement(habit.unit))}>{habitIncrement(habit.unit)} {habit.unit ?? ''}</Button>
           <span className="habit-progress-track" aria-label={`${Math.min(100, Math.round(current / Math.max(1, target) * 100))}% concluído`}><span style={{ width: `${Math.min(100, current / Math.max(1, target) * 100)}%` }} /></span>
         </>}
-        {habit.type === 'vice' && <button type="button" className={`habit-action-button vice${relapse ? 'active' : ''}`} disabled={busy || relapse} aria-label={`Registrar recaída em ${habit.title}`} onClick={() => void props.onRelapse(habit.id)}>{relapse ? <TriangleAlert size={15} /> : <ShieldCheck size={15} />}{relapse ? 'Recaída registrada' : 'Sigo firme'}</button>}
+        {habit.type === 'vice' && <Button type="button" variant={relapse ? 'danger' : 'secondary'} size="sm" className="habit-action-button vice" disabled={busy || relapse} aria-label={`Registrar recaída em ${habit.title}`} leadingIcon={relapse ? <TriangleAlert /> : <ShieldCheck />} onClick={() => void props.onRelapse(habit.id)}>{relapse ? 'Recaída registrada' : 'Sigo firme'}</Button>}
       </div>
       <HabitMenu habit={habit} onEdit={props.onEdit} onArchive={props.onArchive} onDelete={props.onDelete} onUndoRelapse={props.onUndoRelapse} />
     </div>

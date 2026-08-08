@@ -16,6 +16,9 @@ describe('HabitValueEditor', () => {
     render(<HabitValueEditor habit={habit} currentValue={12} onSave={onSave} onClear={vi.fn()} />);
     const trigger = screen.getByRole('button', { name: /informar valor exato/i });
     fireEvent.click(trigger);
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveClass('ui-button--secondary');
+    expect(screen.getByRole('button', { name: 'Salvar total' })).toHaveClass('ui-button--primary');
     const input = await screen.findByRole('spinbutton');
     fireEvent.change(input, { target: { value: '20' } });
     fireEvent.click(screen.getByRole('button', { name: /salvar total/i }));
