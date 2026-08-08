@@ -721,6 +721,14 @@
   border-bottom: 1px solid var(--border);
 }
 
+.inbox-tray__count {
+  display: block;
+  margin: 0 0 8px;
+  color: var(--ui-text-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
 .inbox-tray__capture .inbox-input-row {
   min-height: 46px;
   background: var(--surface-soft);
@@ -18326,7 +18334,8 @@ textarea.operis-block-field-input {
 }
 
 .inbox-input-row:focus-within {
-  border-color: rgba(249, 115, 22, 0.5);
+  border-color: var(--ui-border-strong);
+  box-shadow: var(--ui-focus-ring);
 }
 
 .inbox-input {
@@ -18378,8 +18387,8 @@ textarea.operis-block-field-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .inbox-input-context-clear:hover {
@@ -18388,8 +18397,9 @@ textarea.operis-block-field-input {
 }
 
 .inbox-input-submit {
-  min-height: unset;
-  padding: 4px 10px;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
   font-size: 0.9rem;
   line-height: 1;
   flex-shrink: 0;
@@ -18402,8 +18412,8 @@ textarea.operis-block-field-input {
 }
 
 .inbox-input-submit:not(:disabled):hover {
-  color: var(--primary);
-  background: transparent;
+  color: var(--ui-text);
+  background: var(--ui-surface-hover);
   transform: none;
   box-shadow: none;
 }
@@ -18458,8 +18468,20 @@ textarea.operis-block-field-input {
 }
 
 .inbox-autocomplete-icon {
-  font-size: 0.9rem;
+  display: inline-grid;
+  place-items: center;
   flex-shrink: 0;
+}
+
+.inbox-autocomplete-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.compose-option-card .ui-button__content,
+.compose-option-card .ui-button__content > span {
+  width: 100%;
+  display: contents;
 }
 
 /* ── Groups ──────────────────────────────────────────────────────────────── */
@@ -18976,6 +18998,15 @@ textarea.operis-block-field-input {
   transition: border-color 140ms ease, background 140ms ease;
 }
 
+.schedule-sheet-option-btn .ui-button__content,
+.schedule-sheet-option-btn .ui-button__content > span {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
 .schedule-sheet-option-btn strong {
   font-size: 0.95rem;
   font-weight: 600;
@@ -18988,14 +19019,14 @@ textarea.operis-block-field-input {
 }
 
 .schedule-sheet-option-btn:hover {
-  border-color: var(--primary);
-  background: var(--primary-soft);
+  border-color: var(--ui-border-strong);
+  background: var(--ui-surface-hover);
   transform: none;
   box-shadow: none;
 }
 
 .schedule-sheet-option-btn:hover small {
-  color: var(--primary);
+  color: var(--ui-text);
 }
 
 .schedule-sheet-divider {

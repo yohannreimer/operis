@@ -1,12 +1,11 @@
 import { useRef, useState } from 'react';
-import { Inbox, X } from 'lucide-react';
 
 import type { InboxItem, Task } from '../../api';
 import { CreateTaskModal } from '../../components/create-task-modal';
 import { InboxGroup } from '../../components/inbox-group';
 import { InboxInput } from '../../components/inbox-input';
+import { Button, Sheet } from '../../components/ui';
 import { useInboxController } from '../inbox/use-inbox-controller';
-import { useModalFocus } from './use-modal-focus';
 
 type Props = {
   open: boolean;
@@ -18,10 +17,7 @@ type Props = {
 export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
   const controller = useInboxController({ view: 'unprocessed', date });
   const inputRef = useRef<HTMLInputElement>(null);
-  const trayRef = useRef<HTMLElement>(null);
   const [convertingItem, setConvertingItem] = useState<InboxItem | null>(null);
-
-  useModalFocus({ active: open, containerRef: trayRef, initialFocusRef: inputRef, onClose });
 
   async function handleAddToToday(item: InboxItem) {
     await onAddToToday(item);
@@ -36,42 +32,18 @@ export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
     setConvertingItem(null);
   }
 
-  if (!open) {
-    return null;
+  function startConversion(item: InboxItem) {
+    setConvertingItem(item);
+    onClose();
   }
 
   return (
-    <div
-      className="inbox-tray__backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <aside
-        ref={trayRef}
-        className="inbox-tray"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="inbox-tray-title"
-      >
-        <header className="inbox-tray__header">
-          <div>
-            <span className="inbox-tray__eyebrow"><Inbox aria-hidden="true" size={14} /> Capturas</span>
-            <h2 id="inbox-tray-title">Inbox</h2>
-          </div>
-          <div className="inbox-tray__header-actions">
-            <span aria-label={`${controller.items.length} itens a processar`}>
-              {controller.items.length}
-            </span>
-            <button type="button" aria-label="Fechar Inbox" onClick={onClose}>
-              <X aria-hidden="true" size={18} />
-            </button>
-          </div>
-        </header>
-
+    <>
+      <Sheet open={open} title="Inbox" eyebrow="Capturas" initialFocusRef={inputRef} onClose={onClose}>
         <div className="inbox-tray__capture">
+          <span className="inbox-tray__count" aria-label={`${controller.items.length} itens a processar`}>
+            {controller.items.length} a processar
+          </span>
           <InboxInput
             inputRef={inputRef}
             workspaces={controller.workspaces}
@@ -85,7 +57,7 @@ export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
         {controller.error ? (
           <div className="inbox-tray__status" role="status" aria-live="polite">
             <span>{controller.error}</span>
-            <button type="button" onClick={() => void controller.reload()}>Tentar novamente</button>
+            <Button variant="tertiary" size="sm" onClick={() => void controller.reload()}>Tentar novamente</Button>
           </div>
         ) : null}
 
@@ -110,7 +82,7 @@ export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
                 void controller.setWaiting(item, waitingDate, person, note);
               }}
               onExecute={(item) => void controller.execute(item)}
-              onConvert={setConvertingItem}
+              onConvert={startConversion}
               onMoveContext={(item, workspaceId, inboxContextId) => {
                 void controller.moveContext(item, workspaceId, inboxContextId);
               }}
@@ -118,7 +90,7 @@ export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
             />
           )}
         </div>
-      </aside>
+      </Sheet>
 
       <CreateTaskModal
         open={Boolean(convertingItem)}
@@ -130,6 +102,6 @@ export function InboxTray({ open, onClose, date, onAddToToday }: Props) {
         }}
         onCreated={(task) => void handleConverted(task)}
       />
-    </div>
+    </>
   );
 }

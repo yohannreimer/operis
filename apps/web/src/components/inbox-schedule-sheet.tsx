@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
+import { Button, Field, Sheet } from './ui';
 
 type Props = {
   open: boolean;
@@ -21,45 +21,38 @@ export function InboxScheduleSheet({ open, onClose, onNow, onScheduled }: Props)
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="modal-overlay" />
-        <Dialog.Content className="modal-content schedule-sheet" aria-describedby={undefined}>
-          <Dialog.Title className="modal-title">Executar hoje</Dialog.Title>
+    <Sheet
+      open={open}
+      title="Executar hoje"
+      side="bottom"
+      onClose={onClose}
+      footer={<Button variant="secondary" onClick={onClose}>Cancelar</Button>}
+    >
+      <div className="schedule-sheet-options">
+        <Button
+          type="button"
+          variant="secondary"
+          className="schedule-sheet-option-btn"
+          onClick={() => { onNow(); onClose(); }}
+        >
+          <strong>Agora</strong>
+          <small>Ir para execução imediatamente</small>
+        </Button>
 
-          <div className="schedule-sheet-options">
-            <button
-              type="button"
-              className="schedule-sheet-option-btn"
-              onClick={() => { onNow(); onClose(); }}
-            >
-              <strong>Agora</strong>
-              <small>Ir para execução imediatamente</small>
-            </button>
+        <div className="schedule-sheet-divider">ou agendar horário</div>
 
-            <div className="schedule-sheet-divider">ou agendar horário</div>
-
-            <div className="schedule-sheet-time-row">
+        <div className="schedule-sheet-time-row">
+          <Field label="Horário" htmlFor="inbox-schedule-time">
               <input
+                id="inbox-schedule-time"
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
               />
-              <button
-                type="button"
-                onClick={handleScheduled}
-                disabled={!time}
-              >
-                Agendar
-              </button>
-            </div>
-          </div>
-
-          <button type="button" className="ghost-button" onClick={onClose} style={{ marginTop: '12px', width: '100%' }}>
-            Cancelar
-          </button>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </Field>
+          <Button type="button" onClick={handleScheduled} disabled={!time}>Agendar</Button>
+        </div>
+      </div>
+    </Sheet>
   );
 }

@@ -11,6 +11,7 @@ import {
   Workspace,
 } from '../api';
 import { Modal } from './modal';
+import { Button, Field } from './ui';
 
 type Props = {
   open: boolean;
@@ -98,43 +99,54 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
   return (
     <Modal open={open} onClose={onClose} title="Nova tarefa" subtitle="Criar tarefa estruturada" size="lg">
       <form className="minimal-form create-task-modal-form" onSubmit={handleSubmit}>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Verbo + objeto (ex: Fechar proposta comercial)"
-          required
-          autoFocus
-        />
+        <Field label="Título" htmlFor="create-task-title">
+          <input
+            id="create-task-title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Verbo + objeto (ex: Fechar proposta comercial)"
+            required
+            autoFocus
+          />
+        </Field>
 
-        <input
-          value={dod}
-          onChange={(e) => setDod(e.target.value)}
-          placeholder="Definição de pronto (opcional)"
-        />
+        <Field label="Definição de pronto" htmlFor="create-task-dod" hint="Opcional">
+          <input
+            id="create-task-dod"
+            value={dod}
+            onChange={(e) => setDod(e.target.value)}
+            placeholder="Definição de pronto (opcional)"
+          />
+        </Field>
 
         <div className="row-2">
-          <select
-            value={workspaceId}
-            onChange={(e) => { setWorkspaceId(e.target.value); setProjectId(''); }}
-            required
-          >
-            <option value="">Frente</option>
-            {workspaces.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
+          <Field label="Frente" htmlFor="create-task-workspace">
+            <select
+              id="create-task-workspace"
+              value={workspaceId}
+              onChange={(e) => { setWorkspaceId(e.target.value); setProjectId(''); }}
+              required
+            >
+              <option value="">Selecione uma frente</option>
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </Field>
 
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">Sem projeto</option>
-            {filteredProjects.map((p) => (
-              <option key={p.id} value={p.id}>{p.title}</option>
-            ))}
-          </select>
+          <Field label="Projeto" htmlFor="create-task-project">
+            <select id="create-task-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">Sem projeto</option>
+              {filteredProjects.map((p) => (
+                <option key={p.id} value={p.id}>{p.title}</option>
+              ))}
+            </select>
+          </Field>
         </div>
 
-        <label>
-          Tempo estimado (min)
+        <Field label="Tempo estimado (min)" htmlFor="create-task-duration">
           <input
+            id="create-task-duration"
             type="number"
             min={1}
             step={1}
@@ -142,7 +154,7 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
             onChange={(e) => setEstimatedMinutes(e.target.value)}
             required
           />
-        </label>
+        </Field>
 
         <section className="compose-choice-group">
           <div className="compose-choice-label">Tipo (impacto)</div>
@@ -154,9 +166,11 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
                 { value: 'c' as TaskType, title: 'Tipo C', subtitle: 'Conveniência' },
               ]
             ).map((opt) => (
-              <button
+              <Button
                 key={opt.value}
                 type="button"
+                variant="secondary"
+                aria-pressed={taskType === opt.value}
                 className={
                   taskType === opt.value
                     ? `compose-option-card active tone-${opt.value}`
@@ -169,7 +183,7 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
               >
                 <strong>{opt.title}</strong>
                 <small>{opt.subtitle}</small>
-              </button>
+              </Button>
             ))}
           </div>
         </section>
@@ -184,9 +198,11 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
                 { value: 'baixa' as TaskEnergy, title: 'Baixa energia', subtitle: 'Leve/rápida' },
               ]
             ).map((opt) => (
-              <button
+              <Button
                 key={opt.value}
                 type="button"
+                variant="secondary"
+                aria-pressed={energyLevel === opt.value}
                 className={
                   energyLevel === opt.value
                     ? `compose-option-card active tone-energy-${opt.value}`
@@ -196,7 +212,7 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
               >
                 <strong>{opt.title}</strong>
                 <small>{opt.subtitle}</small>
-              </button>
+              </Button>
             ))}
           </div>
         </section>
@@ -212,9 +228,11 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
                 { value: 'suporte' as TaskExecutionKind, title: 'Suporte', subtitle: 'Apoia outros' },
               ]
             ).map((opt) => (
-              <button
+              <Button
                 key={opt.value}
                 type="button"
+                variant="secondary"
+                aria-pressed={executionKind === opt.value}
                 className={
                   executionKind === opt.value
                     ? 'compose-option-card active'
@@ -224,7 +242,7 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
               >
                 <strong>{opt.title}</strong>
                 <small>{opt.subtitle}</small>
-              </button>
+              </Button>
             ))}
           </div>
         </section>
@@ -238,26 +256,26 @@ export function CreateTaskModal({ open, onClose, workspaces, prefill, onCreated 
                 { value: 'future' as TaskHorizon, title: 'Futuro', subtitle: 'Backlog futuro' },
               ]
             ).map((opt) => (
-              <button
+              <Button
                 key={opt.value}
                 type="button"
+                variant="secondary"
+                aria-pressed={horizon === opt.value}
                 className={horizon === opt.value ? 'compose-option-card active' : 'compose-option-card'}
                 onClick={() => setHorizon(opt.value)}
               >
                 <strong>{opt.title}</strong>
                 <small>{opt.subtitle}</small>
-              </button>
+              </Button>
             ))}
           </div>
         </section>
 
         <div className="compose-footer">
-          <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Cancelar
-          </button>
-          <button type="submit" disabled={busy}>
-            {busy ? 'Criando...' : 'Criar tarefa'}
-          </button>
+          </Button>
+          <Button type="submit" loading={busy}>Criar tarefa</Button>
         </div>
       </form>
     </Modal>

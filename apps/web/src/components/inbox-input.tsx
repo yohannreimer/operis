@@ -1,5 +1,7 @@
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { Building2, CornerDownLeft, Folder, X } from 'lucide-react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { InboxContext, Workspace } from '../api';
+import { Button, IconButton } from './ui';
 
 type ContextOption = {
   type: 'workspace' | 'inboxContext';
@@ -109,9 +111,14 @@ export function InboxInput({ workspaces, contexts, inputRef: externalRef, onSubm
         {selectedContext && (
           <span className="inbox-input-context-tag">
             @{selectedContext.name}
-            <button type="button" className="inbox-input-context-clear" onClick={clearContext} aria-label="Remover contexto">
-              ×
-            </button>
+            <IconButton
+              type="button"
+              size="sm"
+              className="inbox-input-context-clear"
+              onClick={clearContext}
+              label="Remover contexto"
+              icon={<X size={12} />}
+            />
           </span>
         )}
         <input
@@ -122,32 +129,36 @@ export function InboxInput({ workspaces, contexts, inputRef: externalRef, onSubm
           onKeyDown={handleKeyDown}
           placeholder={selectedContext ? 'Digite e pressione Enter...' : 'Digite qualquer coisa... @frente'}
           autoComplete="off"
+          aria-label="Capturar no Inbox"
         />
-        <button
+        <IconButton
           type="button"
-          className="inbox-input-submit ghost-button"
+          variant="tertiary"
+          size="sm"
+          className="inbox-input-submit"
           onClick={handleSubmit}
           disabled={!value.trim()}
-          aria-label="Criar item"
-        >
-          ↵
-        </button>
+          label="Criar item"
+          icon={<CornerDownLeft />}
+        />
       </div>
 
       {showAutocomplete && (
         <div className="inbox-autocomplete">
           {autocomplete.map((option, idx) => (
-            <button
+            <Button
               key={option.id}
               type="button"
+              variant="tertiary"
+              size="sm"
               className={`inbox-autocomplete-item${idx === autocompleteIndex ? ' active' : ''}`}
               onMouseDown={(e) => { e.preventDefault(); applyContext(option); }}
             >
               <span className="inbox-autocomplete-icon">
-                {option.type === 'workspace' ? '🏢' : '📁'}
+                {option.type === 'workspace' ? <Building2 aria-hidden="true" /> : <Folder aria-hidden="true" />}
               </span>
               {option.name}
-            </button>
+            </Button>
           ))}
         </div>
       )}
