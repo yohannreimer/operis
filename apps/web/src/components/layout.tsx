@@ -2,14 +2,10 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } fro
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
-  ChevronDown,
-  CircleHelp,
-  Command,
   Copy,
   Flame,
   Inbox,
   Keyboard,
-  LaptopMinimalCheck,
   Layers3,
   ListTodo,
   Menu,
@@ -32,7 +28,7 @@ import {
   type ShellLink,
 } from './layout-navigation';
 import './layout-navigation.css';
-import { Button, IconButton, InlineComposer } from './ui';
+import { Button, InlineComposer, Sheet } from './ui';
 
 type CommandItem = {
   id: string;
@@ -529,7 +525,7 @@ export function Layout() {
         keywords: 'captura inbox foco input rapido'.toLowerCase(),
         icon: Inbox,
         run: () => {
-          quickCaptureInputRef.current?.focus();
+          focusCaptureInput();
           closeCommandPalette();
         }
       },
@@ -582,7 +578,7 @@ export function Layout() {
         }
       }
     ],
-    [closeCommandPalette, copyBackendCommand, openTaskComposer, sidebarCollapsed]
+    [closeCommandPalette, copyBackendCommand, focusCaptureInput, openTaskComposer, sidebarCollapsed]
   );
 
   const commandItems = useMemo(() => {
@@ -966,93 +962,26 @@ export function Layout() {
       </Dialog.Root>
 
       <div className="app-main premium-main">
-        <header className="app-topbar premium-topbar">
-          <button
-            className="menu-toggle"
-            type="button"
-            onClick={() => setIsMenuOpen((current) => !current)}
-          >
-            Menu
-          </button>
-
-          <button
-            type="button"
-            className="ghost-button sidebar-collapse-toggle"
-            onClick={() => setSidebarCollapsed((current) => !current)}
-            title={sidebarCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
-          >
-            {sidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-          </button>
-
-          <div className="topbar-workspace-selector">
-            <Layers3 size={13} />
-            <select value={activeWorkspaceId} onChange={(event) => setActiveWorkspaceId(event.target.value)}>
-              <option value="all">Todas as frentes</option>
-              {visibleWorkspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={12} className="selector-chevron" />
-          </div>
-
-          <div className="topbar-capture-wrap">
-            <IconButton
-              label="Abrir captura"
-              className="topbar-capture-toggle"
-              icon={<Plus />}
-              onClick={() => {
-                setCaptureExpanded((current) => !current);
-                if (!captureExpanded) setTimeout(() => quickCaptureInputRef.current?.focus(), 50);
-              }}
-              title="Capturar ideia (C)"
-            />
-            <button
-              type="button"
-              className="ghost-button command-k-trigger"
-              onClick={openCommandPalette}
-            >
-              <Command size={14} />
-            </button>
-            <button
-              type="button"
-              className="ghost-button command-k-trigger"
-              onClick={() => setShortcutsOpen(true)}
-            >
-              <CircleHelp size={14} />
-            </button>
-          </div>
-
-          <span
-            className={
-              apiOnline === null
-                ? 'system-chip pending'
-                : apiOnline
-                  ? 'system-chip online'
-                  : 'system-chip offline'
-            }
-          >
-            <LaptopMinimalCheck size={12} />
-          </span>
-        </header>
-
-        {captureExpanded && (
-          <div className="topbar-capture-expanded">
-            <InlineComposer
-              label="Captura rápida"
-              value={quickCapture}
-              placeholder="Capturar ideia ou pendência..."
-              submitLabel="Capturar"
-              busy={captureBusy}
-              inputRef={quickCaptureInputRef}
-              leading={<Inbox size={17} />}
-              onValueChange={setQuickCapture}
-              onSubmit={() => void handleQuickCapture()}
-              onCancel={() => setCaptureExpanded(false)}
-            />
-          </div>
-        )}
+        <Sheet
+          open={captureExpanded}
+          title="Capturar"
+          side="bottom"
+          initialFocusRef={quickCaptureInputRef}
+          onClose={() => setCaptureExpanded(false)}
+        >
+          <InlineComposer
+            label="Captura rápida"
+            value={quickCapture}
+            placeholder="Capturar ideia ou pendência..."
+            submitLabel="Capturar"
+            busy={captureBusy}
+            inputRef={quickCaptureInputRef}
+            leading={<Inbox size={17} />}
+            onValueChange={setQuickCapture}
+            onSubmit={() => void handleQuickCapture()}
+            onCancel={() => setCaptureExpanded(false)}
+          />
+        </Sheet>
 
         {apiOnline === false && (
           <section className="system-alert">
@@ -1117,7 +1046,13 @@ export function Layout() {
 
       {commandOpen && (
         <div className="command-backdrop" role="presentation" onClick={closeCommandPalette}>
-          <section className="command-palette" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+          <section
+            className="command-palette"
+            role="dialog"
+            aria-label="Comandos"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
             <form onSubmit={onCommandSubmit} className="command-search">
               <Search size={16} />
               <input
