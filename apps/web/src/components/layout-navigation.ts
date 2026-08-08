@@ -60,7 +60,7 @@ export const settingsLink: ShellLink = {
   icon: Settings,
 };
 
-export const shellLinks = [...shellGroups.flatMap((group) => group.links), settingsLink];
+export const shellLinks = shellGroups.flatMap((group) => group.links);
 
 export function getMobilePrimaryLinks() {
   const primaryRoutes = ['/hoje', '/agenda', '/tarefas', '/habitos'];
@@ -68,7 +68,7 @@ export function getMobilePrimaryLinks() {
 }
 
 export function getMobileMoreLinks() {
-  const moreRoutes = ['/projetos', '/frentes', '/notas', '/dashboard', '/configuracoes'];
+  const moreRoutes = ['/projetos', '/frentes', '/notas', '/dashboard'];
   return moreRoutes.map((route) => shellLinks.find((link) => link.to === route)!).filter(Boolean);
 }
 

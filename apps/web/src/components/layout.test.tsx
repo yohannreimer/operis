@@ -6,7 +6,8 @@ import {
   getMobileMoreLinks,
   getMobilePrimaryLinks,
   Layout,
-  shellGroups
+  shellGroups,
+  shellLinks
 } from './layout';
 
 const apiMock = vi.hoisted(() => ({
@@ -70,7 +71,7 @@ describe('Layout mobile navigation helpers', () => {
     expect(getMobilePrimaryLinks().find((link) => link.label === 'Agenda')?.to).toBe('/agenda');
     expect(getMobilePrimaryLinks().some((link) => link.label === 'Inbox')).toBe(false);
     expect(getMobilePrimaryLinks()).toHaveLength(4);
-    expect(getMobileMoreLinks()).toHaveLength(5);
+    expect(getMobileMoreLinks()).toHaveLength(4);
   });
 
   it('moves secondary routes into the mobile more drawer', () => {
@@ -78,8 +79,7 @@ describe('Layout mobile navigation helpers', () => {
       'Projetos',
       'Frentes',
       'Notas',
-      'Dashboard',
-      'Configurações'
+      'Dashboard'
     ]);
   });
 
@@ -103,7 +103,7 @@ describe('Layout mobile shell rendering', () => {
     expect(await screen.findByText('Hoje route body')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: /navegação mobile/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /mais opções/i })).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByRole('button', { name: /capturar rápido/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Capturar' })).toHaveTextContent('Capturar');
   });
 
   it('opens the mobile more drawer with secondary routes', async () => {
@@ -116,6 +116,17 @@ describe('Layout mobile shell rendering', () => {
     expect(moreTrigger).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('link', { name: /projetos/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /notas/i })).toBeInTheDocument();
+  });
+
+  it('hides Settings from desktop, mobile and user-visible route collections', async () => {
+    renderLayout('/hoje');
+
+    expect(shellLinks.some((link) => link.to === '/configuracoes')).toBe(false);
+    expect(screen.queryByRole('link', { name: /configurações/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /mais opções/i }));
+    expect(await screen.findByRole('dialog', { name: /mais opções/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /configurações/i })).not.toBeInTheDocument();
   });
 
   it('closes the mobile more drawer from the close button', async () => {
@@ -192,14 +203,13 @@ describe('Layout mobile shell rendering', () => {
     });
   });
 
-  it('submits quick capture from the mobile floating action', async () => {
+  it('submits global capture with Enter', async () => {
     renderLayout('/hoje');
 
-    fireEvent.click(screen.getByRole('button', { name: /capturar rápido/i }));
-    fireEvent.change(await screen.findByPlaceholderText(/capturar ideia/i), {
-      target: { value: 'Comprar cabo USB-C' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^capturar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Capturar' }));
+    const input = await screen.findByRole('textbox', { name: 'Captura rápida' });
+    fireEvent.change(input, { target: { value: 'Comprar cabo USB-C' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => {
       expect(apiMock.createInboxItem).toHaveBeenCalledWith({

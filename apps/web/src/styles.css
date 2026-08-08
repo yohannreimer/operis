@@ -1405,21 +1405,17 @@ textarea:focus-visible {
 }
 
 .topbar-capture-toggle {
-  font-size: 1.1rem;
-  font-weight: 700;
   width: 32px;
   height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   padding: 0;
   border-radius: var(--radius-md);
-  color: var(--primary);
-  border-color: var(--primary);
+  color: var(--ui-text-muted);
+  border-color: var(--ui-border);
 }
 
 .topbar-capture-toggle:hover {
-  background: var(--primary-soft);
+  background: var(--ui-surface-hover);
+  color: var(--ui-text);
 }
 
 .topbar-capture-expanded {
@@ -1431,6 +1427,10 @@ textarea:focus-visible {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.topbar-capture-expanded .ui-inline-composer {
+  width: 100%;
 }
 
 .topbar-capture-expanded .quick-capture input {
@@ -19717,7 +19717,7 @@ textarea.operis-block-field-input {
 
 /* Mobile phone shell */
 .mobile-bottom-nav,
-.mobile-capture-fab,
+.mobile-capture-action,
 .mobile-more-drawer,
 .mobile-shell-backdrop {
   display: none;
@@ -19831,7 +19831,7 @@ textarea.operis-block-field-input {
     margin-top: 10px;
   }
 
-  .mobile-capture-fab {
+  .mobile-capture-action {
     position: fixed;
     right: 18px;
     bottom: calc(var(--mobile-bottom-nav-height) + var(--mobile-safe-bottom) + 14px);
@@ -19839,14 +19839,20 @@ textarea.operis-block-field-input {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 56px;
-    height: 56px;
-    padding: 0;
-    border-radius: 18px;
-    border: 1px solid rgba(249, 115, 22, 0.45);
-    background: var(--primary);
-    color: #fff;
-    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
+    gap: 7px;
+    min-height: 44px;
+    padding: 0 13px;
+    border-radius: 12px;
+    border: 1px solid var(--ui-border-strong);
+    background: var(--ui-surface-raised);
+    color: var(--ui-text);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+    font-size: 0.76rem;
+    font-weight: 680;
+  }
+
+  .mobile-capture-action svg {
+    color: var(--ui-accent);
   }
 
   .mobile-bottom-nav {
@@ -20249,10 +20255,8 @@ textarea.operis-block-field-input {
     font-size: 0.61rem;
   }
 
-  .mobile-capture-fab {
+  .mobile-capture-action {
     right: 14px;
-    width: 52px;
-    height: 52px;
   }
 
   .quick-capture.premium-capture {

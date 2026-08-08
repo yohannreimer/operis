@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useRef, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useRef, type FormEvent, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 
 import { Button, IconButton } from './button';
 
@@ -13,6 +13,7 @@ export type InlineComposerProps = {
   error?: string;
   leading?: ReactNode;
   context?: ReactNode;
+  inputRef?: Ref<HTMLInputElement>;
   onValueChange(value: string): void;
   onSubmit(): void;
   onCancel(): void;
@@ -28,6 +29,7 @@ export function InlineComposer({
   error,
   leading,
   context,
+  inputRef,
   onValueChange,
   onSubmit,
   onCancel
@@ -65,6 +67,7 @@ export function InlineComposer({
           {label}
         </label>
         <input
+          ref={inputRef}
           id={`ui-composer-${label.replace(/\s+/g, '-').toLowerCase()}`}
           className="ui-inline-composer__input"
           value={value}

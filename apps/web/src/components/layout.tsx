@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
@@ -27,12 +27,12 @@ import {
   getActiveShellRoute,
   getMobileMoreLinks,
   getMobilePrimaryLinks,
-  settingsLink,
   shellGroups,
   shellLinks,
   type ShellLink,
 } from './layout-navigation';
 import './layout-navigation.css';
+import { Button, IconButton, InlineComposer } from './ui';
 
 type CommandItem = {
   id: string;
@@ -152,7 +152,7 @@ function readClosedWeeks() {
   }
 }
 
-export { getActiveShellRoute, getMobileMoreLinks, getMobilePrimaryLinks, shellGroups };
+export { getActiveShellRoute, getMobileMoreLinks, getMobilePrimaryLinks, shellGroups, shellLinks };
 
 const GO_ROUTE_MAP: Record<string, string> = {
   h: '/hoje',
@@ -215,6 +215,7 @@ export function Layout() {
   const [gamification, setGamification] = useState<Gamification | null>(null);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState('all');
   const [quickCapture, setQuickCapture] = useState('');
+  const [captureBusy, setCaptureBusy] = useState(false);
   const [captureExpanded, setCaptureExpanded] = useState(false);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -391,13 +392,12 @@ export function Layout() {
     return () => window.clearInterval(intervalId);
   }, [pingApi]);
 
-  async function handleQuickCapture(event: FormEvent) {
-    event.preventDefault();
-
-    if (!quickCapture.trim()) {
+  async function handleQuickCapture() {
+    if (!quickCapture.trim() || captureBusy) {
       return;
     }
 
+    setCaptureBusy(true);
     try {
       await api.createInboxItem({ content: quickCapture.trim(), source: 'app' });
       setQuickCapture('');
@@ -405,6 +405,8 @@ export function Layout() {
       toast.success('Capturado na inbox.');
     } catch (error) {
       toast.error((error as Error).message);
+    } finally {
+      setCaptureBusy(false);
     }
   }
 
@@ -868,11 +870,17 @@ export function Layout() {
           <span className="brand-tagline">Execution OS</span>
         </div>
 
-        <button type="button" className="sidebar-capture" onClick={focusCaptureInput} title={sidebarCollapsed ? 'Capturar' : undefined}>
-          <Plus size={16} />
-          <span>Capturar</span>
-          <kbd>Q</kbd>
-        </button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="sidebar-capture"
+          leadingIcon={<Plus size={16} />}
+          onClick={focusCaptureInput}
+          aria-label="Capturar pelo menu"
+          title={sidebarCollapsed ? 'Capturar' : undefined}
+        >
+          Capturar
+        </Button>
 
         <nav className="main-nav premium-nav" aria-label="Navegação principal">
           {shellGroups.map((group) => (
@@ -890,9 +898,6 @@ export function Layout() {
           ))}
         </nav>
 
-        <div className="sidebar-settings">
-          <ShellNavLink link={settingsLink} collapsed={sidebarCollapsed} onClick={() => setIsMenuOpen(false)} />
-        </div>
       </aside>
 
       {isMenuOpen && <button type="button" className="sidebar-backdrop" onClick={() => setIsMenuOpen(false)} />}
@@ -993,14 +998,16 @@ export function Layout() {
           </div>
 
           <div className="topbar-capture-wrap">
-            <button
-              type="button"
-              className="ghost-button topbar-capture-toggle"
-              onClick={() => { setCaptureExpanded((v) => !v); if (!captureExpanded) setTimeout(() => quickCaptureInputRef.current?.focus(), 50); }}
+            <IconButton
+              label="Abrir captura"
+              className="topbar-capture-toggle"
+              icon={<Plus />}
+              onClick={() => {
+                setCaptureExpanded((current) => !current);
+                if (!captureExpanded) setTimeout(() => quickCaptureInputRef.current?.focus(), 50);
+              }}
               title="Capturar ideia (C)"
-            >
-              +
-            </button>
+            />
             <button
               type="button"
               className="ghost-button command-k-trigger"
@@ -1032,18 +1039,18 @@ export function Layout() {
 
         {captureExpanded && (
           <div className="topbar-capture-expanded">
-            <form className="quick-capture premium-capture" onSubmit={handleQuickCapture}>
-              <input
-                ref={quickCaptureInputRef}
-                value={quickCapture}
-                onChange={(event) => setQuickCapture(event.target.value)}
-                placeholder="Capturar ideia ou pendência..."
-                onKeyDown={(event) => { if (event.key === 'Escape') setCaptureExpanded(false); }}
-                autoFocus
-              />
-              <button type="submit">Capturar</button>
-              <button type="button" className="ghost-button" onClick={() => setCaptureExpanded(false)}>✕</button>
-            </form>
+            <InlineComposer
+              label="Captura rápida"
+              value={quickCapture}
+              placeholder="Capturar ideia ou pendência..."
+              submitLabel="Capturar"
+              busy={captureBusy}
+              inputRef={quickCaptureInputRef}
+              leading={<Inbox size={17} />}
+              onValueChange={setQuickCapture}
+              onSubmit={() => void handleQuickCapture()}
+              onCancel={() => setCaptureExpanded(false)}
+            />
           </div>
         )}
 
@@ -1072,11 +1079,12 @@ export function Layout() {
 
       <button
         type="button"
-        className="mobile-capture-fab"
-        aria-label="Capturar rápido"
+        className="mobile-capture-action"
+        aria-label="Capturar"
         onClick={focusCaptureInput}
       >
-        <Plus size={22} />
+        <Inbox size={18} aria-hidden="true" />
+        <span>Capturar</span>
       </button>
 
       <nav className="mobile-bottom-nav" aria-label="Navegação mobile">
