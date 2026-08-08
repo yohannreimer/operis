@@ -182,6 +182,7 @@ export type Task = {
   title: string;
   description?: string | null;
   definitionOfDone?: string | null;
+  nextStep?: string | null;
   isMultiBlock?: boolean;
   multiBlockGoalMinutes?: number | null;
   status: TaskStatus;
@@ -487,6 +488,7 @@ export type Subtask = {
   taskId: string;
   title: string;
   status: TaskStatus;
+  position: number;
 };
 
 export type TaskRestriction = {

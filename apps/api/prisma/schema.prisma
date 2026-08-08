@@ -334,6 +334,7 @@ model Task {
   title                 String
   description           String?
   definitionOfDone      String?           @map("definition_of_done")
+  nextStep              String?           @map("next_step")
   status                TaskStatus        @default(backlog)
   taskType              TaskType          @default(b) @map("task_type")
   energyLevel           TaskEnergy        @default(media) @map("energy_level")
@@ -491,10 +492,12 @@ model Subtask {
   taskId String     @map("task_id")
   title  String
   status TaskStatus @default(backlog)
+  position Int      @default(0)
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
+  @@index([taskId, position])
   @@map("subtasks")
 }
 

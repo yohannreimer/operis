@@ -29,6 +29,7 @@ const taskBodyBaseSchema = z.object({
   title: executableTitleSchema,
   description: z.string().optional().nullable(),
   definitionOfDone: z.string().max(280).optional().nullable(),
+  nextStep: z.string().max(500).optional().nullable(),
   isMultiBlock: z.boolean().optional(),
   multiBlockGoalMinutes: z.number().int().positive().optional().nullable(),
   taskType: z.nativeEnum(TaskType).optional(),
@@ -48,16 +49,16 @@ const taskBodyBaseSchema = z.object({
   waitingDueDate: z.string().datetime().optional().nullable()
 });
 
-const taskCreateSchema = taskBodyBaseSchema
-  .extend({
-    definitionOfDone: z.string().min(3).max(280),
-    taskType: z.nativeEnum(TaskType),
-    energyLevel: z.nativeEnum(TaskEnergy),
-    executionKind: z.nativeEnum(TaskExecutionKind),
-    estimatedMinutes: z.number().int().positive(),
-    restrictions: z.array(restrictionInputSchema).max(10).optional()
-  })
-  .superRefine((payload, context) => {
+function validateConditionalTaskFields(
+  payload: {
+    waitingOnPerson?: string | null;
+    waitingType?: WaitingType | null;
+    waitingDueDate?: string | null;
+    isMultiBlock?: boolean;
+    definitionOfDone?: string | null;
+  },
+  context: z.RefinementCtx
+) {
     const waitingPerson = payload.waitingOnPerson?.trim();
     if (waitingPerson) {
       if (!payload.waitingType) {
@@ -83,7 +84,13 @@ const taskCreateSchema = taskBodyBaseSchema
         message: 'Tarefa multiblock exige critério de término (definição de pronto).'
       });
     }
-  });
+}
+
+const taskCreateSchema = taskBodyBaseSchema
+  .extend({
+    restrictions: z.array(restrictionInputSchema).max(10).optional()
+  })
+  .superRefine(validateConditionalTaskFields);
 
 const taskUpdateSchema = taskBodyBaseSchema
   .partial()
@@ -91,25 +98,7 @@ const taskUpdateSchema = taskBodyBaseSchema
     status: z.nativeEnum(TaskStatus).optional(),
     title: executableTitleSchema.optional()
   })
-  .superRefine((payload, context) => {
-    const waitingPerson = payload.waitingOnPerson?.trim();
-    if (waitingPerson) {
-      if (!payload.waitingType) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['waitingType'],
-          message: 'Informe o tipo de dependência externa.'
-        });
-      }
-      if (!payload.waitingDueDate) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['waitingDueDate'],
-          message: 'Informe a data limite da dependência externa.'
-        });
-      }
-    }
-  });
+  .superRefine(validateConditionalTaskFields);
 
 const subtaskCreateSchema = z.object({
   title: z.string().min(1)
@@ -260,6 +249,17 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
 
     const subtask = await taskService.createSubtask(params.taskId, payload.title, { clerkUserId });
     return reply.code(201).send(subtask);
+  });
+
+  app.put('/tasks/:taskId/subtasks/order', async (request, reply) => {
+    const clerkUserId = getUserId(request);
+    const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
+    const payload = z.object({
+      orderedIds: z.array(z.string().uuid())
+    }).parse(request.body);
+
+    await taskService.reorderSubtasks(params.taskId, payload.orderedIds, { clerkUserId });
+    return reply.code(204).send();
   });
 
   app.patch('/subtasks/:subtaskId', async (request) => {

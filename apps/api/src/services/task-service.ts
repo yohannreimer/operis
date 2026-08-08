@@ -49,6 +49,7 @@ type CreateTaskInput = {
   title: string;
   description?: string | null;
   definitionOfDone?: string | null;
+  nextStep?: string | null;
   isMultiBlock?: boolean;
   multiBlockGoalMinutes?: number | null;
   taskType?: TaskType;
@@ -141,6 +142,12 @@ type WaitingFollowupEntry = {
   suggestedAction: string;
   suggestedMessage: string;
 };
+
+function taskServiceError(message: string, statusCode: number) {
+  const error = new Error(message) as Error & { statusCode: number };
+  error.statusCode = statusCode;
+  return error;
+}
 
 export class TaskService {
   constructor(private readonly prisma: PrismaClient) {}
@@ -762,6 +769,7 @@ export class TaskService {
         title: input.title.trim(),
         description: input.description?.trim() || null,
         definitionOfDone: input.definitionOfDone?.trim() || null,
+        nextStep: input.nextStep?.trim() || null,
         taskType: input.taskType ?? 'b',
         energyLevel: input.energyLevel ?? 'media',
         executionKind: input.executionKind ?? 'operacao',
@@ -935,6 +943,7 @@ export class TaskService {
         description: input.description === null ? null : input.description?.trim(),
         definitionOfDone:
           input.definitionOfDone === null ? null : input.definitionOfDone?.trim(),
+        nextStep: input.nextStep === null ? null : input.nextStep?.trim(),
         taskType: input.taskType,
         energyLevel: input.energyLevel,
         executionKind: input.executionKind,
@@ -1619,9 +1628,7 @@ export class TaskService {
       where: {
         taskId
       },
-      orderBy: {
-        id: 'asc'
-      }
+      orderBy: [{ position: 'asc' }, { id: 'asc' }]
     });
   }
 
@@ -1700,13 +1707,45 @@ export class TaskService {
   async createSubtask(taskId: string, title: string, options: OwnershipOptions = {}) {
     await this.assertTaskOwner(taskId, options.clerkUserId);
 
+    const last = await this.prisma.subtask.findFirst({
+      where: { taskId },
+      orderBy: [{ position: 'desc' }, { id: 'desc' }],
+      select: { position: true }
+    });
+
     return this.prisma.subtask.create({
       data: {
         taskId,
-        title,
-        status: 'backlog'
+        title: title.trim(),
+        status: 'backlog',
+        position: (last?.position ?? -1) + 1
       }
     });
+  }
+
+  async reorderSubtasks(taskId: string, orderedIds: string[], options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+    const current = await this.prisma.subtask.findMany({
+      where: { taskId },
+      select: { id: true }
+    });
+    const expected = new Set(current.map((item) => item.id));
+    const received = new Set(orderedIds);
+
+    if (
+      current.length !== orderedIds.length ||
+      received.size !== orderedIds.length ||
+      orderedIds.some((id) => !expected.has(id))
+    ) {
+      throw taskServiceError('A ordem deve conter todas as etapas da tarefa.', 400);
+    }
+
+    await this.prisma.$transaction(
+      orderedIds.map((id, position) => this.prisma.subtask.update({
+        where: { id },
+        data: { position }
+      }))
+    );
   }
 
   async updateSubtask(subtaskId: string, input: UpdateSubtaskInput, options: OwnershipOptions = {}) {
