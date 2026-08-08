@@ -193,6 +193,46 @@ describe('daily execution API client', () => {
   });
 });
 
+describe('task backlog API client', () => {
+  it('loads the dated projection and supports progressive writes', async () => {
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({ date: '2026-08-08', items: [] })
+      })
+      .mockResolvedValueOnce({
+        ok: true, status: 201, json: async () => ({ id: 'task_1', title: 'Preparar proposta' })
+      })
+      .mockResolvedValueOnce({ ok: true, status: 204 });
+
+    await api.getTaskBacklog({ date: '2026-08-08', workspaceId: 'ws_1' });
+    await api.createTask({ workspaceId: 'ws_1', title: 'Preparar proposta' });
+    await api.reorderTaskSubtasks('task_1', ['step_2', 'step_1']);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/tasks/backlog?date=2026-08-08&workspaceId=ws_1',
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/tasks',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ workspaceId: 'ws_1', title: 'Preparar proposta' })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/tasks/task_1/subtasks/order',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ orderedIds: ['step_2', 'step_1'] })
+      })
+    );
+  });
+});
+
 describe('weekly agenda API client', () => {
   it('loads a week and schedules a quick block without conversion', async () => {
     const inboxId = '22222222-2222-4222-8222-222222222222';

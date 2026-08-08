@@ -19,6 +19,7 @@ import {
   safeRecordStrategicDecisionEvent,
   signalFromImpact
 } from './strategic-decision-service.js';
+import { startOfDay } from '../utils/time.js';
 
 type TaskCompletionPrisma = {
   $transaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T>;
@@ -605,6 +606,54 @@ export class TaskService {
         }
       }
     });
+  }
+
+  async listBacklog(filters: {
+    date: string;
+    workspaceId?: string;
+    projectId?: string;
+    clerkUserId: string;
+  }) {
+    const records = await this.prisma.task.findMany({
+      where: {
+        workspaceId: filters.workspaceId,
+        projectId: filters.projectId,
+        workspace: { clerkUserId: filters.clerkUserId }
+      },
+      orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }, { id: 'asc' }],
+      include: {
+        workspace: true,
+        project: true,
+        subtasks: {
+          select: { id: true, status: true, position: true },
+          orderBy: [{ position: 'asc' }, { id: 'asc' }]
+        },
+        restrictions: {
+          orderBy: [{ status: 'asc' }, { createdAt: 'desc' }]
+        },
+        dailyExecutionItems: {
+          where: {
+            clerkUserId: filters.clerkUserId,
+            date: startOfDay(filters.date)
+          },
+          select: { id: true }
+        }
+      }
+    });
+
+    return {
+      date: filters.date,
+      items: records.map(({ subtasks, dailyExecutionItems, restrictions, ...task }) => ({
+        ...task,
+        restrictions,
+        todayEntryId: dailyExecutionItems[0]?.id ?? null,
+        stepSummary: {
+          total: subtasks.length,
+          completed: subtasks.filter((step) => step.status === 'feito').length
+        },
+        openRestrictionCount: restrictions.filter((item) => item.status === 'aberta').length
+      }))
+    };
   }
 
   async getWaitingRadar(filters?: { workspaceId?: string; clerkUserId?: string }) {

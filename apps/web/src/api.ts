@@ -211,6 +211,17 @@ export type Task = {
   restrictions?: TaskRestriction[];
 };
 
+export type TaskBacklogItem = Task & {
+  todayEntryId: string | null;
+  stepSummary: { total: number; completed: number };
+  openRestrictionCount: number;
+};
+
+export type TaskBacklogResponse = {
+  date: string;
+  items: TaskBacklogItem[];
+};
+
 export type Note = {
   id: string;
   title: string;
@@ -1758,19 +1769,25 @@ export const api = {
     restrictedOnly?: boolean;
   }) =>
     apiRequest<Task[]>(withQuery('/tasks', query)),
+  getTaskBacklog: (query: {
+    date: string;
+    workspaceId?: string;
+    projectId?: string;
+  }) => apiRequest<TaskBacklogResponse>(withQuery('/tasks/backlog', query)),
   createTask: (input: {
     workspaceId: string;
     projectId?: string | null;
     title: string;
-    description?: string;
-    definitionOfDone: string;
-    taskType: TaskType;
-    energyLevel: TaskEnergy;
-    executionKind: TaskExecutionKind;
+    description?: string | null;
+    definitionOfDone?: string | null;
+    nextStep?: string | null;
+    taskType?: TaskType;
+    energyLevel?: TaskEnergy;
+    executionKind?: TaskExecutionKind;
     horizon?: TaskHorizon;
     priority?: number;
     dueDate?: string | null;
-    estimatedMinutes: number;
+    estimatedMinutes?: number | null;
     isMultiBlock?: boolean;
     multiBlockGoalMinutes?: number | null;
     waitingOnPerson?: string | null;
@@ -1794,6 +1811,7 @@ export const api = {
       title: string;
       description: string | null;
       definitionOfDone: string | null;
+      nextStep: string | null;
       taskType: TaskType;
       energyLevel: TaskEnergy;
       executionKind: TaskExecutionKind;
@@ -1842,6 +1860,11 @@ export const api = {
     apiRequest<Subtask>(`/tasks/${taskId}/subtasks`, {
       method: 'POST',
       body: JSON.stringify({ title })
+    }),
+  reorderTaskSubtasks: (taskId: string, orderedIds: string[]) =>
+    apiRequest<void>(`/tasks/${taskId}/subtasks/order`, {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds })
     }),
   updateTaskSubtask: (
     subtaskId: string,

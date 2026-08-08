@@ -13,6 +13,7 @@ const STEP_TWO_ID = '44444444-4444-4444-8444-444444444444';
 function createService() {
   return {
     list: vi.fn().mockResolvedValue([]),
+    listBacklog: vi.fn().mockResolvedValue({ date: '2026-08-08', items: [] }),
     getWaitingRadar: vi.fn().mockResolvedValue({ rows: [] }),
     create: vi.fn().mockImplementation(async (input) => ({ id: TASK_ID, ...input })),
     update: vi.fn().mockImplementation(async (_id, input) => ({ id: TASK_ID, ...input })),
@@ -47,6 +48,19 @@ describe('task routes', () => {
     expect(service.create).toHaveBeenCalledWith(expect.objectContaining({
       clerkUserId: 'user_1', workspaceId: WORKSPACE_ID, title: 'Preparar proposta'
     }));
+  });
+
+  it('returns the backlog projection for a local date', async () => {
+    const { app, service } = setup();
+    const response = await app.inject({
+      method: 'GET',
+      url: `/tasks/backlog?date=2026-08-08&workspaceId=${WORKSPACE_ID}`
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(service.listBacklog).toHaveBeenCalledWith({
+      clerkUserId: 'user_1', date: '2026-08-08', workspaceId: WORKSPACE_ID
+    });
   });
 
   it('updates the independent next step', async () => {

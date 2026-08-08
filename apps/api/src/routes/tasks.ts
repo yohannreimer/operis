@@ -131,6 +131,7 @@ const completeTaskBodySchema = z
     completionNote: z.string().max(5000).optional()
   })
   .optional();
+const taskBacklogDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.');
 
 export function registerTaskRoutes(app: FastifyInstance, taskService: TaskService) {
   app.get('/tasks', async (request) => {
@@ -158,6 +159,17 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
       .parse(request.query);
 
     return taskService.getWaitingRadar({ ...query, clerkUserId });
+  });
+
+  app.get('/tasks/backlog', async (request) => {
+    const clerkUserId = getUserId(request);
+    const query = z.object({
+      date: taskBacklogDateSchema,
+      workspaceId: z.string().uuid().optional(),
+      projectId: z.string().uuid().optional()
+    }).parse(request.query);
+
+    return taskService.listBacklog({ ...query, clerkUserId });
   });
 
   app.post('/tasks', async (request, reply) => {
