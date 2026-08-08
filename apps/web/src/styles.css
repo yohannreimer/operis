@@ -7411,24 +7411,19 @@ h4 {
   gap: 8px;
 }
 
-.completion-mode-switch button {
-  border: 1px solid var(--border);
-  background: var(--surface-soft);
-  border-radius: 10px;
-  padding: 9px 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
+.completion-mode-switch .ui-button {
+  width: 100%;
 }
 
-.completion-mode-switch button.active {
-  border-color: var(--primary);
-  background: var(--primary-soft);
-  color: var(--primary);
+.completion-mode-switch .ui-button[aria-pressed='true'] {
+  border-color: var(--ui-border-strong);
+  background: var(--ui-surface-hover);
+  color: var(--ui-text);
 }
 
 .completion-note-placeholder {
-  border: 1px dashed var(--primary-glow);
-  background: var(--primary-soft);
+  border: 1px dashed var(--ui-border-strong);
+  background: var(--ui-surface);
   border-radius: 10px;
   padding: 10px 12px;
   color: var(--text-secondary);

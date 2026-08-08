@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { fireTaskComplete } from '../utils/celebrations';
 import { Modal } from './modal';
+import { Button, Field } from './ui';
 
 type CompletionMode = 'note' | 'no_note';
 
@@ -65,12 +66,8 @@ export function TaskCompletionModal({
       size="md"
       footer={
         <div className="inline-actions">
-          <button type="button" className="ghost-button" onClick={onClose} disabled={busy}>
-            Cancelar
-          </button>
-          <button type="button" onClick={() => void handleConfirm()} disabled={!canSubmit}>
-            Concluir e registrar
-          </button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button type="button" onClick={() => void handleConfirm()} disabled={!canSubmit} loading={busy}>Concluir e registrar</Button>
         </div>
       }
     >
@@ -80,35 +77,37 @@ export function TaskCompletionModal({
         </p>
 
         <div className="completion-mode-switch">
-          <button
+          <Button
             type="button"
-            className={mode === 'note' ? 'active' : ''}
+            variant="secondary"
+            aria-pressed={mode === 'note'}
             onClick={() => setMode('note')}
             disabled={busy}
           >
             Adicionar nota final
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={mode === 'no_note' ? 'active' : ''}
+            variant="secondary"
+            aria-pressed={mode === 'no_note'}
             onClick={() => setMode('no_note')}
             disabled={busy}
           >
             Nada a escrever
-          </button>
+          </Button>
         </div>
 
         {mode === 'note' ? (
-          <label className="modal-field">
-            <span>Resumo da conclusão</span>
+          <Field label="Resumo da conclusão" htmlFor="task-completion-note">
             <textarea
+              id="task-completion-note"
               rows={5}
               value={note}
               onChange={(event) => setNote(event.target.value)}
               placeholder="O que foi entregue, resultado, contexto e próximo passo."
               maxLength={5000}
             />
-          </label>
+          </Field>
         ) : (
           <div className="completion-note-placeholder">
             Será salvo automaticamente: <strong>"Nada a registrar."</strong>

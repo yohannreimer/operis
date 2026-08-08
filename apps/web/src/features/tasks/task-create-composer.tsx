@@ -3,6 +3,7 @@ import { CalendarDays, ChevronDown, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import type { Project, Workspace } from '../../api';
+import { Button, IconButton } from '../../components/ui';
 
 type CreateValues = {
   title: string;
@@ -98,10 +99,8 @@ export function TaskCreateComposer({
           disabled={busy}
           autoComplete="off"
         />
-        <button type="submit" disabled={busy || !title.trim()}>{busy ? 'Criando…' : 'Criar'}</button>
-        <button type="button" className="task-icon-button" aria-label="Cancelar nova tarefa" onClick={onClose}>
-          <X aria-hidden="true" />
-        </button>
+        {title.trim() ? <Button type="submit" size="sm" loading={busy}>Criar</Button> : null}
+        <IconButton type="button" className="task-icon-button" label="Cancelar nova tarefa" icon={<X />} onClick={onClose} />
       </div>
 
       {error ? <p className="task-inline-error" role="alert">{error}</p> : null}
@@ -109,14 +108,16 @@ export function TaskCreateComposer({
         <p className="task-create-no-front">Tarefas complexas precisam de uma Frente. <Link to="/frentes">Criar a primeira Frente</Link></p>
       ) : null}
 
-      <button
+      <Button
         type="button"
+        variant="tertiary"
+        size="sm"
         className="task-create-context-toggle"
         aria-expanded={contextOpen}
         onClick={() => setContextOpen((current) => !current)}
       >
         Adicionar contexto <ChevronDown aria-hidden="true" />
-      </button>
+      </Button>
 
       {contextOpen ? (
         <div className="task-create-context">

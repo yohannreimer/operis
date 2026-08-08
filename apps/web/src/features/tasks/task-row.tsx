@@ -1,7 +1,8 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
-import { AlertTriangle, CalendarClock, Check, Circle, Clock3, GripVertical, Sun, TriangleAlert } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Clock3, GripVertical, Sun, TriangleAlert } from 'lucide-react';
 
 import type { TaskBacklogItem } from '../../api';
+import { CompletionControl } from '../../components/ui';
 import { isTaskOverdue, taskMovement } from './task-backlog-model';
 import { TaskMoveMenu } from './task-move-menu';
 import type { TaskMovement } from './types';
@@ -29,9 +30,12 @@ export function TaskRow({ task, date, selected, busy, onOpen, onComplete, onMove
     : null;
   return (
     <div role="listitem" className="task-backlog-row" data-selected={selected || undefined} data-busy={busy || undefined} data-task-id={task.id}>
-      <button type="button" className="task-complete-button" aria-label={`${task.status === 'feito' ? 'Reabrir' : 'Concluir'} ${task.title}`} onClick={onComplete} disabled={busy || task.status === 'arquivado'}>
-        {task.status === 'feito' ? <Check aria-hidden="true" /> : <Circle aria-hidden="true" />}
-      </button>
+      <CompletionControl
+        checked={task.status === 'feito'}
+        label={`${task.status === 'feito' ? 'Reabrir' : 'Concluir'} ${task.title}`}
+        onCheckedChange={onComplete}
+        disabled={busy || task.status === 'arquivado'}
+      />
       <button type="button" className="task-drag-handle" aria-label={`Arrastar ${task.title}`} {...dragAttributes} {...dragListeners}><GripVertical aria-hidden="true" /></button>
       <button type="button" className="task-backlog-row-main" onClick={onOpen} aria-current={selected ? 'true' : undefined}>
         <span className="task-backlog-row-title">{task.title}</span>

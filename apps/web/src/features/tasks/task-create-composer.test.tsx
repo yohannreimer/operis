@@ -12,6 +12,9 @@ describe('TaskCreateComposer', () => {
     const onCreated = vi.fn();
     render(<MemoryRouter><TaskCreateComposer open resolvedWorkspaceId="ws-1" workspaces={workspaces} projects={[]} onClose={vi.fn()} onCreated={onCreated} onCreate={onCreate} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText('Título da tarefa'), { target: { value: 'Preparar proposta' } });
+    expect(screen.getByRole('form', { name: 'Nova tarefa complexa' })).not.toHaveClass('task-create-composer--accent');
+    expect(screen.getByRole('button', { name: 'Criar' })).toHaveClass('ui-button--primary');
+    expect(screen.getByRole('button', { name: 'Cancelar nova tarefa' })).toHaveClass('ui-icon-button');
     fireEvent.keyDown(screen.getByLabelText('Título da tarefa'), { key: 'Enter' });
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: 'Preparar proposta', workspaceId: 'ws-1' })));
     expect(onCreated).toHaveBeenCalledWith('task-1');

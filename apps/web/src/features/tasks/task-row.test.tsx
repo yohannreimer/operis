@@ -11,6 +11,7 @@ describe('TaskRow', () => {
     expect(screen.getByText('Hoje')).toBeVisible();
     expect(screen.getByText('2')).toBeVisible();
     expect(screen.queryByText(/sem projeto/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /concluir preparar proposta/i })).toHaveClass('ui-completion-control');
   });
 
   it('offers an explicit alternative to dragging', () => {

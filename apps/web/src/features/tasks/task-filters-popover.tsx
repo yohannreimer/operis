@@ -1,6 +1,7 @@
 import { SlidersHorizontal, X } from 'lucide-react';
 
 import type { Project, Workspace } from '../../api';
+import { Button, Popover } from '../../components/ui';
 import type { TaskBacklogFilters } from './types';
 
 type Props = {
@@ -16,8 +17,10 @@ export function TaskFiltersPopover({ filters, workspaces, projects, onChange }: 
   const set = <K extends keyof TaskBacklogFilters>(key: K, value: TaskBacklogFilters[K]) =>
     onChange({ ...filters, [key]: value });
   return (
-    <details className="task-filters-popover">
-      <summary><SlidersHorizontal aria-hidden="true" /> Filtros {activeCount ? <span>{activeCount}</span> : null}</summary>
+    <Popover
+      label="Filtros de tarefas"
+      trigger={<Button type="button" variant="secondary" className="task-filters-trigger" leadingIcon={<SlidersHorizontal />}>Filtros {activeCount ? <span>{activeCount}</span> : null}</Button>}
+    >
       <div className="task-filters-panel">
         <header><strong>Filtrar backlog</strong><span>{activeCount} ativos</span></header>
         <label><span>Frente</span><select value={filters.workspaceId ?? ''} onChange={(e) => set('workspaceId', e.target.value || null)}><option value="">Todas</option>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -30,8 +33,8 @@ export function TaskFiltersPopover({ filters, workspaces, projects, onChange }: 
           <label><span>Planejamento</span><select value={filters.today === null ? '' : filters.today ? '1' : '0'} onChange={(e) => set('today', e.target.value === '' ? null : e.target.value === '1')}><option value="">Todos</option><option value="1">Em Hoje</option><option value="0">Fora de Hoje</option></select></label>
           <label><span>Arquivo</span><select value={filters.completion} onChange={(e) => set('completion', e.target.value as TaskBacklogFilters['completion'])}><option value="open">Abertas</option><option value="done">Concluídas</option><option value="archived">Arquivadas</option><option value="all">Todas</option></select></label>
         </div>
-        {activeCount ? <button type="button" className="task-clear-filters" onClick={() => onChange({ ...filters, workspaceId: null, projectId: null, priority: null, due: 'all', today: null, horizon: null, completion: 'open' })}><X aria-hidden="true" /> Limpar filtros</button> : null}
+        {activeCount ? <Button type="button" variant="tertiary" size="sm" className="task-clear-filters" leadingIcon={<X />} onClick={() => onChange({ ...filters, workspaceId: null, projectId: null, priority: null, due: 'all', today: null, horizon: null, completion: 'open' })}>Limpar filtros</Button> : null}
       </div>
-    </details>
+    </Popover>
   );
 }

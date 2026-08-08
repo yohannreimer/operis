@@ -3,6 +3,7 @@ import { Archive, ArrowLeft, CalendarPlus, CheckCircle2, Copy, ExternalLink, Mor
 import { Link } from 'react-router-dom';
 
 import type { Project, TaskBacklogItem, Workspace, WaitingFollowupRadar } from '../../api';
+import { Button, IconButton, Popover } from '../../components/ui';
 import type { TaskDetailData, TaskUpdatePatch } from './use-task-backlog';
 import { TaskConstraints } from './task-constraints';
 import { TaskExecutionClarity } from './task-execution-clarity';
@@ -62,19 +63,30 @@ export function TaskDetailPanel(props: Props) {
   return (
     <aside ref={panelRef} className="task-backlog-detail" aria-label={`Detalhe de ${props.task.title}`} tabIndex={-1}>
       <header className="task-detail-topbar">
-        <button type="button" className="task-detail-back" onClick={props.onClose} aria-label={props.mobile ? 'Voltar às tarefas' : 'Fechar detalhe'}>{props.mobile ? <ArrowLeft aria-hidden="true" /> : <X aria-hidden="true" />}{props.mobile ? 'Tarefas' : null}</button>
+        {props.mobile ? (
+          <Button type="button" variant="tertiary" size="sm" className="task-detail-back" leadingIcon={<ArrowLeft />} onClick={props.onClose}>Tarefas</Button>
+        ) : (
+          <IconButton type="button" className="task-detail-back" label="Fechar detalhe" icon={<X />} onClick={props.onClose} />
+        )}
         <div className="task-detail-state"><span>{stateLabel}</span>{props.task.todayEntryId ? <span className="today"><Sun aria-hidden="true" /> Hoje</span> : null}</div>
-        <details className="task-row-menu task-detail-menu"><summary aria-label="Mais ações"><MoreHorizontal aria-hidden="true" /></summary><div role="menu"><button type="button" role="menuitem" onClick={() => void navigator.clipboard.writeText(window.location.href)}><Copy aria-hidden="true" />Copiar referência</button>{props.task.projectId ? <Link role="menuitem" to={`/projetos/${props.task.projectId}`}><ExternalLink aria-hidden="true" />Abrir Projeto</Link> : null}<button type="button" role="menuitem" onClick={props.onArchive}><Archive aria-hidden="true" />Arquivar</button><button type="button" role="menuitem" className="danger" onClick={props.onDelete}><Trash2 aria-hidden="true" />Excluir</button></div></details>
+        <div className="task-detail-menu">
+          <Popover label="Mais ações" trigger={<IconButton type="button" label="Mais ações" icon={<MoreHorizontal />} />}>
+            <Button type="button" variant="tertiary" size="sm" role="menuitem" leadingIcon={<Copy />} onClick={() => void navigator.clipboard.writeText(window.location.href)}>Copiar referência</Button>
+            {props.task.projectId ? <Link role="menuitem" to={`/projetos/${props.task.projectId}`}><ExternalLink aria-hidden="true" />Abrir Projeto</Link> : null}
+            <Button type="button" variant="tertiary" size="sm" role="menuitem" leadingIcon={<Archive />} onClick={props.onArchive}>Arquivar</Button>
+            <Button type="button" variant="danger" size="sm" role="menuitem" leadingIcon={<Trash2 />} onClick={props.onDelete}>Excluir</Button>
+          </Popover>
+        </div>
       </header>
 
       <div className="task-detail-scroll">
         <textarea rows={2} className="task-detail-title" aria-label="Título da tarefa" value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => { if (title.trim() && title.trim() !== props.task.title) void props.onUpdate({ title: title.trim() }); }} />
         <div className="task-detail-primary-actions">
-          <button type="button" className={props.task.todayEntryId ? 'active' : ''} onClick={() => void (props.task.todayEntryId ? props.onRemoveToday() : props.onPlanToday())}><Sun aria-hidden="true" />{props.task.todayEntryId ? 'Retirar de Hoje' : 'Planejar para Hoje'}</button>
-          <button type="button" onClick={() => setScheduleOpen(true)}><CalendarPlus aria-hidden="true" />Agendar</button>
+          <Button type="button" variant="secondary" size="sm" className={props.task.todayEntryId ? 'active' : ''} leadingIcon={<Sun />} onClick={() => void (props.task.todayEntryId ? props.onRemoveToday() : props.onPlanToday())}>{props.task.todayEntryId ? 'Retirar de Hoje' : 'Planejar para Hoje'}</Button>
+          <Button type="button" variant="secondary" size="sm" leadingIcon={<CalendarPlus />} onClick={() => setScheduleOpen(true)}>Agendar</Button>
           {completed
-            ? <button type="button" className="task-complete-action" onClick={() => void props.onReopen()}><RotateCcw aria-hidden="true" />Reabrir</button>
-            : <button type="button" className="task-complete-action" onClick={props.onComplete}><CheckCircle2 aria-hidden="true" />Concluir</button>}
+            ? <Button type="button" variant="secondary" size="sm" className="task-complete-action" leadingIcon={<RotateCcw />} onClick={() => void props.onReopen()}>Reabrir</Button>
+            : <Button type="button" variant="secondary" size="sm" className="task-complete-action" leadingIcon={<CheckCircle2 />} onClick={props.onComplete}>Concluir</Button>}
         </div>
 
         {props.error ? <div className="task-detail-error" role="alert">{props.error}<button type="button" onClick={() => void props.onRetryDetail()}>Tentar novamente</button></div> : null}

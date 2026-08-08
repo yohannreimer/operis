@@ -1,6 +1,7 @@
 import { ArrowDownToLine, CircleDot, Clock3, MoreHorizontal, Orbit } from 'lucide-react';
 
 import type { TaskMovement } from './types';
+import { Button, IconButton, Popover } from '../../components/ui';
 
 const options: Array<{ id: TaskMovement; label: string; icon: typeof CircleDot }> = [
   { id: 'in_progress', label: 'Mover para Em andamento', icon: CircleDot },
@@ -11,22 +12,22 @@ const options: Array<{ id: TaskMovement; label: string; icon: typeof CircleDot }
 
 export function TaskMoveMenu({ current, onMove }: { current: TaskMovement | null; onMove(movement: TaskMovement): void }) {
   return (
-    <details className="task-row-menu">
-      <summary aria-label="Mover tarefa"><MoreHorizontal aria-hidden="true" /></summary>
-      <div role="menu">
+    <div className="task-row-menu">
+      <Popover label="Mover tarefa" trigger={<IconButton type="button" label="Mover tarefa" icon={<MoreHorizontal />} />}>
         {options.map(({ id, label, icon: Icon }) => (
-          <button
+          <Button
             type="button"
+            variant="tertiary"
+            size="sm"
             role="menuitem"
             key={id}
             disabled={current === id}
-            onClick={(event) => {
+            onClick={() => {
               onMove(id);
-              event.currentTarget.closest('details')?.removeAttribute('open');
             }}
-          ><Icon aria-hidden="true" />{label}</button>
+          ><Icon aria-hidden="true" />{label}</Button>
         ))}
-      </div>
-    </details>
+      </Popover>
+    </div>
   );
 }

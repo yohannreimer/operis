@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 import { IconButton } from './ui/button';
 
@@ -16,6 +16,15 @@ type ModalProps = {
 };
 
 export function Modal({ open, title, subtitle, onClose, children, footer, size = 'md' }: ModalProps) {
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, open]);
+
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <Dialog.Portal>

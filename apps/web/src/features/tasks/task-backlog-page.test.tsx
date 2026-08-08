@@ -36,6 +36,7 @@ describe('TaskBacklogPage', () => {
 
   it('opens a stable task route while keeping the backlog visible', async () => {
     renderPage();
+    expect(await screen.findByRole('button', { name: /nova tarefa/i })).toHaveTextContent('Nova tarefa');
     fireEvent.click((await screen.findByText('Preparar proposta')).closest('button')!);
     expect(await screen.findByLabelText('Detalhe de Preparar proposta')).toBeVisible();
     expect(screen.getByRole('region', { name: 'Backlog de tarefas' })).toBeVisible();

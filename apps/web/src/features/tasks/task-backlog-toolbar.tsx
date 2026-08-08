@@ -1,6 +1,7 @@
 import { Plus, Search } from 'lucide-react';
 
 import type { Project, Workspace } from '../../api';
+import { Button } from '../../components/ui';
 import { TaskFiltersPopover } from './task-filters-popover';
 import type { TaskActionView, TaskBacklogFilters } from './types';
 
@@ -33,7 +34,7 @@ export function TaskBacklogToolbar({ filters, workspaces, projects, counts, onFi
           <kbd>/</kbd>
         </label>
         <TaskFiltersPopover filters={filters} workspaces={workspaces} projects={projects} onChange={onFiltersChange} />
-        <button type="button" className="task-new-button" onClick={onNewTask}><Plus aria-hidden="true" /> Nova tarefa</button>
+        <Button type="button" variant="secondary" className="task-new-button" leadingIcon={<Plus />} onClick={onNewTask}>Nova tarefa</Button>
       </div>
       <nav className="task-action-views" aria-label="Visões de tarefas">
         {views.map((view) => (

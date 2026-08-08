@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { Modal } from '../../components/modal';
+import { Button, Field } from '../../components/ui';
 import { localDateKey, toIsoDateTime } from '../../utils/date';
 
 function addMinutes(value: string, minutes: number) {
@@ -34,9 +35,13 @@ export function TaskScheduleDialog({ open, taskTitle, estimatedMinutes, onClose,
   return (
     <Modal open={open} onClose={onClose} title="Agendar uma sessão" subtitle={taskTitle} size="md">
       <form className="task-schedule-form" onSubmit={submit}>
-        <div className="task-schedule-grid"><label><span>Data</span><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label><label><span>Início</span><input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></label><label><span>Duração</span><select value={duration} onChange={(e) => setDuration(e.target.value)}>{[15, 30, 45, 60, 90, 120, 180].map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}</select></label></div>
+        <div className="task-schedule-grid">
+          <Field label="Data" htmlFor="task-schedule-date"><input id="task-schedule-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <Field label="Início" htmlFor="task-schedule-time"><input id="task-schedule-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
+          <Field label="Duração" htmlFor="task-schedule-duration"><select id="task-schedule-duration" value={duration} onChange={(e) => setDuration(e.target.value)}>{[15, 30, 45, 60, 90, 120, 180].map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}</select></Field>
+        </div>
         <p className="task-schedule-preview">Sessão termina às <strong>{endLabel}</strong>. A tarefa continua no mesmo movimento.</p>
-        <div className="task-dialog-actions"><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" disabled={busy}>{busy ? 'Agendando…' : 'Adicionar à Agenda'}</button></div>
+        <div className="task-dialog-actions"><Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Adicionar à Agenda</Button></div>
       </form>
     </Modal>
   );
