@@ -54,14 +54,14 @@ describe('notes workspace route flow', () => {
     expect(continuation).not.toBeNull();
     expect(continuation?.closest('.bn-editor')).toHaveFocus();
 
-    fireEvent.click(screen.getByRole('button', { name: /abrir.*diagrama.*em foco/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /editar.*diagrama.*tela cheia/i }));
     const focusWorkspace = await screen.findByRole('main', { name: 'Editor visual em foco' });
     await waitFor(() => expect(focusWorkspace).toHaveFocus());
     fireEvent.click(screen.getByRole('button', { name: 'Voltar para a nota' }));
 
     expect(await screen.findByRole('textbox', { name: 'Título da nota' })).toHaveValue('Reunião — funil de vendas.');
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /abrir.*diagrama.*em foco/i })).toBeVisible();
+      expect(screen.getByRole('button', { name: /editar.*diagrama.*tela cheia/i })).toBeVisible();
       const returnedArtifact = document.querySelector('.note-artifact-block')?.closest('[data-node-type="blockOuter"]');
       expect(returnedArtifact?.nextElementSibling?.querySelector('[data-content-type="paragraph"]')).not.toBeNull();
     });

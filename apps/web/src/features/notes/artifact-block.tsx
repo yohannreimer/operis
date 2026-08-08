@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Network, PencilRuler, Trash2, Workflow } from 'lucide-react';
+import { Maximize2, Network, PencilRuler, Trash2, Workflow } from 'lucide-react';
 
 import { api, type NoteArtifact } from '../../api';
 import { artifactLabel } from './artifact-blocks';
+import { ArtifactPreview } from './artifact-preview';
 import type { NoteArtifactKind } from './types';
 
 type ArtifactBlockContextValue = {
@@ -26,6 +27,10 @@ export function ArtifactBlockProvider({
   children: ReactNode;
 }) {
   const cache = useRef(new Map<string, Promise<NoteArtifact>>());
+  const onOpenRef = useRef(onOpen);
+  const onDeleteRef = useRef(onDelete);
+  onOpenRef.current = onOpen;
+  onDeleteRef.current = onDelete;
   const loadArtifact = useCallback((artifactId: string, force = false) => {
     const key = `${noteId}:${artifactId}`;
     if (force) cache.current.delete(key);
@@ -38,9 +43,17 @@ export function ArtifactBlockProvider({
     cache.current.set(key, request);
     return request;
   }, [noteId]);
+  const openArtifact = useCallback((artifactId: string) => onOpenRef.current(artifactId), []);
+  const deleteArtifact = useCallback((artifactId: string) => onDeleteRef.current?.(artifactId), []);
+  const deleteEnabled = Boolean(onDelete);
   const value = useMemo(
-    () => ({ noteId, onOpen, onDelete, loadArtifact }),
-    [loadArtifact, noteId, onDelete, onOpen]
+    () => ({
+      noteId,
+      onOpen: openArtifact,
+      onDelete: deleteEnabled ? deleteArtifact : undefined,
+      loadArtifact
+    }),
+    [deleteArtifact, deleteEnabled, loadArtifact, noteId, openArtifact]
   );
 
   return (
@@ -91,16 +104,7 @@ export function ArtifactBlock({
 
   return (
     <div className="note-artifact-block">
-      <button
-        type="button"
-        className="note-artifact-block-open"
-        aria-label={`Abrir ${label.toLocaleLowerCase('pt-BR')} ${displayTitle} em foco`}
-        onClick={(event) => {
-          event.stopPropagation();
-          context?.onOpen(artifactId);
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+      <div className="note-artifact-block-header">
         <span className={`note-artifact-block-icon note-artifact-block-icon-${artifactKind}`} aria-hidden="true">
           {artifactIcons[artifactKind]}
         </span>
@@ -108,42 +112,55 @@ export function ArtifactBlock({
           <span className="note-artifact-block-kind">{label}</span>
           <span className="note-artifact-block-title">{displayTitle}</span>
         </span>
-        <span className="note-artifact-block-action">Abrir</span>
-      </button>
+        <span className="note-artifact-block-action"><Maximize2 size={13} /> Editar em tela cheia</span>
+        {context?.onDelete ? (
+          <button
+            type="button"
+            className="note-artifact-block-delete"
+            aria-label={`Excluir ${label.toLocaleLowerCase('pt-BR')} ${displayTitle}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              context.onDelete?.(artifactId);
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
       <div className="note-artifact-preview-state">
         {loading ? (
-          <div role="status" aria-label={`Carregando ${label.toLocaleLowerCase('pt-BR')} ${displayTitle}`} />
+          <div className="note-artifact-preview-skeleton" role="status" aria-label={`Carregando ${label.toLocaleLowerCase('pt-BR')} ${displayTitle}`} />
         ) : null}
         {loadError ? (
-          <div role="alert">
+          <div className="note-artifact-preview-error" role="alert">
             <span>{loadError}</span>
             <button
               type="button"
               aria-label={`Tentar carregar ${label.toLocaleLowerCase('pt-BR')} ${displayTitle} novamente`}
-              onClick={() => load(true)}
+              onClick={(event) => { event.stopPropagation(); load(true); }}
+              onMouseDown={(event) => event.stopPropagation()}
             >
               Tentar novamente
             </button>
           </div>
         ) : null}
         {artifact && !loading && !loadError ? (
-          <div aria-label={`Prévia do ${label.toLocaleLowerCase('pt-BR')} ${displayTitle}`} data-artifact-kind={artifact.kind} />
+          <>
+            <ArtifactPreview artifact={artifact} />
+            <button
+              type="button"
+              className="note-artifact-preview-open"
+              aria-label={`Editar ${label.toLocaleLowerCase('pt-BR')} ${displayTitle} em tela cheia`}
+              onClick={(event) => {
+                event.stopPropagation();
+                context?.onOpen(artifactId);
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+            />
+          </>
         ) : null}
       </div>
-      {context?.onDelete ? (
-        <button
-          type="button"
-          className="note-artifact-block-delete"
-          aria-label={`Excluir ${label.toLocaleLowerCase('pt-BR')} ${displayTitle}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            context.onDelete?.(artifactId);
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <Trash2 size={15} aria-hidden="true" />
-        </button>
-      ) : null}
     </div>
   );
 }

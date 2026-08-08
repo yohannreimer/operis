@@ -31,7 +31,7 @@ describe('ArtifactBlock', () => {
     expect(screen.getAllByRole('status', { name: 'Carregando diagrama Funil' })).toHaveLength(2);
     expect(await screen.findAllByLabelText('Prévia do diagrama Funil')).toHaveLength(2);
     expect(getArtifact).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abrir diagrama Funil em foco' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Editar diagrama Funil em tela cheia' })[0]);
     expect(onOpen).toHaveBeenCalledWith('artifact-1');
   });
 

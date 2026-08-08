@@ -13,6 +13,7 @@ if (typeof window !== 'undefined') {
 type WhiteboardCanvasProps = CanvasSaveStateProps<WhiteboardData> & {
   initialData?: WhiteboardData | null;
   onDelete?: () => void;
+  preview?: boolean;
 };
 
 function whiteboardSignature(data: WhiteboardData) {
@@ -28,7 +29,8 @@ export function WhiteboardCanvas({
   onDelete,
   onDirtyChange,
   registerFlush,
-  readOnly = false
+  readOnly = false,
+  preview = false
 }: WhiteboardCanvasProps) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onSaveRef = useRef(onSave);
@@ -48,8 +50,8 @@ export function WhiteboardCanvas({
   }, [onDirtyChange]);
 
   useEffect(() => {
-    registerFlush?.(flush);
-  }, [flush, registerFlush]);
+    if (!preview) registerFlush?.(flush);
+  }, [flush, preview, registerFlush]);
 
   // Limpa o timer ao desmontar para não disparar save com dados obsoletos
   useEffect(() => {
@@ -99,7 +101,7 @@ export function WhiteboardCanvas({
     : undefined;
 
   return (
-    <div className="whiteboard-wrap">
+    <div className={`whiteboard-wrap ${preview ? 'whiteboard-preview' : ''}`}>
       {!readOnly ? <div className="whiteboard-toolbar">
         <button type="button" className="ghost-button danger-ghost" onClick={handleDelete}>
           Deletar lousa
@@ -113,6 +115,7 @@ export function WhiteboardCanvas({
           theme="dark"
           langCode="pt-BR"
           viewModeEnabled={readOnly}
+          zenModeEnabled={preview}
         />
       </div>
     </div>

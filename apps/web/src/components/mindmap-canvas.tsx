@@ -76,6 +76,7 @@ type MindMapCanvasProps = CanvasSaveStateProps<MindMapData> & {
   onDelete?: () => void;
   isGenerating?: boolean;
   noteTextLength?: number;
+  preview?: boolean;
 };
 
 export function MindMapCanvas({
@@ -88,6 +89,7 @@ export function MindMapCanvas({
   onDirtyChange,
   registerFlush,
   readOnly = false,
+  preview = false,
 }: MindMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const meRef = useRef<MindElixirInstance | null>(null);
@@ -112,8 +114,8 @@ export function MindMapCanvas({
   }, [onDirtyChange, onSave]);
 
   useEffect(() => {
-    registerFlush?.(flush);
-  }, [flush, registerFlush]);
+    if (!preview) registerFlush?.(flush);
+  }, [flush, preview, registerFlush]);
 
   const triggerSave = useCallback(() => {
     if (readOnly) return;
@@ -151,6 +153,7 @@ export function MindMapCanvas({
     const me = new MindElixir(options);
     const data = initialData ?? TEMPLATES.idea_map;
     me.init(data as Parameters<typeof me.init>[0]);
+    if (preview) setTimeout(() => me.toCenter(), 80);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const onOperation = (op: any) => {
       triggerSave();
@@ -224,14 +227,14 @@ export function MindMapCanvas({
     };
     // capture:true → fires before mind-elixir's own keydown handler on .map-container
     // (ME uses Space for pan mode and calls stopPropagation, blocking document bubbling)
-    document.addEventListener('keydown', handleKeydown, true);
+    if (!readOnly) document.addEventListener('keydown', handleKeydown, true);
 
     return () => {
       if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
       me.bus.removeListener('operation', onOperation);
       me.bus.removeListener('selectNodes', onSelectNodes);
       observer.disconnect();
-      document.removeEventListener('keydown', handleKeydown, true);
+      if (!readOnly) document.removeEventListener('keydown', handleKeydown, true);
       meRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -252,7 +255,7 @@ export function MindMapCanvas({
   };
 
   return (
-    <div className="mindmap-canvas-wrapper">
+    <div className={`mindmap-canvas-wrapper ${preview ? 'mindmap-canvas-preview' : ''}`}>
       {!readOnly ? <div className="diagram-toolbar">
         <button
           className="diagram-toolbar-btn"

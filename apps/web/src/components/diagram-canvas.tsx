@@ -403,6 +403,7 @@ type DiagramCanvasProps = CanvasSaveStateProps<DiagramData> & {
   onDelete?: () => void;
   isGenerating?: boolean;
   noteTextLength?: number;
+  preview?: boolean;
 };
 
 // ── Main Component ────────────────────────────────────────────────────────
@@ -417,6 +418,7 @@ export function DiagramCanvas({
   onDirtyChange,
   registerFlush,
   readOnly = false,
+  preview = false,
 }: DiagramCanvasProps) {
   const normalizedInitialData = useMemo(() => normalizeDiagramData(initialData), [initialData]);
   const [nodes, setNodes, onNodesChange] = useNodesState(normalizedInitialData.nodes);
@@ -455,8 +457,8 @@ export function DiagramCanvas({
   }, [edges, nodes, normalizedInitialData.viewport, onDirtyChange, onSave, pushHistory]);
 
   useEffect(() => {
-    registerFlush?.(flush);
-  }, [flush, registerFlush]);
+    if (!preview) registerFlush?.(flush);
+  }, [flush, preview, registerFlush]);
 
   useEffect(() => () => {
     if (saveTimer.current.id) clearTimeout(saveTimer.current.id);
@@ -529,7 +531,7 @@ export function DiagramCanvas({
   };
 
   return (
-    <div className="diagram-canvas-wrapper">
+    <div className={`diagram-canvas-wrapper ${preview ? 'diagram-canvas-preview' : ''}`}>
       {/* Toolbar lateral */}
       {!readOnly ? <div className="diagram-toolbar">
         <button
@@ -656,13 +658,20 @@ export function DiagramCanvas({
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         elementsSelectable={!readOnly}
+        nodesFocusable={!preview}
+        edgesFocusable={!preview}
+        panOnDrag={!preview}
+        zoomOnScroll={!preview}
+        zoomOnPinch={!preview}
+        zoomOnDoubleClick={!preview}
+        preventScrolling={!preview}
       >
-        <Controls />
-        <MiniMap
+        {!preview ? <Controls /> : null}
+        {!preview ? <MiniMap
           nodeColor={() => 'rgba(249,115,22,0.5)'}
           maskColor="rgba(0,0,0,0.6)"
           style={{ background: '#1a1a20', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8 }}
-        />
+        /> : null}
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.06)" />
       </ReactFlow>
     </div>
