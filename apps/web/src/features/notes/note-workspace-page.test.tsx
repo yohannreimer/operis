@@ -26,6 +26,7 @@ vi.mock('./note-document-editor', () => ({
   NoteDocumentEditor: ({ note }: { note: Note }) => (
     <div>
       <span data-testid="block-count">{note.contentBlocks?.length ?? 0}</span>
+      <span data-testid="block-types">{note.contentBlocks?.map((block) => block.type).join(',')}</span>
       <button type="button" data-block-id="return-block">Bloco de retorno</button>
     </div>
   )
@@ -89,7 +90,8 @@ describe('NoteWorkspacePage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Reunião' })).toBeInTheDocument();
     expect(apiMock.getNote).toHaveBeenCalledWith('note-1');
-    expect(screen.getByTestId('block-count')).toHaveTextContent('2');
+    expect(screen.getByTestId('block-count')).toHaveTextContent('3');
+    expect(screen.getByTestId('block-types')).toHaveTextContent('paragraph,operisArtifact,paragraph');
     expect(screen.queryByText('Detalhes da nota')).not.toBeInTheDocument();
     expect(screen.queryByText('Ações da nota')).not.toBeInTheDocument();
     const related = screen.getByText('Notas relacionadas').closest('details');
