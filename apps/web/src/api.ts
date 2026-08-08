@@ -1851,6 +1851,10 @@ export const api = {
         completionNote: options?.completionNote
       })
     }),
+  reopenTask: (taskId: string) =>
+    apiRequest<Task>(`/tasks/${taskId}/reopen`, { method: 'POST' }),
+  archiveTask: (taskId: string) =>
+    apiRequest<Task>(`/tasks/${taskId}/archive`, { method: 'POST' }),
   postponeTask: (taskId: string) =>
     apiRequest<Task>(`/tasks/${taskId}/postpone`, {
       method: 'POST'

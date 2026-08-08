@@ -4,7 +4,7 @@
 
 import type { TodayEntry } from '../features/today/types';
 import type { ProjectCockpit, Responsibility } from '../features/projects/types';
-import type { Note, NoteFolder } from '../api';
+import type { Note, NoteFolder, Project, Subtask, TaskBacklogItem, TaskRestriction } from '../api';
 import type { NoteArtifact } from '../features/notes/types';
 
 const localNow = new Date();
@@ -68,7 +68,7 @@ const PROJECT_SAUDE = {
   },
 };
 
-const TASKS = [
+const INITIAL_DEMO_TASKS: TaskBacklogItem[] = [
   { id: 't-1', title: 'Finalizar proposta Empresa Alfa', status: 'hoje', taskType: 'a', energyLevel: 'alta', priority: 1, estimatedMinutes: 90, workspaceId: 'ws-1', projectId: 'proj-1', workspace: WS_NEGOCIOS, project: PROJECT_LANCAMENTO },
   { id: 't-2', title: 'Revisar copy da landing page', status: 'hoje', taskType: 'a', energyLevel: 'alta', priority: 2, estimatedMinutes: 60, workspaceId: 'ws-1', projectId: 'proj-2', workspace: WS_NEGOCIOS, project: PROJECT_CONTEUDO },
   { id: 't-3', title: 'Gravar vídeo para LinkedIn — tema foco', status: 'hoje', taskType: 'b', energyLevel: 'media', priority: 3, estimatedMinutes: 45, workspaceId: 'ws-1', projectId: 'proj-2', workspace: WS_NEGOCIOS, project: PROJECT_CONTEUDO },
@@ -77,7 +77,36 @@ const TASKS = [
   { id: 't-6', title: 'Definir estratégia de conteúdo para agosto', status: 'backlog', taskType: 'a', energyLevel: 'alta', priority: 6, estimatedMinutes: 90, workspaceId: 'ws-1', projectId: 'proj-2', workspace: WS_NEGOCIOS, project: PROJECT_CONTEUDO },
   { id: 't-7', title: 'Agendar consulta médica de rotina', status: 'backlog', taskType: 'b', energyLevel: 'baixa', priority: 7, estimatedMinutes: 15, workspaceId: 'ws-2', workspace: WS_VIDA },
   { id: 't-8', title: 'Revisar pipeline de vendas com time', status: 'backlog', taskType: 'a', energyLevel: 'alta', priority: 8, estimatedMinutes: 60, workspaceId: 'ws-1', projectId: 'proj-1', workspace: WS_NEGOCIOS, project: PROJECT_LANCAMENTO },
-];
+].map((task, index) => ({
+  description: null,
+  definitionOfDone: index < 3 ? 'Resultado revisado e pronto para a próxima pessoa.' : null,
+  nextStep: index < 4 ? ['Enviar versão para revisão', 'Validar headline principal', 'Escrever roteiro de três minutos', 'Separar mensagens críticas'][index] : null,
+  executionKind: 'operacao',
+  horizon: 'active',
+  createdAt: new Date(`${yesterday}T09:00:00`).toISOString(),
+  updatedAt: new Date(`${today}T09:00:00`).toISOString(),
+  completedAt: null,
+  todayEntryId: null,
+  stepSummary: { total: 0, completed: 0 },
+  openRestrictionCount: 0,
+  ...task
+} as TaskBacklogItem));
+
+let DEMO_TASKS = cloneDemoValue(INITIAL_DEMO_TASKS);
+const INITIAL_DEMO_SUBTASKS: Record<string, Subtask[]> = {
+  't-1': [
+    { id: 'step-t1-1', taskId: 't-1', title: 'Revisar condições comerciais', status: 'feito', position: 0 },
+    { id: 'step-t1-2', taskId: 't-1', title: 'Enviar versão para revisão', status: 'backlog', position: 1 }
+  ]
+};
+const INITIAL_DEMO_RESTRICTIONS: Record<string, TaskRestriction[]> = {
+  't-5': [{ id: 'restriction-t5-1', taskId: 't-5', title: 'Aguardar números financeiros', detail: null, status: 'aberta', createdAt: new Date().toISOString() }]
+};
+let DEMO_TASK_SUBTASKS = cloneDemoValue(INITIAL_DEMO_SUBTASKS);
+let DEMO_TASK_RESTRICTIONS = cloneDemoValue(INITIAL_DEMO_RESTRICTIONS);
+let NEXT_DEMO_TASK_ID = 20;
+let NEXT_DEMO_STEP_ID = 20;
+let NEXT_DEMO_RESTRICTION_ID = 20;
 
 let DEMO_RESPONSIBILITIES: Responsibility[] = [
   {
@@ -113,7 +142,7 @@ let DEMO_PROJECT_COCKPITS: ProjectCockpit[] = [
     activeMove: { id: 'move-1', projectId: 'proj-1', text: 'Fechar proposta Empresa Alfa', source: 'manual', status: 'active', createdAt: new Date().toISOString() },
     recommendation: null,
     engine: { key: 'pipeline', methodology: 'pipeline', data: PROJECT_LANCAMENTO.methodologyData, recovered: false },
-    tasks: TASKS.filter((task) => task.projectId === 'proj-1') as ProjectCockpit['tasks']
+    tasks: DEMO_TASKS.filter((task) => task.projectId === 'proj-1') as ProjectCockpit['tasks']
   },
   {
     id: 'proj-2', title: PROJECT_CONTEUDO.title, description: PROJECT_CONTEUDO.description,
@@ -122,7 +151,7 @@ let DEMO_PROJECT_COCKPITS: ProjectCockpit[] = [
     progress: { kind: 'percent', value: 43, label: '43% dos resultados-chave' }, primaryBlocker: 'Cadência editorial abaixo do necessário', activeMove: null,
     recommendation: { ruleKey: 'okr-confidence', text: 'Replanejar o KR de artigos', reason: 'A confiança caiu e o ciclo está entrando na segunda metade.', severity: 'attention' },
     engine: { key: 'okr', methodology: 'okr', data: PROJECT_CONTEUDO.methodologyData as ProjectCockpit['engine']['data'], recovered: false },
-    tasks: TASKS.filter((task) => task.projectId === 'proj-2') as ProjectCockpit['tasks']
+    tasks: DEMO_TASKS.filter((task) => task.projectId === 'proj-2') as ProjectCockpit['tasks']
   },
   {
     id: 'proj-3', title: PROJECT_SAUDE.title, description: PROJECT_SAUDE.description,
@@ -286,7 +315,7 @@ function frontOverview(workspaceId: string) {
     responsibilities,
     capacity: {
       activeProjects: projects.filter((project) => project.persistedStatus === 'ativo').length,
-      todayTasks: TASKS.filter((task) => task.workspaceId === workspaceId && task.status === 'hoje').length
+      todayTasks: DEMO_TASKS.filter((task) => task.workspaceId === workspaceId && task.status === 'hoje').length
     }
   };
 }
@@ -311,7 +340,7 @@ type DemoDayPlanItem = {
   orderIndex: number;
   blockType: 'task' | 'fixed';
   confirmationState: 'pending' | 'confirmed_done' | 'confirmed_not_done';
-  task: (typeof TASKS)[number] | null;
+  task: (typeof DEMO_TASKS)[number] | null;
   inboxItem: null | {
     id: string;
     content: string;
@@ -324,12 +353,12 @@ const DAY_PLAN: { id: string; date: string; items: DemoDayPlanItem[] } = {
   id: 'dp-today',
   date: today,
   items: [
-    { id: 'dpi-1', dayPlanId: 'dp-today', taskId: 't-1', inboxItemId: null, startTime: makeIso(today, 8), endTime: makeIso(today, 9, 30), completedAt: null, orderIndex: 0, blockType: 'task', confirmationState: 'pending', task: TASKS[0], inboxItem: null },
-    { id: 'dpi-2', dayPlanId: 'dp-today', taskId: 't-2', inboxItemId: null, startTime: makeIso(today, 10), endTime: makeIso(today, 11), completedAt: null, orderIndex: 1, blockType: 'task', confirmationState: 'pending', task: TASKS[1], inboxItem: null },
-    { id: 'dpi-3', dayPlanId: 'dp-today', taskId: 't-3', inboxItemId: null, startTime: makeIso(today, 11), endTime: makeIso(today, 11, 45), completedAt: null, orderIndex: 2, blockType: 'task', confirmationState: 'pending', task: TASKS[2], inboxItem: null },
+    { id: 'dpi-1', dayPlanId: 'dp-today', taskId: 't-1', inboxItemId: null, startTime: makeIso(today, 8), endTime: makeIso(today, 9, 30), completedAt: null, orderIndex: 0, blockType: 'task', confirmationState: 'pending', task: DEMO_TASKS[0], inboxItem: null },
+    { id: 'dpi-2', dayPlanId: 'dp-today', taskId: 't-2', inboxItemId: null, startTime: makeIso(today, 10), endTime: makeIso(today, 11), completedAt: null, orderIndex: 1, blockType: 'task', confirmationState: 'pending', task: DEMO_TASKS[1], inboxItem: null },
+    { id: 'dpi-3', dayPlanId: 'dp-today', taskId: 't-3', inboxItemId: null, startTime: makeIso(today, 11), endTime: makeIso(today, 11, 45), completedAt: null, orderIndex: 2, blockType: 'task', confirmationState: 'pending', task: DEMO_TASKS[2], inboxItem: null },
     { id: 'dpi-4', dayPlanId: 'dp-today', taskId: null, inboxItemId: null, startTime: makeIso(today, 14), endTime: makeIso(today, 15), completedAt: null, orderIndex: 3, blockType: 'fixed', confirmationState: 'pending', task: null, inboxItem: null },
-    { id: 'dpi-5', dayPlanId: 'dp-today', taskId: 't-4', inboxItemId: null, startTime: makeIso(today, 15), endTime: makeIso(today, 15, 30), completedAt: null, orderIndex: 4, blockType: 'task', confirmationState: 'pending', task: TASKS[3], inboxItem: null },
-    { id: 'dpi-6', dayPlanId: 'dp-today', taskId: 't-5', inboxItemId: null, startTime: makeIso(today, 16), endTime: makeIso(today, 18), completedAt: null, orderIndex: 5, blockType: 'task', confirmationState: 'pending', task: TASKS[4], inboxItem: null },
+    { id: 'dpi-5', dayPlanId: 'dp-today', taskId: 't-4', inboxItemId: null, startTime: makeIso(today, 15), endTime: makeIso(today, 15, 30), completedAt: null, orderIndex: 4, blockType: 'task', confirmationState: 'pending', task: DEMO_TASKS[3], inboxItem: null },
+    { id: 'dpi-6', dayPlanId: 'dp-today', taskId: 't-5', inboxItemId: null, startTime: makeIso(today, 16), endTime: makeIso(today, 18), completedAt: null, orderIndex: 5, blockType: 'task', confirmationState: 'pending', task: DEMO_TASKS[4], inboxItem: null },
   ],
 };
 
@@ -389,7 +418,7 @@ function buildAgendaWeekFixture(weekStart: string) {
     resourceErrors: { commitments: null },
     days,
     unscheduled: {
-      tasks: TASKS.filter((item) => item.status === 'backlog').map((item) => ({
+      tasks: DEMO_TASKS.filter((item) => item.status === 'backlog').map((item) => ({
         id: item.id,
         title: item.title,
         estimatedMinutes: item.estimatedMinutes,
@@ -493,7 +522,7 @@ const GAMIFICATION_DETAILS = {
 
 const EXECUTION_BRIEFING = {
   date: today,
-  top3: [TASKS[0], TASKS[1], TASKS[4]],
+  top3: [DEMO_TASKS[0], DEMO_TASKS[1], DEMO_TASKS[4]],
   top3Meta: { locked: true, manual: false, committedAt: today, note: null, taskIds: ['t-1','t-2','t-5'], guidedSwapNeeded: false, missingSlots: 0, droppedTaskIds: [], swapTaskIds: [], swapReason: null },
   pendingA: 5,
   strictModeBlocked: false,
@@ -622,6 +651,8 @@ let DAILY_EXECUTION_ITEMS: TodayEntry[] = [
 let DAILY_EXECUTION_ROLLOVER: TodayEntry[] = [
   { id: 'daily-old-1', kind: 'task', sourceId: 't-8', date: yesterday, title: 'Revisar pipeline de vendas com time', position: 0, completedAt: null, project: 'Lançamento Produto Q3', estimatedMinutes: 60, deadline: null },
 ];
+const INITIAL_DAILY_EXECUTION_ITEMS = cloneDemoValue(DAILY_EXECUTION_ITEMS);
+const INITIAL_DAILY_EXECUTION_ROLLOVER = cloneDemoValue(DAILY_EXECUTION_ROLLOVER);
 
 let ACTIVE_EXECUTION: Record<string, unknown> | null = null;
 let NEXT_DAY_PLAN_ITEM_ID = 7;
@@ -667,10 +698,26 @@ function matchRoute(url: string): MockResponse | null {
   if (path.match(/^\/projects\/[^/]+\/scorecard/)) return { status: 200, body: { metrics: [], checkins: [] } };
   if (path.match(/^\/projects\/[^/]+/)) return { status: 200, body: PROJECT_LANCAMENTO };
 
-  if (path === '/tasks') return { status: 200, body: TASKS };
+  if (path === '/tasks/backlog') {
+    return { status: 200, body: {
+      date: new URL(url, 'http://localhost').searchParams.get('date') ?? today,
+      items: DEMO_TASKS.map((task) => {
+        const subtasks = DEMO_TASK_SUBTASKS[task.id] ?? [];
+        const restrictions = DEMO_TASK_RESTRICTIONS[task.id] ?? [];
+        return {
+          ...task,
+          todayEntryId: DAILY_EXECUTION_ITEMS.find((item) => item.kind === 'task' && item.sourceId === task.id)?.id ?? null,
+          stepSummary: { total: subtasks.length, completed: subtasks.filter((item) => item.status === 'feito').length },
+          openRestrictionCount: restrictions.filter((item) => item.status === 'aberta').length,
+          restrictions
+        };
+      })
+    } };
+  }
+  if (path === '/tasks') return { status: 200, body: DEMO_TASKS };
   if (path.match(/^\/tasks\/waiting-radar/)) return { status: 200, body: { rows: [] } };
-  if (path.match(/^\/tasks\/[^/]+\/subtasks/)) return { status: 200, body: [] };
-  if (path.match(/^\/tasks\/[^/]+\/restrictions/)) return { status: 200, body: [] };
+  if (path.match(/^\/tasks\/[^/]+\/subtasks$/)) return { status: 200, body: DEMO_TASK_SUBTASKS[path.split('/')[2]] ?? [] };
+  if (path.match(/^\/tasks\/[^/]+\/restrictions$/)) return { status: 200, body: DEMO_TASK_RESTRICTIONS[path.split('/')[2]] ?? [] };
   if (path.match(/^\/tasks\/[^/]+\/history/)) return { status: 200, body: [] };
   if (path.match(/^\/tasks\/[^/]+\/multiblock/)) return { status: 200, body: null };
   if (path.match(/^\/tasks\/[^/]+\/waiting-followup/)) return { status: 200, body: null };
@@ -841,7 +888,7 @@ function matchRoute(url: string): MockResponse | null {
     ],
   } };
   if (path === '/execution/weekly-pulse') return { status: 200, body: WEEKLY_PULSE };
-  if (path.match(/^\/execution\/top3\//)) return { status: 200, body: { date: today, workspaceId: null, locked: true, manual: false, committedAt: today, note: null, taskIds: ['t-1','t-2','t-5'], tasks: [TASKS[0], TASKS[1], TASKS[4]] } };
+  if (path.match(/^\/execution\/top3\//)) return { status: 200, body: { date: today, workspaceId: null, locked: true, manual: false, committedAt: today, note: null, taskIds: ['t-1','t-2','t-5'], tasks: [DEMO_TASKS[0], DEMO_TASKS[1], DEMO_TASKS[4]] } };
 
   if (path === '/strategy/weekly-allocation' || path === '/weekly-allocation') return { status: 200, body: WEEKLY_ALLOCATION };
   if (path === '/strategy/weekly-review' || path === '/weekly-review') return { status: 200, body: WEEKLY_REVIEW };
@@ -877,6 +924,14 @@ function matchRoute(url: string): MockResponse | null {
 
 export function installMockFetch() {
   const originalFetch = window.fetch.bind(window);
+  DEMO_TASKS = cloneDemoValue(INITIAL_DEMO_TASKS);
+  DEMO_TASK_SUBTASKS = cloneDemoValue(INITIAL_DEMO_SUBTASKS);
+  DEMO_TASK_RESTRICTIONS = cloneDemoValue(INITIAL_DEMO_RESTRICTIONS);
+  DAILY_EXECUTION_ITEMS = cloneDemoValue(INITIAL_DAILY_EXECUTION_ITEMS);
+  DAILY_EXECUTION_ROLLOVER = cloneDemoValue(INITIAL_DAILY_EXECUTION_ROLLOVER);
+  NEXT_DEMO_TASK_ID = 20;
+  NEXT_DEMO_STEP_ID = 20;
+  NEXT_DEMO_RESTRICTION_ID = 20;
   DEMO_NOTES = cloneDemoValue(INITIAL_DEMO_NOTES);
   DEMO_NOTE_ARTIFACTS = cloneDemoValue(INITIAL_DEMO_NOTE_ARTIFACTS);
   DEMO_NOTE_FOLDERS = cloneDemoValue(INITIAL_DEMO_NOTE_FOLDERS);
@@ -898,6 +953,176 @@ export function installMockFetch() {
         });
       const artifactSummary = ({ data: _data, createdAt: _createdAt, ...artifact }: NoteArtifact) =>
         artifact;
+
+      if (method === 'POST' && path === '/tasks') {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<TaskBacklogItem>;
+        const workspace = [WS_NEGOCIOS, WS_VIDA, WS_CRIACAO].find((item) => item.id === payload.workspaceId);
+        if (!workspace || !payload.title?.trim()) return jsonResponse({ message: 'Frente e título são obrigatórios.' }, 400);
+        const project = ([PROJECT_LANCAMENTO, PROJECT_CONTEUDO, PROJECT_SAUDE].find((item) => item.id === payload.projectId) ?? null) as Project | null;
+        const timestamp = new Date().toISOString();
+        const task: TaskBacklogItem = {
+          id: `task-demo-${NEXT_DEMO_TASK_ID++}`,
+          title: payload.title.trim(),
+          description: payload.description ?? null,
+          definitionOfDone: payload.definitionOfDone ?? null,
+          nextStep: payload.nextStep ?? null,
+          status: 'backlog',
+          taskType: payload.taskType ?? 'b',
+          energyLevel: payload.energyLevel ?? 'media',
+          executionKind: payload.executionKind ?? 'operacao',
+          horizon: payload.horizon ?? 'active',
+          priority: payload.priority ?? 3,
+          workspaceId: workspace.id,
+          workspace,
+          projectId: project?.id ?? null,
+          project,
+          dueDate: payload.dueDate ?? null,
+          estimatedMinutes: payload.estimatedMinutes ?? null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          completedAt: null,
+          todayEntryId: null,
+          stepSummary: { total: 0, completed: 0 },
+          openRestrictionCount: 0,
+          restrictions: []
+        };
+        DEMO_TASKS = [task, ...DEMO_TASKS];
+        DEMO_TASK_SUBTASKS[task.id] = [];
+        DEMO_TASK_RESTRICTIONS[task.id] = [];
+        return jsonResponse(task, 201);
+      }
+
+      if (method === 'PATCH' && /^\/tasks\/[^/]+$/.test(path)) {
+        const taskId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<TaskBacklogItem>;
+        const current = DEMO_TASKS.find((item) => item.id === taskId);
+        if (!current) return jsonResponse({ message: 'Tarefa não encontrada.' }, 404);
+        const workspace = payload.workspaceId
+          ? [WS_NEGOCIOS, WS_VIDA, WS_CRIACAO].find((item) => item.id === payload.workspaceId) ?? current.workspace
+          : current.workspace;
+        const project = Object.prototype.hasOwnProperty.call(payload, 'projectId')
+          ? [PROJECT_LANCAMENTO, PROJECT_CONTEUDO, PROJECT_SAUDE].find((item) => item.id === payload.projectId) ?? null
+          : current.project;
+        const updated = { ...current, ...payload, workspace, project, updatedAt: new Date().toISOString() } as TaskBacklogItem;
+        DEMO_TASKS = DEMO_TASKS.map((item) => item.id === taskId ? updated : item);
+        return jsonResponse(updated);
+      }
+
+      if (method === 'POST' && /^\/tasks\/[^/]+\/(complete|reopen|archive)$/.test(path)) {
+        const taskId = path.split('/')[2];
+        const action = path.split('/')[3];
+        const current = DEMO_TASKS.find((item) => item.id === taskId);
+        if (!current) return jsonResponse({ message: 'Tarefa não encontrada.' }, 404);
+        const updated: TaskBacklogItem = {
+          ...current,
+          status: action === 'complete' ? 'feito' : action === 'archive' ? 'arquivado' : 'backlog',
+          completedAt: action === 'complete' ? new Date().toISOString() : null,
+          updatedAt: new Date().toISOString()
+        };
+        DEMO_TASKS = DEMO_TASKS.map((item) => item.id === taskId ? updated : item);
+        return jsonResponse(updated);
+      }
+
+      if (method === 'DELETE' && /^\/tasks\/[^/]+$/.test(path)) {
+        const taskId = path.split('/')[2];
+        DEMO_TASKS = DEMO_TASKS.filter((item) => item.id !== taskId);
+        delete DEMO_TASK_SUBTASKS[taskId];
+        delete DEMO_TASK_RESTRICTIONS[taskId];
+        DAILY_EXECUTION_ITEMS = DAILY_EXECUTION_ITEMS.filter((item) => item.sourceId !== taskId);
+        return jsonResponse({ ok: true });
+      }
+
+      if (method === 'POST' && /^\/tasks\/[^/]+\/subtasks$/.test(path)) {
+        const taskId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { title?: string };
+        const current = DEMO_TASK_SUBTASKS[taskId] ?? [];
+        const subtask: Subtask = { id: `step-demo-${NEXT_DEMO_STEP_ID++}`, taskId, title: payload.title?.trim() || 'Nova etapa', status: 'backlog', position: current.length };
+        DEMO_TASK_SUBTASKS[taskId] = [...current, subtask];
+        return jsonResponse(subtask, 201);
+      }
+
+      if (method === 'PUT' && /^\/tasks\/[^/]+\/subtasks\/order$/.test(path)) {
+        const taskId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { orderedIds?: string[] };
+        const byId = new Map((DEMO_TASK_SUBTASKS[taskId] ?? []).map((item) => [item.id, item]));
+        DEMO_TASK_SUBTASKS[taskId] = (payload.orderedIds ?? []).map((id, position) => ({ ...byId.get(id)!, position })).filter(Boolean);
+        return new Response(null, { status: 204 });
+      }
+
+      if (method === 'PATCH' && /^\/subtasks\/[^/]+$/.test(path)) {
+        const subtaskId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<Subtask>;
+        let updated: Subtask | null = null;
+        for (const taskId of Object.keys(DEMO_TASK_SUBTASKS)) {
+          DEMO_TASK_SUBTASKS[taskId] = DEMO_TASK_SUBTASKS[taskId].map((item) => item.id === subtaskId ? (updated = { ...item, ...payload, id: item.id }) : item);
+        }
+        return updated ? jsonResponse(updated) : jsonResponse({ message: 'Etapa não encontrada.' }, 404);
+      }
+
+      if (method === 'DELETE' && /^\/subtasks\/[^/]+$/.test(path)) {
+        const subtaskId = path.split('/')[2];
+        for (const taskId of Object.keys(DEMO_TASK_SUBTASKS)) {
+          DEMO_TASK_SUBTASKS[taskId] = DEMO_TASK_SUBTASKS[taskId].filter((item) => item.id !== subtaskId).map((item, position) => ({ ...item, position }));
+        }
+        return jsonResponse({ ok: true });
+      }
+
+      if (method === 'POST' && /^\/tasks\/[^/]+\/restrictions$/.test(path)) {
+        const taskId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { title?: string; detail?: string | null };
+        const restriction: TaskRestriction = { id: `restriction-demo-${NEXT_DEMO_RESTRICTION_ID++}`, taskId, title: payload.title?.trim() || 'Novo bloqueio', detail: payload.detail ?? null, status: 'aberta', createdAt: new Date().toISOString() };
+        DEMO_TASK_RESTRICTIONS[taskId] = [...(DEMO_TASK_RESTRICTIONS[taskId] ?? []), restriction];
+        return jsonResponse(restriction, 201);
+      }
+
+      if (method === 'PATCH' && /^\/task-restrictions\/[^/]+$/.test(path)) {
+        const restrictionId = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Partial<TaskRestriction>;
+        let updated: TaskRestriction | null = null;
+        for (const taskId of Object.keys(DEMO_TASK_RESTRICTIONS)) {
+          DEMO_TASK_RESTRICTIONS[taskId] = DEMO_TASK_RESTRICTIONS[taskId].map((item) => item.id === restrictionId ? (updated = { ...item, ...payload, id: item.id, resolvedAt: payload.status === 'resolvida' ? new Date().toISOString() : null }) : item);
+        }
+        return updated ? jsonResponse(updated) : jsonResponse({ message: 'Bloqueio não encontrado.' }, 404);
+      }
+
+      if (method === 'DELETE' && /^\/task-restrictions\/[^/]+$/.test(path)) {
+        const restrictionId = path.split('/')[2];
+        for (const taskId of Object.keys(DEMO_TASK_RESTRICTIONS)) {
+          DEMO_TASK_RESTRICTIONS[taskId] = DEMO_TASK_RESTRICTIONS[taskId].filter((item) => item.id !== restrictionId);
+        }
+        return jsonResponse({ ok: true });
+      }
+
+      if (method === 'POST' && /^\/daily-execution\/\d{4}-\d{2}-\d{2}\/items$/.test(path)) {
+        const date = path.split('/')[2];
+        const payload = JSON.parse(String(init?.body ?? '{}')) as { sourceType: 'task' | 'inbox'; sourceId: string };
+        const task = DEMO_TASKS.find((item) => payload.sourceType === 'task' && item.id === payload.sourceId);
+        const inbox = INBOX_ITEMS.find((item) => payload.sourceType === 'inbox' && item.id === payload.sourceId);
+        const common = {
+          id: `daily-demo-${Date.now()}-${DAILY_EXECUTION_ITEMS.length}`,
+          sourceId: payload.sourceId,
+          date,
+          position: DAILY_EXECUTION_ITEMS.length,
+          completedAt: null
+        };
+        const entry: TodayEntry = payload.sourceType === 'task'
+          ? {
+              ...common,
+              kind: 'task',
+              title: task?.title ?? 'Tarefa de Hoje',
+              project: task?.project?.title ?? null,
+              estimatedMinutes: task?.estimatedMinutes ?? null,
+              deadline: task?.dueDate ?? null
+            }
+          : {
+              ...common,
+              kind: 'inbox',
+              title: inbox?.content ?? 'Item de Hoje',
+              context: inbox?.workspace?.name ?? null
+            };
+        DAILY_EXECUTION_ITEMS = [...DAILY_EXECUTION_ITEMS, entry];
+        return jsonResponse(entry, 201);
+      }
 
       if (method === 'GET' && path === '/note-folders') {
         return jsonResponse(DEMO_NOTE_FOLDERS);
@@ -1280,7 +1505,7 @@ export function installMockFetch() {
           orderIndex?: number;
           blockType?: 'task' | 'fixed';
         };
-        const task = TASKS.find((item) => item.id === payload.taskId) ?? null;
+        const task = DEMO_TASKS.find((item) => item.id === payload.taskId) ?? null;
         const inbox = INBOX_ITEMS.find((item) => item.id === payload.inboxItemId) ?? null;
         const created: DemoDayPlanItem = {
           id: `dpi-${NEXT_DAY_PLAN_ITEM_ID++}`,
@@ -1378,7 +1603,7 @@ export function installMockFetch() {
           dayPlanItemId?: string | null;
           dailyExecutionItemId?: string | null;
         };
-        const task = TASKS.find((item) => payload.sourceType === 'task' && item.id === payload.sourceId);
+        const task = DEMO_TASKS.find((item) => payload.sourceType === 'task' && item.id === payload.sourceId);
         const inbox = INBOX_ITEMS.find((item) => payload.sourceType === 'inbox' && item.id === payload.sourceId);
         ACTIVE_EXECUTION = {
           id: `execution-${Date.now()}`,

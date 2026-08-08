@@ -247,9 +247,6 @@ export function Layout() {
     () => mobilePrimaryLinks.some((link) => activeRoute.to === link.to),
     [activeRoute.to, mobilePrimaryLinks]
   );
-  const isTaskTableFocusRoute =
-    location.pathname === '/tarefas' && new URLSearchParams(location.search).get('focus') === '1';
-
   async function refreshGlobal() {
     const weekStart = currentWeekStartIso();
     const monthStart = currentMonthStartIso();
@@ -442,10 +439,6 @@ export function Layout() {
     navigate('/tarefas?compose=1');
   }, [navigate]);
 
-  const openTaskFocus = useCallback(() => {
-    navigate('/tarefas?focus=1');
-  }, [navigate]);
-
   const toggleTaskComposer = useCallback(() => {
     if (location.pathname !== '/tarefas') {
       navigate('/tarefas?compose=1');
@@ -459,25 +452,6 @@ export function Layout() {
       params.delete('compose');
     } else {
       params.set('compose', '1');
-    }
-
-    const query = params.toString();
-    navigate(query ? `/tarefas?${query}` : '/tarefas');
-  }, [location.pathname, location.search, navigate]);
-
-  const toggleTaskFocus = useCallback(() => {
-    if (location.pathname !== '/tarefas') {
-      navigate('/tarefas?focus=1');
-      return;
-    }
-
-    const params = new URLSearchParams(location.search);
-    const isFocusOpen = params.get('focus') === '1';
-
-    if (isFocusOpen) {
-      params.delete('focus');
-    } else {
-      params.set('focus', '1');
     }
 
     const query = params.toString();
@@ -546,18 +520,6 @@ export function Layout() {
         }
       },
       {
-        id: 'action-task-focus',
-        group: 'Ações rápidas',
-        label: 'Foco na lista de tarefas',
-        hint: 'abre tabela virtualizada em tela limpa',
-        keywords: 'tarefas foco tabela virtualizada execucao profunda'.toLowerCase(),
-        icon: ListTodo,
-        run: () => {
-          openTaskFocus();
-          closeCommandPalette();
-        }
-      },
-      {
         id: 'action-focus-capture',
         group: 'Ações rápidas',
         label: 'Focar campo de captura',
@@ -618,7 +580,7 @@ export function Layout() {
         }
       }
     ],
-    [closeCommandPalette, copyBackendCommand, openTaskComposer, openTaskFocus, sidebarCollapsed]
+    [closeCommandPalette, copyBackendCommand, openTaskComposer, sidebarCollapsed]
   );
 
   const commandItems = useMemo(() => {
@@ -807,12 +769,6 @@ export function Layout() {
         return;
       }
 
-      if (key === 'f') {
-        event.preventDefault();
-        toggleTaskFocus();
-        return;
-      }
-
       if (key === 's') {
         event.preventDefault();
         setSidebarCollapsed((current) => !current);
@@ -843,7 +799,6 @@ export function Layout() {
     navigate,
     focusCaptureInput,
     toggleTaskComposer,
-    toggleTaskFocus,
     cycleWorkspace
   ]);
 
@@ -878,7 +833,6 @@ export function Layout() {
     { keys: '?', label: 'Abrir painel de atalhos' },
     { keys: 'C', label: 'Focar campo de captura' },
     { keys: 'N', label: 'Abrir/fechar nova tarefa' },
-    { keys: 'F', label: 'Entrar/sair do foco total da tabela' },
     { keys: 'S', label: 'Colapsar/expandir sidebar' },
     { keys: '[ / ]', label: 'Trocar contexto (frente)' },
     { keys: 'G depois H/P/T/N/D', label: 'Ir para páginas rapidamente' }
@@ -902,112 +856,6 @@ export function Layout() {
   ]
     .filter(Boolean)
     .join(' ');
-
-  if (isTaskTableFocusRoute) {
-    return (
-      <div className="task-focus-layout">
-        <main className="task-focus-main">
-          <Outlet context={outletContext} />
-        </main>
-
-        {commandOpen && (
-          <div className="command-backdrop" role="presentation" onClick={closeCommandPalette}>
-            <section className="command-palette" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-              <form onSubmit={onCommandSubmit} className="command-search">
-                <Search size={16} />
-                <input
-                  ref={commandInputRef}
-                  value={commandQuery}
-                  onChange={(event) => setCommandQuery(event.target.value)}
-                  placeholder="Buscar tela, frente ou digite para capturar..."
-                />
-              </form>
-
-              <div className="command-hint-row">
-                <span>Setas navegam • Enter executa item ativo</span>
-                <span>Esc fecha • ? atalhos</span>
-              </div>
-
-              <ul className="command-results">
-                {visibleCommands.length === 0 ? (
-                  <li className="command-empty">Nenhum comando encontrado.</li>
-                ) : (
-                  groupedCommands.map((group) => (
-                    <li key={group.key} className="command-group-block">
-                      <p className="command-group-label">{group.key}</p>
-                      <div className="command-group-items">
-                        {group.items.map((item) => {
-                          const Icon = item.icon;
-                          const index = commandIndexById.get(item.id) ?? 0;
-
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className={index === commandIndex ? 'active' : undefined}
-                              onMouseEnter={() => setCommandIndex(index)}
-                              onFocus={() => setCommandIndex(index)}
-                              onClick={() => void runCommand(item)}
-                              disabled={commandBusy}
-                            >
-                              <span className="command-result-icon">
-                                <Icon size={14} />
-                              </span>
-                              <span>
-                                <strong>{item.label}</strong>
-                                <small>{item.hint}</small>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </section>
-          </div>
-        )}
-
-        <Dialog.Root open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="radix-overlay" />
-            <Dialog.Content className="radix-shortcuts-dialog">
-              <Dialog.Title>Atalhos globais</Dialog.Title>
-              <Dialog.Description>
-                Fluxo de produtividade premium com navegação instantânea.
-              </Dialog.Description>
-
-              <ul className="shortcut-list">
-                {shortcuts.map((shortcut) => (
-                  <li key={shortcut.keys}>
-                    <span>{shortcut.label}</span>
-                    <kbd>{shortcut.keys}</kbd>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="inline-actions">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => {
-                    setShortcutsOpen(false);
-                    openCommandPalette();
-                  }}
-                >
-                  Abrir palette
-                </button>
-                <Dialog.Close asChild>
-                  <button type="button">Fechar</button>
-                </Dialog.Close>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-      </div>
-    );
-  }
 
   return (
     <div className={shellClassName}>

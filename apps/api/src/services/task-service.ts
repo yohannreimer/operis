@@ -1160,6 +1160,22 @@ export class TaskService {
     return task;
   }
 
+  async reopen(taskId: string, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+    return this.prisma.task.update({
+      where: { id: taskId },
+      data: { status: 'backlog', completedAt: null, archivedAt: null }
+    });
+  }
+
+  async archive(taskId: string, options: OwnershipOptions = {}) {
+    await this.assertTaskOwner(taskId, options.clerkUserId);
+    return this.prisma.task.update({
+      where: { id: taskId },
+      data: { status: 'arquivado', archivedAt: new Date() }
+    });
+  }
+
   async addDependency(taskId: string, dependsOnTaskId: string, options: OwnershipOptions = {}) {
     if (taskId === dependsOnTaskId) {
       throw new Error('Uma tarefa não pode depender dela mesma.');

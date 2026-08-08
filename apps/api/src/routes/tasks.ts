@@ -205,6 +205,18 @@ export function registerTaskRoutes(app: FastifyInstance, taskService: TaskServic
     });
   });
 
+  app.post('/tasks/:taskId/reopen', async (request) => {
+    const clerkUserId = getUserId(request);
+    const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
+    return taskService.reopen(params.taskId, { clerkUserId });
+  });
+
+  app.post('/tasks/:taskId/archive', async (request) => {
+    const clerkUserId = getUserId(request);
+    const params = z.object({ taskId: z.string().uuid() }).parse(request.params);
+    return taskService.archive(params.taskId, { clerkUserId });
+  });
+
   app.post('/tasks/:taskId/postpone', async (request) => {
     const clerkUserId = getUserId(request);
     const params = z.object({ taskId: z.string().uuid() }).parse(request.params);

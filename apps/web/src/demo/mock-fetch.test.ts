@@ -66,6 +66,53 @@ describe('demo fetch contracts', () => {
     });
   });
 
+  it('persists the complete complex-task backlog lifecycle', async () => {
+    const initial = await (await window.fetch('/api/tasks/backlog?date=2026-08-08')).json() as {
+      items: Array<{ id: string; nextStep?: string | null; todayEntryId: string | null; stepSummary: { total: number; completed: number }; openRestrictionCount: number }>;
+    };
+    expect(initial.items[0]).toEqual(expect.objectContaining({
+      todayEntryId: expect.anything(),
+      stepSummary: expect.any(Object),
+      openRestrictionCount: expect.any(Number)
+    }));
+    expect(initial.items.some((item) => Boolean(item.nextStep))).toBe(true);
+
+    const created = await (await window.fetch('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: 'ws-1', title: 'Preparar proposta' })
+    })).json() as { id: string; status: string };
+    expect(created.status).toBe('backlog');
+
+    await window.fetch(`/api/tasks/${created.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'andamento', definitionOfDone: 'Proposta aprovada', nextStep: 'Enviar rascunho' })
+    });
+    const firstStep = await (await window.fetch(`/api/tasks/${created.id}/subtasks`, { method: 'POST', body: JSON.stringify({ title: 'Escrever escopo' }) })).json() as { id: string };
+    const secondStep = await (await window.fetch(`/api/tasks/${created.id}/subtasks`, { method: 'POST', body: JSON.stringify({ title: 'Calcular valor' }) })).json() as { id: string };
+    await window.fetch(`/api/subtasks/${firstStep.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'feito' }) });
+    await window.fetch(`/api/tasks/${created.id}/subtasks/order`, { method: 'PUT', body: JSON.stringify({ orderedIds: [secondStep.id, firstStep.id] }) });
+
+    const restriction = await (await window.fetch(`/api/tasks/${created.id}/restrictions`, { method: 'POST', body: JSON.stringify({ title: 'Validar impostos' }) })).json() as { id: string };
+    await window.fetch(`/api/task-restrictions/${restriction.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'resolvida' }) });
+
+    const todayEntry = await (await window.fetch('/api/daily-execution/2026-08-08/items', { method: 'POST', body: JSON.stringify({ sourceType: 'task', sourceId: created.id }) })).json() as { id: string };
+    let backlog = await (await window.fetch('/api/tasks/backlog?date=2026-08-08')).json() as { items: Array<{ id: string; status: string; todayEntryId: string | null; stepSummary: { total: number; completed: number }; openRestrictionCount: number }> };
+    expect(backlog.items.find((item) => item.id === created.id)).toMatchObject({
+      status: 'andamento', todayEntryId: todayEntry.id, stepSummary: { total: 2, completed: 1 }, openRestrictionCount: 0
+    });
+
+    await window.fetch(`/api/daily-execution-items/${todayEntry.id}`, { method: 'DELETE' });
+    await window.fetch(`/api/tasks/${created.id}/complete`, { method: 'POST', body: JSON.stringify({ completionMode: 'no_note' }) });
+    await window.fetch(`/api/tasks/${created.id}/reopen`, { method: 'POST' });
+    await window.fetch(`/api/tasks/${created.id}/archive`, { method: 'POST' });
+    backlog = await (await window.fetch('/api/tasks/backlog?date=2026-08-08')).json() as typeof backlog;
+    expect(backlog.items.find((item) => item.id === created.id)).toMatchObject({ status: 'arquivado', todayEntryId: null });
+
+    await window.fetch(`/api/tasks/${created.id}`, { method: 'DELETE' });
+    backlog = await (await window.fetch('/api/tasks/backlog?date=2026-08-08')).json() as typeof backlog;
+    expect(backlog.items.some((item) => item.id === created.id)).toBe(false);
+  });
+
   it('serves a mutable notes workspace with folders, detail and two artifacts', async () => {
     const folders = await (await window.fetch('/api/note-folders')).json() as Array<{ name: string }>;
     const library = await (await window.fetch('/api/notes/library?view=recent')).json() as Array<{

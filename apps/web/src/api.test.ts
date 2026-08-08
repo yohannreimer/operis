@@ -231,6 +231,19 @@ describe('task backlog API client', () => {
       })
     );
   });
+
+  it('uses explicit lifecycle routes for reopening and archiving', async () => {
+    const { api, fetchMock } = await loadApiForRequests();
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: 'task_1', status: 'backlog' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ id: 'task_1', status: 'arquivado' }) });
+
+    await api.reopenTask('task_1');
+    await api.archiveTask('task_1');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/tasks/task_1/reopen', expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/tasks/task_1/archive', expect.objectContaining({ method: 'POST' }));
+  });
 });
 
 describe('weekly agenda API client', () => {

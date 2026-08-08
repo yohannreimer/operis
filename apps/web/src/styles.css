@@ -6460,39 +6460,6 @@ h4 {
   gap: 0;
 }
 
-.task-focus-layout {
-  min-height: 100vh;
-  background:
-    radial-gradient(1000px 650px at 0% -10%, rgba(224, 124, 74, 0.05), transparent 70%),
-    var(--bg);
-}
-
-.task-focus-main {
-  padding: 14px 16px 18px;
-  min-width: 0;
-}
-
-.task-table-focus-screen {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.task-table-focus-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-}
-
-.task-table-focus-screen .smart-table-shell {
-  min-height: calc(100vh - 94px);
-}
-
-.task-table-focus-screen .smart-table-body {
-  max-height: calc(100vh - 248px);
-}
-
 .task-canvas > *,
 .task-analytics-grid > *,
 .task-analytics-metrics > * {
@@ -10849,18 +10816,6 @@ textarea.operis-block-field-input {
 
   .task-master-pane-focus .smart-table-body {
     max-height: 60vh;
-  }
-
-  .task-focus-main {
-    padding: 12px;
-  }
-
-  .task-table-focus-screen .smart-table-shell {
-    min-height: calc(100vh - 82px);
-  }
-
-  .task-table-focus-screen .smart-table-body {
-    max-height: calc(100vh - 230px);
   }
 
   .notes-writer-toolbar {

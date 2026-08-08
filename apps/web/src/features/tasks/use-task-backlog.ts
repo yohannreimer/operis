@@ -13,7 +13,7 @@ import {
   type Workspace
 } from '../../api';
 import { filterTasks, groupTasks, sortTasks } from './task-backlog-model';
-import type { TaskBacklogFilters, TaskMovement } from './types';
+import type { TaskBacklogFilters, TaskGroupId, TaskMovement } from './types';
 import { readPreferredTaskWorkspaceId, resolveTaskWorkspaceId } from './task-workspace';
 
 const COLLAPSED_GROUPS_KEY = 'operis:tasks:collapsed-groups';
@@ -47,6 +47,8 @@ type UseTaskBacklogInput = {
   selectedTaskId: string | null;
 };
 
+export type TaskUpdatePatch = Parameters<typeof api.updateTask>[1];
+
 function emptyDetail(): TaskDetailData {
   return { subtasks: [], restrictions: [], history: [], multiBlock: null, loaded: false };
 }
@@ -54,12 +56,12 @@ function emptyDetail(): TaskDetailData {
 function readCollapsedGroups() {
   try {
     const value = JSON.parse(window.localStorage.getItem(COLLAPSED_GROUPS_KEY) ?? '[]');
-    if (!Array.isArray(value)) return new Set<TaskMovement>();
-    return new Set(value.filter((item): item is TaskMovement =>
-      ['in_progress', 'next', 'waiting', 'future'].includes(item)
+    if (!Array.isArray(value)) return new Set<TaskGroupId>();
+    return new Set(value.filter((item): item is TaskGroupId =>
+      ['in_progress', 'next', 'waiting', 'future', 'done', 'archived'].includes(item)
     ));
   } catch {
-    return new Set<TaskMovement>();
+    return new Set<TaskGroupId>();
   }
 }
 
@@ -91,7 +93,7 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
   const [details, setDetails] = useState<Record<string, TaskDetailData>>({});
   const [waitingRadar, setWaitingRadar] = useState<Record<string, WaitingFollowupRadar>>({});
   const [busyTaskIds, setBusyTaskIds] = useState<Set<string>>(new Set());
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<TaskMovement>>(readCollapsedGroups);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<TaskGroupId>>(readCollapsedGroups);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +158,7 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
     }));
     if (failed) setDetailError('Alguns detalhes não puderam ser carregados.');
     setDetailLoading(false);
-  }, [details]);
+  }, []);
 
   useEffect(() => {
     if (input.selectedTaskId) void loadDetail(input.selectedTaskId);
@@ -166,7 +168,16 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
     () => sortTasks(filterTasks(tasks, input.filters, input.date), input.filters.sort, input.date),
     [tasks, input.filters, input.date]
   );
-  const groups = useMemo(() => groupTasks(visibleTasks), [visibleTasks]);
+  const groups = useMemo(() => {
+    const openGroups = groupTasks(visibleTasks);
+    const done = visibleTasks.filter((task) => task.status === 'feito');
+    const archived = visibleTasks.filter((task) => task.status === 'arquivado');
+    return [
+      ...openGroups,
+      ...(done.length ? [{ id: 'done' as const, label: 'Concluídas', tasks: done }] : []),
+      ...(archived.length ? [{ id: 'archived' as const, label: 'Arquivadas', tasks: archived }] : [])
+    ];
+  }, [visibleTasks]);
   const selectedTask = tasks.find((task) => task.id === input.selectedTaskId) ?? null;
   const detail = input.selectedTaskId ? details[input.selectedTaskId] ?? emptyDetail() : null;
   const resolvedWorkspaceId = resolveTaskWorkspaceId({
@@ -298,12 +309,27 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
     'Tarefa concluída.'
   ), [mutateTask]);
 
+  const reopenTask = useCallback(async (taskId: string) => mutateTask(
+    taskId,
+    (task) => ({ ...task, status: 'backlog', completedAt: null }),
+    () => api.reopenTask(taskId),
+    'Tarefa reaberta em Próximas.'
+  ), [mutateTask]);
+
+  const archiveTask = useCallback(async (taskId: string) => mutateTask(
+    taskId,
+    (task) => ({ ...task, status: 'arquivado' }),
+    () => api.archiveTask(taskId),
+    'Tarefa arquivada.'
+  ), [mutateTask]);
+
   const deleteTask = useCallback(async (taskId: string) => {
     const previous = tasksRef.current;
     setTasks((current) => current.filter((task) => task.id !== taskId));
     try {
       await api.deleteTask(taskId);
       setAnnouncement('Tarefa excluída.');
+      return true;
     } catch (cause) {
       setTasks(previous);
       setAnnouncement('A exclusão foi desfeita porque não pôde ser salva.');
@@ -320,22 +346,25 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
 
   const createStep = useCallback(async (taskId: string, title: string) => {
     const created = await api.createTaskSubtask(taskId, title);
-    updateDetail(taskId, (current) => ({ ...current, subtasks: [...current.subtasks, created] }));
+    const nextSteps = [...(details[taskId]?.subtasks ?? []), created];
+    updateDetail(taskId, (current) => ({ ...current, subtasks: nextSteps }));
     mergeTask(taskId, { stepSummary: {
-      total: (details[taskId]?.subtasks.length ?? 0) + 1,
-      completed: details[taskId]?.subtasks.filter((step) => step.status === 'feito').length ?? 0
+      total: nextSteps.length,
+      completed: nextSteps.filter((step) => step.status === 'feito').length
     } });
     return created;
   }, [details, mergeTask, updateDetail]);
 
   const updateStep = useCallback(async (taskId: string, stepId: string, patch: { title?: string; status?: 'backlog' | 'feito' }) => {
     const updated = await api.updateTaskSubtask(stepId, patch);
-    updateDetail(taskId, (current) => ({
-      ...current,
-      subtasks: current.subtasks.map((step) => step.id === stepId ? updated : step)
-    }));
+    const nextSteps = (details[taskId]?.subtasks ?? []).map((step) => step.id === stepId ? updated : step);
+    updateDetail(taskId, (current) => ({ ...current, subtasks: nextSteps }));
+    mergeTask(taskId, { stepSummary: {
+      total: nextSteps.length,
+      completed: nextSteps.filter((step) => step.status === 'feito').length
+    } });
     return updated;
-  }, [updateDetail]);
+  }, [details, mergeTask, updateDetail]);
 
   const reorderSteps = useCallback(async (taskId: string, orderedIds: string[]) => {
     const previous = details[taskId]?.subtasks ?? [];
@@ -352,10 +381,13 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
 
   const deleteStep = useCallback(async (taskId: string, stepId: string) => {
     await api.deleteTaskSubtask(stepId);
-    updateDetail(taskId, (current) => ({
-      ...current, subtasks: current.subtasks.filter((step) => step.id !== stepId)
-    }));
-  }, [updateDetail]);
+    const nextSteps = (details[taskId]?.subtasks ?? []).filter((step) => step.id !== stepId);
+    updateDetail(taskId, (current) => ({ ...current, subtasks: nextSteps }));
+    mergeTask(taskId, { stepSummary: {
+      total: nextSteps.length,
+      completed: nextSteps.filter((step) => step.status === 'feito').length
+    } });
+  }, [details, mergeTask, updateDetail]);
 
   const createRestriction = useCallback(async (taskId: string, title: string, detail?: string) => {
     const created = await api.createTaskRestriction(taskId, { title, detail });
@@ -372,19 +404,18 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
     patch: { title?: string; detail?: string | null; status?: 'aberta' | 'resolvida' }
   ) => {
     const updated = await api.updateTaskRestriction(restrictionId, patch);
-    updateDetail(taskId, (current) => ({
-      ...current,
-      restrictions: current.restrictions.map((item) => item.id === restrictionId ? updated : item)
-    }));
+    const nextRestrictions = (details[taskId]?.restrictions ?? []).map((item) => item.id === restrictionId ? updated : item);
+    updateDetail(taskId, (current) => ({ ...current, restrictions: nextRestrictions }));
+    mergeTask(taskId, { openRestrictionCount: nextRestrictions.filter((item) => item.status === 'aberta').length });
     return updated;
-  }, [updateDetail]);
+  }, [details, mergeTask, updateDetail]);
 
   const deleteRestriction = useCallback(async (taskId: string, restrictionId: string) => {
     await api.deleteTaskRestriction(restrictionId);
-    updateDetail(taskId, (current) => ({
-      ...current, restrictions: current.restrictions.filter((item) => item.id !== restrictionId)
-    }));
-  }, [updateDetail]);
+    const nextRestrictions = (details[taskId]?.restrictions ?? []).filter((item) => item.id !== restrictionId);
+    updateDetail(taskId, (current) => ({ ...current, restrictions: nextRestrictions }));
+    mergeTask(taskId, { openRestrictionCount: nextRestrictions.filter((item) => item.status === 'aberta').length });
+  }, [details, mergeTask, updateDetail]);
 
   const loadWaitingRadar = useCallback(async (workspaceId: string) => {
     if (waitingRadar[workspaceId]) return waitingRadar[workspaceId];
@@ -399,7 +430,7 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
     return result;
   }, []);
 
-  const toggleGroup = useCallback((movement: TaskMovement) => {
+  const toggleGroup = useCallback((movement: TaskGroupId) => {
     setCollapsedGroups((current) => {
       const next = new Set(current);
       if (next.has(movement)) next.delete(movement); else next.add(movement);
@@ -413,7 +444,7 @@ export function useTaskBacklog(input: UseTaskBacklogInput) {
     waitingRadar, resolvedWorkspaceId, loading, detailLoading, error, detailError,
     busyTaskIds, collapsedGroups, announcement,
     reload, loadDetail, createTask, updateTask, moveTask, planForToday, removeFromToday,
-    scheduleTask, completeTask, deleteTask, createStep, updateStep, reorderSteps, deleteStep,
+    scheduleTask, completeTask, reopenTask, archiveTask, deleteTask, createStep, updateStep, reorderSteps, deleteStep,
     createRestriction, updateRestriction, deleteRestriction, loadWaitingRadar,
     registerWaitingFollowup, clearWaiting: (taskId: string) => updateTask(taskId, clearWaitingPatch),
     toggleGroup

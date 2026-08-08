@@ -1079,8 +1079,8 @@ export function DashboardPage() {
                                 Criar projeto
                               </button>
                             )}
-                            <button type="button" className="ghost-button" onClick={() => navigate('/tarefas?focus=1')}>
-                              Abrir tabela
+                            <button type="button" className="ghost-button" onClick={() => navigate('/tarefas')}>
+                              Abrir tarefas
                             </button>
                           </div>
                         </li>

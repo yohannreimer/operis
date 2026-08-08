@@ -1,6 +1,7 @@
 import type { TaskBacklogItem, TaskHorizon } from '../../api';
 
 export type TaskMovement = 'in_progress' | 'next' | 'waiting' | 'future';
+export type TaskGroupId = TaskMovement | 'done' | 'archived';
 export type TaskActionView = 'all' | 'waiting' | 'blocked' | 'overdue' | 'no_next_step';
 export type TaskDueFilter = 'all' | 'overdue' | 'today' | 'week' | 'none';
 export type TaskSort = 'default' | 'due' | 'priority' | 'project' | 'updated';
@@ -20,7 +21,7 @@ export type TaskBacklogFilters = {
 };
 
 export type TaskGroup = {
-  id: TaskMovement;
+  id: TaskGroupId;
   label: string;
   tasks: TaskBacklogItem[];
 };

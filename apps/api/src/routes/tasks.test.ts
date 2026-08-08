@@ -17,6 +17,8 @@ function createService() {
     getWaitingRadar: vi.fn().mockResolvedValue({ rows: [] }),
     create: vi.fn().mockImplementation(async (input) => ({ id: TASK_ID, ...input })),
     update: vi.fn().mockImplementation(async (_id, input) => ({ id: TASK_ID, ...input })),
+    reopen: vi.fn().mockResolvedValue({ id: TASK_ID, status: 'backlog' }),
+    archive: vi.fn().mockResolvedValue({ id: TASK_ID, status: 'arquivado' }),
     reorderSubtasks: vi.fn().mockResolvedValue(undefined)
   };
 }
@@ -93,5 +95,15 @@ describe('task routes', () => {
       [STEP_TWO_ID, STEP_ONE_ID],
       { clerkUserId: 'user_1' }
     );
+  });
+
+  it('reopens and archives through explicit lifecycle routes', async () => {
+    const { app, service } = setup();
+    const reopened = await app.inject({ method: 'POST', url: `/tasks/${TASK_ID}/reopen` });
+    const archived = await app.inject({ method: 'POST', url: `/tasks/${TASK_ID}/archive` });
+    expect(reopened.statusCode).toBe(200);
+    expect(archived.statusCode).toBe(200);
+    expect(service.reopen).toHaveBeenCalledWith(TASK_ID, { clerkUserId: 'user_1' });
+    expect(service.archive).toHaveBeenCalledWith(TASK_ID, { clerkUserId: 'user_1' });
   });
 });

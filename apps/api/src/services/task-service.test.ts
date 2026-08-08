@@ -94,4 +94,28 @@ describe('TaskService progressive backlog contracts', () => {
     )).rejects.toMatchObject({ statusCode: 400 });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it('reopens and archives through explicit lifecycle mutations', async () => {
+    const prisma = {
+      task: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'task_1' }),
+        update: vi.fn()
+          .mockResolvedValueOnce({ id: 'task_1', status: 'backlog' })
+          .mockResolvedValueOnce({ id: 'task_1', status: 'arquivado' })
+      }
+    };
+    const service = new TaskService(prisma as never);
+
+    await service.reopen('task_1', { clerkUserId: 'user_1' });
+    await service.archive('task_1', { clerkUserId: 'user_1' });
+
+    expect(prisma.task.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'task_1' },
+      data: { status: 'backlog', completedAt: null, archivedAt: null }
+    });
+    expect(prisma.task.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'task_1' },
+      data: { status: 'arquivado', archivedAt: expect.any(Date) }
+    });
+  });
 });

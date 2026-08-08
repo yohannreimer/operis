@@ -37,7 +37,7 @@ export const shellGroups: ShellGroup[] = [
     id: 'organize',
     label: 'Organizar',
     links: [
-      { to: '/tarefas', label: 'Tarefas', caption: 'Backlog e inbox', icon: ListTodo },
+      { to: '/tarefas', label: 'Tarefas', caption: 'Trabalho complexo', icon: ListTodo },
       { to: '/projetos', label: 'Projetos', caption: 'Entregas ativas', icon: BriefcaseBusiness },
       { to: '/frentes', label: 'Frentes', caption: 'Estratégia e frentes', icon: Building2 },
       { to: '/notas', label: 'Notas', caption: 'Segundo cérebro', icon: NotebookPen },

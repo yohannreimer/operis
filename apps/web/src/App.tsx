@@ -47,6 +47,7 @@ function ProtectedRoutes() {
           <Route path="projetos" element={<ProjetosPage />} />
           <Route path="projetos/:projectId" element={<ProjetosPage />} />
           <Route path="tarefas" element={<TarefasPage />} />
+          <Route path="tarefas/:taskId" element={<TarefasPage />} />
           <Route path="notas" element={<NotasPage />} />
           <Route path="notas/:noteId" element={<NotasPage />} />
           <Route path="agenda" element={<AgendaPage />} />
