@@ -1,5 +1,9 @@
-import { ReactNode, useEffect } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { clsx } from 'clsx';
+import { X } from 'lucide-react';
+import type { ReactNode } from 'react';
+
+import { IconButton } from './ui/button';
 
 type ModalProps = {
   open: boolean;
@@ -12,67 +16,36 @@ type ModalProps = {
 };
 
 export function Modal({ open, title, subtitle, onClose, children, footer, size = 'md' }: ModalProps) {
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    const previousPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-
-    document.body.style.overflow = 'hidden';
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.paddingRight = previousPaddingRight;
-    };
-  }, [open]);
-
-  if (!open) {
-    return null;
-  }
-
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <section
-        className={clsx('modal-card', `modal-${size}`)}
-        role="dialog"
-        aria-modal="true"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="modal-header">
-          <div>
-            <h3>{title}</h3>
-            {subtitle && <p>{subtitle}</p>}
-          </div>
-          <button type="button" className="text-button" onClick={onClose}>
-            Fechar
-          </button>
-        </header>
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="modal-backdrop" />
+        <Dialog.Content
+          className={clsx('modal-card', `modal-${size}`)}
+          aria-modal="true"
+          {...(subtitle ? {} : { 'aria-describedby': undefined })}
+        >
+          <header className="modal-header">
+            <div>
+              <Dialog.Title asChild>
+                <h3>{title}</h3>
+              </Dialog.Title>
+              {subtitle ? (
+                <Dialog.Description asChild>
+                  <p>{subtitle}</p>
+                </Dialog.Description>
+              ) : null}
+            </div>
+            <Dialog.Close asChild>
+              <IconButton label={`Fechar ${title}`} icon={<X />} />
+            </Dialog.Close>
+          </header>
 
-        <div className="modal-body">{children}</div>
+          <div className="modal-body">{children}</div>
 
-        {footer && <footer className="modal-footer">{footer}</footer>}
-      </section>
-    </div>
+          {footer ? <footer className="modal-footer">{footer}</footer> : null}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

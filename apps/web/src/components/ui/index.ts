@@ -1,2 +1,12 @@
 export { Button, IconButton } from './button';
 export type { ButtonProps, ButtonSize, ButtonVariant, IconButtonProps } from './button';
+export { CompletionControl } from './completion-control';
+export type { CompletionControlProps } from './completion-control';
+export { Field } from './field';
+export type { FieldProps } from './field';
+export { InlineComposer } from './inline-composer';
+export type { InlineComposerProps } from './inline-composer';
+export { Popover } from './popover';
+export type { PopoverProps } from './popover';
+export { Sheet } from './sheet';
+export type { SheetProps } from './sheet';
