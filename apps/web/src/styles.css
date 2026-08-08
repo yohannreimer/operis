@@ -1152,7 +1152,6 @@ h4 {
   color: var(--text);
 }
 
-button,
 input,
 select,
 textarea {
@@ -1206,22 +1205,12 @@ label {
 
 button {
   border: 0;
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-  font-weight: 600;
-  background: var(--primary);
-  color: white;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
-}
-
-/* Orange glow only for plain primary buttons (no class override) */
-button:not([class]):not(:disabled) {
-  box-shadow: 0 2px 8px var(--primary-glow);
-}
-button:not([class]):hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px var(--primary-glow);
 }
 
 button:disabled {
@@ -1235,11 +1224,6 @@ select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
-}
-
-button:active:not(:disabled) {
-  transform: scale(0.97);
-  transition-duration: 60ms;
 }
 
 .text-button {

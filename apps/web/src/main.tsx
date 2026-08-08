@@ -6,6 +6,7 @@ import { Toaster } from 'sonner';
 import { App } from './App';
 import { LandingPage } from './pages/landing-page';
 import './styles.css';
+import './components/ui/ui.css';
 import { installMockFetch } from './demo/mock-fetch';
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
