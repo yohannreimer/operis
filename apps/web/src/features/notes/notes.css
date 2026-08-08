@@ -638,16 +638,25 @@
 }
 
 .note-document-insert-trigger {
-  width: 38px;
+  width: auto;
   height: 38px;
-  display: grid;
-  place-items: center;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface-soft);
   color: var(--text-secondary);
   box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.bn-block-outer:has(.note-artifact-block) + .bn-block-outer .bn-block-content[data-content-type='paragraph']:has(.ProseMirror-trailingBreak:only-child)::after {
+  color: var(--muted);
+  content: 'Continue escrevendo…';
+  pointer-events: none;
 }
 
 .note-document-insert-menu {
@@ -1025,7 +1034,8 @@
     bottom: calc(16px + env(safe-area-inset-bottom));
     margin: 0;
   }
-  .note-document-insert-trigger { width: 48px; height: 48px; border-color: rgba(249, 115, 22, 0.42); background: var(--primary); color: #17120f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+  .note-document-insert-trigger { width: 48px; height: 48px; justify-content: center; padding: 0; border-color: rgba(249, 115, 22, 0.42); background: var(--primary); color: #17120f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+  .note-document-insert-trigger span { display: none; }
   .note-document-insert-menu button { min-height: 44px; }
   .note-related-notes { width: calc(100% - 32px); }
   .note-document-title { font-size: 2.1rem; }

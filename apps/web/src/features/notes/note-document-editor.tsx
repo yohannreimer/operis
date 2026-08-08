@@ -85,8 +85,14 @@ export function NoteDocumentEditor({
         editor,
         createArtifactBlock(artifact) as PartialBlock<any, any, any>
       );
+      const [continuation] = editor.insertBlocks(
+        [{ type: 'paragraph', content: [] }],
+        inserted,
+        'after'
+      );
       emitDocument(editor);
-      onOpenArtifact(artifact.id, inserted.id);
+      editor.setTextCursorPosition(continuation ?? inserted, 'start');
+      editor.focus();
     } catch (error) {
       await api.deleteNoteArtifact(note.id, artifact.id).catch(() => undefined);
       setArtifactError(error instanceof Error ? error.message : 'Não foi possível inserir o bloco.');
@@ -168,6 +174,7 @@ export function NoteDocumentEditor({
           onClick={() => setInsertMenuOpen((open) => !open)}
         >
           <Plus size={17} />
+          <span>Inserir</span>
         </button>
         {insertMenuOpen ? (
           <div className="note-document-insert-menu" role="menu" aria-label="Inserir no documento">

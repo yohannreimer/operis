@@ -44,6 +44,17 @@ describe('notes workspace route flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inserir no documento' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Diagrama' }));
 
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Título da nota' })).toBeVisible();
+      expect(document.querySelector('.note-artifact-block')).not.toBeNull();
+    });
+    const artifactBlock = document.querySelector('.note-artifact-block')?.closest('[data-node-type="blockOuter"]');
+    const continuationBlock = artifactBlock?.nextElementSibling;
+    const continuation = continuationBlock?.querySelector<HTMLElement>('.bn-inline-content');
+    expect(continuation).not.toBeNull();
+    expect(continuation?.closest('.bn-editor')).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: /abrir.*diagrama.*em foco/i }));
     const focusWorkspace = await screen.findByRole('main', { name: 'Editor visual em foco' });
     await waitFor(() => expect(focusWorkspace).toHaveFocus());
     fireEvent.click(screen.getByRole('button', { name: 'Voltar para a nota' }));
@@ -51,6 +62,8 @@ describe('notes workspace route flow', () => {
     expect(await screen.findByRole('textbox', { name: 'Título da nota' })).toHaveValue('Reunião — funil de vendas.');
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /abrir.*diagrama.*em foco/i })).toBeVisible();
+      const returnedArtifact = document.querySelector('.note-artifact-block')?.closest('[data-node-type="blockOuter"]');
+      expect(returnedArtifact?.nextElementSibling?.querySelector('[data-content-type="paragraph"]')).not.toBeNull();
     });
   });
 });
