@@ -141,6 +141,7 @@ export function NoteDocumentEditor({
         </div>
       ) : null}
       <ArtifactBlockProvider
+        noteId={note.id}
         onOpen={(artifactId) => {
           const block = (editorRef.current?.document as unknown as OperisBlock[] | undefined)?.find(
             (candidate) => candidate.type === 'operisArtifact' && candidate.props?.artifactId === artifactId
