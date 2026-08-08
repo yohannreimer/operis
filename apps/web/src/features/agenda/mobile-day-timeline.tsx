@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, CheckSquare2, Clock3, MoreHorizontal, Zap } from 'lucide-react';
+import { CalendarDays, Clock3, MoreHorizontal } from 'lucide-react';
 
 import type { AgendaBlock, AgendaWeek, CommitmentOccurrence } from '../../api';
+import { Button, CompletionControl, Field, IconButton, Sheet } from '../../components/ui';
 import { toIsoDateTime } from '../../utils/date';
 import { blockAccessibleName } from './planner-block';
 import { agendaTime } from './time-grid';
@@ -59,7 +60,7 @@ function MobileBlock({
   const [date, setDate] = useState(block.date);
   const [startTime, setStartTime] = useState(agendaTime(block.startTime));
   const [duration, setDuration] = useState(block.plannedMinutes);
-  const Icon = block.kind === 'commitment' ? CalendarDays : block.kind === 'task' ? CheckSquare2 : Zap;
+  const fieldPrefix = `agenda-move-${block.id}`;
 
   function startPress() {
     longPressed.current = false;
@@ -76,6 +77,15 @@ function MobileBlock({
   return (
     <article className={`agenda-mobile-block agenda-mobile-block--${block.kind}`} data-completed={Boolean(block.completedAt) || undefined}>
       <span className="agenda-mobile-block-time">{agendaTime(block.startTime)}</span>
+      {block.kind === 'commitment' ? (
+        <span className="agenda-mobile-block-kind" aria-hidden="true"><CalendarDays /></span>
+      ) : (
+        <CompletionControl
+          checked={Boolean(block.completedAt)}
+          label={`${block.completedAt ? 'Reabrir' : 'Concluir'} ${block.title}`}
+          onCheckedChange={() => onComplete(block)}
+        />
+      )}
       <button
         type="button"
         className="agenda-mobile-block-main"
@@ -85,26 +95,47 @@ function MobileBlock({
         onClick={() => { if (!longPressed.current) onOpen(block); }}
         aria-label={blockAccessibleName(block)}
       >
-        <Icon aria-hidden="true" />
         <span><strong>{block.title}</strong><small>{block.plannedMinutes} min</small></span>
       </button>
+      {planning && block.kind !== 'commitment' ? (
+        <IconButton
+          className="agenda-mobile-block-move"
+          label={`Mover ${block.title}`}
+          icon={<MoreHorizontal />}
+          onClick={() => setMoving(true)}
+        />
+      ) : <span aria-hidden="true" />}
       {block.kind !== 'commitment' ? (
-        <div className="agenda-mobile-block-controls">
-          <button type="button" aria-label={`${block.completedAt ? 'Reabrir' : 'Concluir'} ${block.title}`} onClick={() => onComplete(block)}><Check aria-hidden="true" /></button>
-          {planning ? <button type="button" aria-label={`Mover ${block.title}`} onClick={() => setMoving(true)}><MoreHorizontal aria-hidden="true" /></button> : null}
-        </div>
-      ) : null}
-      {moving && block.kind !== 'commitment' ? (
-        <div className="agenda-mobile-move-sheet" role="dialog" aria-label={`Mover ${block.title}`}>
-          <label>Data<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-          <label>Horário<input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
-          <label>Duração<select value={duration} onChange={(event) => setDuration(Number(event.target.value))}>{[15, 30, 45, 60, 90, 120].map((value) => <option key={value} value={value}>{value} min</option>)}</select></label>
-          <button type="button" onClick={() => {
-            const nextStart = toIsoDateTime(date, startTime);
-            onMove({ ...block, date, startTime: nextStart, endTime: addMinutes(nextStart, duration), plannedMinutes: duration });
-            setMoving(false);
-          }}>Confirmar mudança</button>
-        </div>
+        <Sheet
+          open={moving}
+          title={`Mover ${block.title}`}
+          side="bottom"
+          onClose={() => setMoving(false)}
+          footer={(
+            <>
+              <Button type="button" variant="secondary" onClick={() => setMoving(false)}>Cancelar</Button>
+              <Button type="button" onClick={() => {
+                const nextStart = toIsoDateTime(date, startTime);
+                onMove({ ...block, date, startTime: nextStart, endTime: addMinutes(nextStart, duration), plannedMinutes: duration });
+                setMoving(false);
+              }}>Confirmar mudança</Button>
+            </>
+          )}
+        >
+          <div className="agenda-mobile-move-form">
+            <Field label="Data" htmlFor={`${fieldPrefix}-date`}>
+              <input id={`${fieldPrefix}-date`} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </Field>
+            <Field label="Horário" htmlFor={`${fieldPrefix}-time`}>
+              <input id={`${fieldPrefix}-time`} type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+            </Field>
+            <Field label="Duração" htmlFor={`${fieldPrefix}-duration`}>
+              <select id={`${fieldPrefix}-duration`} value={duration} onChange={(event) => setDuration(Number(event.target.value))}>
+                {[15, 30, 45, 60, 90, 120].map((value) => <option key={value} value={value}>{value} min</option>)}
+              </select>
+            </Field>
+          </div>
+        </Sheet>
       ) : null}
     </article>
   );

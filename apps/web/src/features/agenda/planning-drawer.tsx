@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { CheckSquare2, ChevronUp, Inbox, Search, X } from 'lucide-react';
 
 import type { AgendaWeek } from '../../api';
+import { Button, IconButton } from '../../components/ui';
 import type { PlannerSource } from './types';
 
 type Props = {
@@ -32,15 +33,13 @@ export function PlanningDrawer({ sources, onSchedule }: Props) {
 
   return (
     <aside className="agenda-planning-drawer" data-height={height} aria-label="Itens para planejar">
-      <button type="button" className="agenda-drawer-handle" onClick={expand} aria-label="Expandir itens para planejar">
-        <ChevronUp aria-hidden="true" />
-      </button>
+      <IconButton type="button" className="agenda-drawer-handle" onClick={expand} label="Expandir itens para planejar" icon={<ChevronUp />} />
       <header>
         <div>
           <span className="agenda-eyebrow">Inbox + tarefas</span>
           <strong>Para planejar</strong>
         </div>
-        {height !== 'peek' ? <button type="button" aria-label="Recolher itens para planejar" onClick={() => setHeight('peek')}><X aria-hidden="true" /></button> : null}
+        {height !== 'peek' ? <IconButton type="button" label="Recolher itens para planejar" onClick={() => setHeight('peek')} icon={<X />} /> : null}
       </header>
       {height !== 'peek' ? (
         <>
@@ -53,15 +52,16 @@ export function PlanningDrawer({ sources, onSchedule }: Props) {
             {items.map((item) => {
               const Icon = item.kind === 'task' ? CheckSquare2 : Inbox;
               return (
-                <button
+                <Button
                   type="button"
+                  variant="tertiary"
                   key={`${item.kind}:${item.sourceId}`}
                   aria-label={`Agendar ${item.title}`}
                   onClick={() => setSelected(item)}
                 >
                   <Icon aria-hidden="true" />
                   <span><strong>{item.title}</strong><small>{item.detail}</small></span>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -69,20 +69,20 @@ export function PlanningDrawer({ sources, onSchedule }: Props) {
       ) : (
         <div className="agenda-drawer-peek-items">
           {items.slice(0, 3).map((item) => (
-            <button type="button" key={`${item.kind}:${item.sourceId}`} aria-label={`Agendar ${item.title}`} onClick={() => { setSelected(item); setHeight('half'); }}>
+            <Button type="button" variant="secondary" size="sm" key={`${item.kind}:${item.sourceId}`} aria-label={`Agendar ${item.title}`} onClick={() => { setSelected(item); setHeight('half'); }}>
               {item.title}
-            </button>
+            </Button>
           ))}
         </div>
       )}
       {selected ? (
         <div className="agenda-time-picker" role="group" aria-label={`Horário de ${selected.title}`}>
-          <div><strong>{selected.title}</strong><button type="button" aria-label="Cancelar horário" onClick={() => setSelected(null)}><X aria-hidden="true" /></button></div>
+          <div><strong>{selected.title}</strong><IconButton type="button" label="Cancelar horário" onClick={() => setSelected(null)} icon={<X />} /></div>
           <label>
             Horário
             <input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
           </label>
-          <button type="button" onClick={() => { void onSchedule(selected, time); setSelected(null); }}>Confirmar horário</button>
+          <Button type="button" onClick={() => { void onSchedule(selected, time); setSelected(null); }}>Confirmar horário</Button>
         </div>
       ) : null}
     </aside>

@@ -24,8 +24,9 @@ describe('BlockInspector', () => {
     render(<BlockInspector mode="edit" block={recurringCommitment()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
-    expect(screen.getByRole('dialog', { name: 'Aplicar alteração' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Aplicar alteração' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Somente esta ocorrência' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Toda a série' })).toBeInTheDocument();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 });

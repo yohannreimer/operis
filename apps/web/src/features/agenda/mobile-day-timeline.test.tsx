@@ -47,6 +47,20 @@ describe('mobile agenda planning', () => {
     })).toBeInTheDocument();
   });
 
+  it('uses a compact completion control beside task content and no trailing completion box', () => {
+    render(
+      <MobileDayTimeline
+        week={weekFixture()}
+        selectedDate="2026-08-06"
+        controller={controller()}
+      />
+    );
+
+    const complete = screen.getByRole('button', { name: /concluir gravar vídeo/i });
+    expect(complete).toHaveClass('ui-completion-control');
+    expect(complete.closest('.agenda-mobile-block-controls')).toBeNull();
+  });
+
   it('schedules a drawer item with explicit touch controls', () => {
     const onSchedule = vi.fn();
     render(<PlanningDrawer sources={sources()} onSchedule={onSchedule} />);

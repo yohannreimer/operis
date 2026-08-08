@@ -60,6 +60,9 @@ export function Popover({ label, trigger, children, align = 'end' }: PopoverProp
           className={`ui-popover__content ui-popover__content--${align}`}
           role="menu"
           aria-label={label}
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest('button, [role="menuitem"]')) setOpen(false);
+          }}
         >
           {children}
         </div>

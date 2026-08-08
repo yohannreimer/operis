@@ -230,8 +230,8 @@
   position: relative;
   min-height: 58px;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
-  align-items: stretch;
+  grid-template-columns: 58px 40px minmax(0, 1fr) 40px;
+  align-items: center;
   border-bottom: 1px solid var(--border);
 }
 
@@ -256,14 +256,9 @@
 }
 
 .today-timeline-shell .agenda-mobile-block-main:hover { transform: none; background: rgba(255,255,255,0.02); }
-.today-timeline-shell .agenda-mobile-block-main svg { width: 16px; color: var(--text-secondary); }
-.today-timeline-shell .agenda-mobile-block--inbox .agenda-mobile-block-main svg { color: var(--primary); }
-.today-timeline-shell .agenda-mobile-block--commitment .agenda-mobile-block-main svg { color: #91a6d3; }
 .today-timeline-shell .agenda-mobile-block-main span { min-width: 0; display: grid; gap: 3px; }
 .today-timeline-shell .agenda-mobile-block-main strong { overflow: hidden; font-size: 0.83rem; text-overflow: ellipsis; white-space: nowrap; }
 .today-timeline-shell .agenda-mobile-block-main small { color: var(--muted); font: 500 0.64rem/1 'JetBrains Mono', monospace; }
-.today-timeline-shell .agenda-mobile-block-controls { display: flex; align-items: center; }
-.today-timeline-shell .agenda-mobile-block-controls button { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--muted); box-shadow: none; }
 .today-timeline-shell .agenda-mobile-empty { margin: 0; padding: 18px 2px; color: var(--muted); font-size: 0.76rem; }
 .today-zone--completed { opacity: 0.72; }
 

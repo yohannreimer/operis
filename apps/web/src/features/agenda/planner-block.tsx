@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CalendarDays, CheckSquare2, MoreHorizontal, Zap } from 'lucide-react';
 
+import { Button, IconButton, Popover } from '../../components/ui';
 import { agendaTime } from './time-grid';
 import type { PlannerBlockModel } from './types';
 
@@ -45,7 +45,6 @@ type Props = {
 };
 
 export function PlannerBlock({ block, geometry, conflicted, onOpen, onCommand }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const draggable = useDraggable({
     id: `block:${block.id}`,
     disabled: block.kind === 'commitment',
@@ -57,7 +56,6 @@ export function PlannerBlock({ block, geometry, conflicted, onOpen, onCommand }:
     <div
       className={`agenda-block-shell agenda-block-shell--${block.kind}`}
       data-conflict={conflicted || undefined}
-      data-menu-open={menuOpen || undefined}
       style={{ top: geometry.top, height: geometry.height }}
     >
       <button
@@ -78,30 +76,24 @@ export function PlannerBlock({ block, geometry, conflicted, onOpen, onCommand }:
       </button>
       {block.kind !== 'commitment' ? (
         <div className="agenda-block-actions">
-          <button
-            type="button"
-            aria-label={`Ações de ${block.title}`}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((value) => !value)}
+          <Popover
+            label={`Ações de ${block.title}`}
+            trigger={<IconButton type="button" label={`Ações de ${block.title}`} icon={<MoreHorizontal size={14} />} />}
           >
-            <MoreHorizontal size={14} aria-hidden="true" />
-          </button>
-          {menuOpen ? (
-            <div className="agenda-block-menu" role="menu">
-              {commandLabels.map(([command, label]) => (
-                <button
-                  type="button"
-                  key={command}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onCommand(block, command);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : null}
+            {commandLabels.map(([command, label]) => (
+              <Button
+                type="button"
+                variant="tertiary"
+                size="sm"
+                key={command}
+                onClick={() => {
+                  onCommand(block, command);
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </Popover>
         </div>
       ) : null}
     </div>

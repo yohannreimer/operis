@@ -4,6 +4,7 @@ import { ChevronDown, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { api, type CommitmentOccurrence } from '../../api';
+import { Button, IconButton } from '../../components/ui';
 import { agendaTime } from './time-grid';
 import type { PlannerBlockModel } from './types';
 
@@ -152,7 +153,7 @@ export function BlockInspector({
           <header className="agenda-inspector-header">
             <Dialog.Title>{mode === 'create' ? 'Novo bloco' : 'Editar bloco'}</Dialog.Title>
             <Dialog.Close asChild>
-              <button type="button" aria-label="Fechar inspetor"><X aria-hidden="true" /></button>
+              <IconButton type="button" label="Fechar inspetor" icon={<X />} />
             </Dialog.Close>
           </header>
           <form className="agenda-inspector-form" onSubmit={submit}>
@@ -184,10 +185,10 @@ export function BlockInspector({
                 </select>
               </label>
             </div>
-            <button type="button" className="agenda-more-options" onClick={() => setAdvanced((value) => !value)}>
+            <Button type="button" variant="tertiary" className="agenda-more-options" onClick={() => setAdvanced((value) => !value)}>
               {advanced ? 'Menos opções' : 'Mais opções'}
               <ChevronDown aria-hidden="true" data-open={advanced || undefined} />
-            </button>
+            </Button>
             {advanced ? (
               <div className="agenda-advanced-fields">
                 <label>
@@ -210,25 +211,22 @@ export function BlockInspector({
                 ) : null}
               </div>
             ) : null}
-            <footer className="agenda-inspector-footer">
-              <Dialog.Close asChild><button type="button">Cancelar</button></Dialog.Close>
-              <button type="submit" disabled={saving}>{saving ? 'Salvando…' : 'Salvar'}</button>
-            </footer>
-          </form>
-
-          <Dialog.Root open={scopeOpen} onOpenChange={setScopeOpen}>
-            <Dialog.Portal>
-              <Dialog.Overlay className="agenda-scope-overlay" />
-              <Dialog.Content className="agenda-scope-dialog" aria-describedby={undefined}>
-                <Dialog.Title>Aplicar alteração</Dialog.Title>
+            {scopeOpen ? (
+              <fieldset className="agenda-scope-inline">
+                <legend>Aplicar alteração</legend>
                 <p>Esta rotina se repete. Onde você quer aplicar a mudança?</p>
                 <div>
-                  <button type="button" onClick={() => void persist('occurrence')}>Somente esta ocorrência</button>
-                  <button type="button" onClick={() => void persist('series')}>Toda a série</button>
+                  <Button type="button" variant="secondary" loading={saving} onClick={() => void persist('occurrence')}>Somente esta ocorrência</Button>
+                  <Button type="button" loading={saving} onClick={() => void persist('series')}>Toda a série</Button>
                 </div>
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog.Root>
+              </fieldset>
+            ) : (
+              <footer className="agenda-inspector-footer">
+                <Dialog.Close asChild><Button type="button" variant="secondary">Cancelar</Button></Dialog.Close>
+                <Button type="submit" loading={saving}>Salvar</Button>
+              </footer>
+            )}
+          </form>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
