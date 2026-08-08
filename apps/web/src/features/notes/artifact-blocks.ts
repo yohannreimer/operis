@@ -37,6 +37,18 @@ export function isArtifactBlock(block: OperisBlock): boolean {
   );
 }
 
+function continuationParagraph(): OperisBlock {
+  return { type: 'paragraph', content: [] } as OperisBlock;
+}
+
+export function ensureArtifactContinuations(blocks: OperisBlock[]): OperisBlock[] {
+  return blocks.flatMap((block, index) => {
+    if (!isArtifactBlock(block)) return [block];
+    const next = blocks[index + 1];
+    return next?.type === 'paragraph' ? [block] : [block, continuationParagraph()];
+  });
+}
+
 export function mergeArtifactBlocks(
   blocks: OperisBlock[],
   artifacts: NoteArtifactSummary[]
@@ -49,5 +61,5 @@ export function mergeArtifactBlocks(
     .sort((left, right) => artifactOrder[left.kind] - artifactOrder[right.kind])
     .map(createArtifactBlock);
 
-  return [...blocks, ...missing];
+  return ensureArtifactContinuations([...blocks, ...missing]);
 }

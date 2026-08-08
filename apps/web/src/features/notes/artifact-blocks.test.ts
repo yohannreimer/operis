@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   artifactLabel,
   createArtifactBlock,
+  ensureArtifactContinuations,
   isArtifactBlock,
   mergeArtifactBlocks
 } from './artifact-blocks';
+import type { OperisBlock } from './editor/operis-block-types';
 
 const artifact = {
   id: 'artifact-1',
@@ -36,12 +38,33 @@ describe('artifact block helpers', () => {
     ];
     const merged = mergeArtifactBlocks(existing, artifacts);
 
-    expect(merged).toHaveLength(3);
-    expect(merged.map((block) => block.props?.artifactId)).toEqual([
-      'artifact-1',
-      'map-1',
-      'board-1'
+    expect(merged).toHaveLength(6);
+    expect(merged.map((block) => [block.type, block.props?.artifactId ?? null])).toEqual([
+      ['operisArtifact', 'artifact-1'],
+      ['paragraph', null],
+      ['operisArtifact', 'map-1'],
+      ['paragraph', null],
+      ['operisArtifact', 'board-1'],
+      ['paragraph', null]
     ]);
     expect(mergeArtifactBlocks(merged, artifacts)).toEqual(merged);
+  });
+
+  it('places exactly one editable paragraph after every artifact', () => {
+    const paragraph = { type: 'paragraph', content: [] } as OperisBlock;
+    const adjacent = [
+      createArtifactBlock(artifact),
+      createArtifactBlock({ ...artifact, id: 'map-1', kind: 'mindmap' as const })
+    ];
+
+    const normalized = ensureArtifactContinuations(adjacent);
+
+    expect(normalized.map((block) => block.type)).toEqual([
+      'operisArtifact', 'paragraph', 'operisArtifact', 'paragraph'
+    ]);
+    expect(ensureArtifactContinuations([createArtifactBlock(artifact), paragraph])).toEqual([
+      createArtifactBlock(artifact), paragraph
+    ]);
+    expect(ensureArtifactContinuations(normalized)).toEqual(normalized);
   });
 });
