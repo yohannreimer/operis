@@ -97,6 +97,22 @@ describe('Layout mobile navigation helpers', () => {
 });
 
 describe('Layout mobile shell rendering', () => {
+  it('renders route content without the global top HUD', async () => {
+    const { container } = renderLayout('/hoje');
+
+    expect(await screen.findByText('Hoje route body')).toBeInTheDocument();
+    expect(container.querySelector('.app-topbar')).not.toBeInTheDocument();
+    expect(container.querySelector('.topbar-capture-expanded')).not.toBeInTheDocument();
+  });
+
+  it('keeps the command palette available from the keyboard', async () => {
+    renderLayout('/hoje');
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+
+    expect(await screen.findByRole('dialog', { name: 'Comandos' })).toBeInTheDocument();
+  });
+
   it('renders bottom navigation and mobile more trigger', async () => {
     renderLayout('/hoje');
 
@@ -207,7 +223,9 @@ describe('Layout mobile shell rendering', () => {
     renderLayout('/hoje');
 
     fireEvent.click(screen.getByRole('button', { name: 'Capturar' }));
-    const input = await screen.findByRole('textbox', { name: 'Captura rápida' });
+    expect(await screen.findByRole('dialog', { name: 'Capturar' })).toBeInTheDocument();
+
+    const input = screen.getByRole('textbox', { name: 'Captura rápida' });
     fireEvent.change(input, { target: { value: 'Comprar cabo USB-C' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -217,5 +235,14 @@ describe('Layout mobile shell rendering', () => {
         source: 'app'
       });
     });
+  });
+
+  it('opens quick capture from the global C shortcut', async () => {
+    renderLayout('/hoje');
+
+    fireEvent.keyDown(window, { key: 'c' });
+
+    expect(await screen.findByRole('dialog', { name: 'Capturar' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Captura rápida' })).toHaveFocus();
   });
 });
