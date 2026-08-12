@@ -771,7 +771,7 @@ model ExecutionSession {
   clerkUserId          String                @map("clerk_user_id")
   dayPlanItemId        String?               @map("day_plan_item_id")
   dailyExecutionItemId String?               @map("daily_execution_item_id")
-  taskId               String?
+  taskId               String?               @map("task_id")
   inboxItemId          String?               @map("inbox_item_id")
   startedAt            DateTime              @default(now()) @map("started_at")
   endedAt              DateTime?             @map("ended_at")
